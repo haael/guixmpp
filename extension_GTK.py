@@ -78,42 +78,51 @@ class GtkEvent(sleekxmpp.xmlstream.ElementBase):
 	name = 'event'
 	plugin_attrib = 'gtk_event'
 	
-	def add_event(self, name, *args):
-		pass # model updates
+	def add_event(self, widget, name, args, kwargs):
+		pass
+		return self
+	
+	def add_delta(self, delta):
+		pass
+		return self
 
 
 class extension_GTK(sleekxmpp.plugins.base.base_plugin):
 	"""
 	"""
 	
-    def plugin_init(self):
-        self.description = ""
-        self.xep = 'x-GTK'
+	def plugin_init(self):
+		self.description = ""
+		self.xep = 'x-GTK'
+		self.servers = {}
+		self.clients = {}
 		
-		#self.xmpp.registerHandler(Callback('Gtk Builder interface structure description', MatchXPath('{%s}message/{%s}interface' % (self.xmpp.default_ns, GtkIfElement.namespace)), self.__recv_if))
-		#self.xmpp.registerHandler(Callback('Gtk UIManager interface behavior description', MatchXPath('{%s}message/{%s}ui' % (self.xmpp.default_ns, GtkUIElement.namespace)), self.__recv_ui))
-		#sleekxmpp.xmlstream.register_stanza_plugin(sleekxmpp.stanza.Message, GtkIfElement)
-		#sleekxmpp.xmlstream.register_stanza_plugin(sleekxmpp.stanza.Message, GtkUIElement)
+		self.xmpp.register_handler(Callback('Gtk event', MatchXPath('{%s}message/{%s}event' % (self.xmpp.default_ns, GtkEvent.namespace)), self.__message))
+		sleekxmpp.xmlstream.register_stanza_plugin(sleekxmpp.stanza.Message, GtkEvent)
 		
-		sleekxmpp.xmlstream.register_stanza_plugin(FormField, SVGElement)
+		sleekxmpp.xmlstream.register_stanza_plugin(FormField, GtkIfElement)
+		sleekxmpp.xmlstream.register_stanza_plugin(FormField, GtkUIElement)
 		
-		self.xmpp['xep_0050'].add_command(name="", node='get_ui', handler=self.__command)
-		self.xmpp['xep_0050'].add_command(name="", node='get_if', handler=self.__command)
+		self.xmpp['xep_0050'].add_command(name="", node='gtk_open_application', handler=self.__command)
+		
+		self.xmpp.add_event_handler('gui_emit_signal', self.__gui_emit_signal)
+		self.xmpp.add_event_handler('gui_update_model', self.__gui_update_model)
+		self.xmpp.add_event_handler('gui_close_application', self.__gui_close_application)
+	
+	def set_ui(self, ui, menu):
+		self.ui = ui
+		self.menu = menu
 	
 	def __command(self, iq, session):
 		self.xmpp.event('gtk_command', iq)
 		
-		node = iq['command']['node']
-		data = iq['command']['form']['fields']
-		try:
-			svgobject = data['obj']['value']
-		except KeyError:
-			svgobject = ''
-		
-		if node == 'get_ui':
-			self.xmpp.event('gtk_get_ui')
-		elif node == 'get_if':
-			self.xmpp.event('gtk_get_if')
+		if iq['command']['node'] == 'gtk_open_application':
+			form = iq['command']['form']
+			form.add_field(var='ui', ftype='gtk_if')['gtk_if'].init_from_xml(self.ui)
+			form.add_field(var='menu_count', ftype='int', value=len(self.menu))
+			for n, menu in enumerate(self.menu):
+				form.add_field(var='menu' + str(n), ftype='gtk_ui')['gtk_ui'].init_from_xml(menu)
+			#self.xmpp.event('gtk_open_application', (jid, ui, menu))
 		else:
 			pass # error
 		
@@ -126,11 +135,51 @@ class extension_GTK(sleekxmpp.plugins.base.base_plugin):
 	def __cmd_error(self, iq, session):
 		self.xmpp.event('gtk_error', (session['id'], iq['command']))
 	
-	def __recv_if(self, msg):
+	def __message(self, msg):
 		self.xmpp.event('gtk_if_message', msg)
 	
-	def __recv_ui(self, msg):
-		self.xmpp.event('gtk_ui_message', msg)
+	def open_application(self, jid):
+		#form = self.xmpp['xep_0004'].make_form()
+		#form.add_field(var='obj', ftype='str', value=obj)
+		#form.add_field(var='svg', ftype='svg')['svg'].init_from_xml(svg)
+		
+		session = {'payload':[], 'next':self.__cmd_next, 'error':self.__cmd_error}
+		self.xmpp['xep_0050'].start_command(jid=jid, node='gtk_get_if', session=session)
+		return session['id']
+	
+	def make_event_message(self, mto, widget, name, args, kwargs, mbody=None):
+		msg = self.xmpp.make_message(mto=mto)
+		msg['gtk_event'].add_event(widget, name, args, kwargs)
+		if mbody is not None:
+			msg['body'] = mbody
+		return msg
+	
+	def send_event_message(self, mto, widget, name, args, kwargs, mbody=None):
+		self.make_event_message(mto, widget, name, args, kwargs, mbody).send()
+	
+	def make_delta_message(self, mto, delta, mbody=None):
+		msg = self.xmpp.make_message(mto=mto)
+		msg['gtk_event'].add_delta(delta)
+		if mbody is not None:
+			msg['body'] = mbody
+		return msg
+	
+	def send_delta_message(self, mto, delta, mbody=None):
+		self.make_event_message(mto, delta, mbody).send()
+	
+	def __gui_emit_signal(self, data):
+		jid, widget, name, args, kwargs = data
+		#print("gui_emit_signal", widget, name, args, kwargs)
+		self.send_event_message(jid, widget, name, args, kwargs)
+	
+	def __gui_update_model(self, data):
+		jid, delta = data
+		#print("gui_update_model", delta)
+		self.send_delta_message(jid, delta)
+	
+	def __gui_close_application(self, jid):
+		del self.servers[jid]
+		print("gui_close_application", jid)
 
 
 

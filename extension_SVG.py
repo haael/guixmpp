@@ -26,7 +26,7 @@ class SVGElement(sleekxmpp.xmlstream.ElementBase):
 	
 	def init_from_xml(self, xml):
 		element = sleekxmpp.xmlstream.ET.fromstring(xml)
-		if element.tag != self.name
+		if element.tag != self.name:
 			raise ValueError("The supplied XML string must be an SVG document.")
 		self.clear()
 		for c in element:
