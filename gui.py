@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 #-*- coding: utf-8 -*-
 
+from __future__ import unicode_literals
+
 
 import copy
 import io
@@ -17,6 +19,10 @@ import cairo
 def bind(view, model):
 	model._Model__view = view
 	view._View__model = model
+
+def unbind(view, model):
+	model._Model__view = None
+	view._View__model = None
 
 
 class LocalModel:
@@ -116,21 +122,29 @@ class RemoteModel:
 		
 		def __getattr__(self, attr):
 			def method(widget, *args, **kwargs):
-				pass
+				print(widget, attr, args, kwargs)
+				self.__parent._RemoteModel__xmpp.event("gui_emit_signal", (self.__parent._RemoteModel__jid, widget, attr, args, kwargs))
 			method.name = attr
 			return method
 		
 		def __repr__(self):
 			return repr(self.__items)
+		
+		def __bool__(self):
+			return bool(self.__items)
 	
-	def __init__(self, jid):
+	def __init__(self, xmpp, jid):
+		self.__xmpp = xmpp
 		self.__jid = jid
 		self.__items = {}
 		self.__changes = {}
 	
 	def _Model__update(self):
-		#self.__jid.send(self.__changes)
-		print(self.__changes)
+		todel = [key for (key, value) in self.__changes.items() if (not value) and (value is not None)]
+		for key in todel:
+			del self.__changes[key]
+		if self.__changes:
+			self.__xmpp.event("gui_update_model", (self.__jid, self.__changes))
 		self.__changes = {}
 	
 	def __receive_updated(self, changes):
@@ -212,12 +226,22 @@ class View:
 	
 	def on_editable_changed(self, widget):
 		node = self.__model[gtk.Buildable.get_name(widget)]
-		node['text'] = widget.get_property('buffer').get_text()
+		node['text'] = widget.get_buffer().get_text()
 		self.__model._Model__update()
 	
 	def on_togglebutton_toggled(self, widget):
 		node = self.__model[gtk.Buildable.get_name(widget)]
 		node['active'] = widget.get_active()
+		self.__model._Model__update()
+	
+	def on_combobox_changed(self, widget):
+		node = self.__model[gtk.Buildable.get_name(widget)]
+		node['index'] = widget.get_active()
+		self.__model._Model__update()
+	
+	def on_range_value_changed(self, widget, value):
+		node = self.__model[gtk.Buildable.get_name(widget)]
+		node['value'] = value
 		self.__model._Model__update()
 	
 	def __update(self):
@@ -229,30 +253,35 @@ class View:
 				self[name].queue_draw()
 
 
-apps = {}
-
-def handle_ui_description(jid, uidesc):
+def handle_ui_description(xmpp, jid, uidesc):
 	view = View(data=uidesc)
-	model = RemoteModel(jid)
+	model = RemoteModel(xmpp, jid)
 	bind(view, model)
-	def close_window(window):
-		del apps[jid]
-	view['main_window'].connect('destroy', close_window)
-	apps[jid] = (view, model)
+	def close_application(window):
+		xmpp.event("gui_close_application", jid)
+		unbind(view, model)
+	view['main_window'].connect('destroy', close_application)
 	view['main_window'].show()
+	return model
 
 
 if __name__ == '__main__':
+	import signal
+	
 	glib.threads_init()
+	
+	mainloop = gobject.MainLoop()
+	signal.signal(signal.SIGTERM, lambda signum, frame: mainloop.quit())
 	
 	with open("bunch.glade") as ui:
 		handle_ui_description("aaa@example.net", ui.read())
 	
 	try:
-		gtk.main()
+		mainloop.run()
 	except KeyboardInterrupt:
-		print("!")
+		print()
 	
+
 
 
 
