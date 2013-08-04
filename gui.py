@@ -258,7 +258,7 @@ def handle_ui_description(xmpp, jid, uidesc):
 	model = RemoteModel(xmpp, jid)
 	bind(view, model)
 	def close_application(window):
-		xmpp.event("gui_close_application", jid)
+		xmpp.event('gui_close_application', jid)
 		unbind(view, model)
 	view['main_window'].connect('destroy', close_application)
 	view['main_window'].show()
