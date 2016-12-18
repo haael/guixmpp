@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="300" height="300">
+<defs>
+	<filter id="blur" filterUnits="userSpaceOnUse" x="-50" y="-50" width="350" height="350">
+		<feGaussianBlur in="SourceGraphic" stdDeviation="20"/>
+	</filter>
+</defs>
+<rect width="300" height="300" style="fill:white;stroke:blue;stroke-width:5"/>
+<circle filter="url(#blur)" r="200" fill="red"/>
+</svg>
+

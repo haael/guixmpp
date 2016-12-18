@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="300" height="150" viewBox="0 0 300 150">
+ <style type="text/css">text {font-size:12px;font-family:Liberation Sans,sans-serif}</style>
+ <rect width="300" height="200" fill="#34f"/>
+ <text x="10" y="20" style="stroke:white; stroke-width:3px; stroke-linejoin:round">Separated text styles</text>
+ <text x="10" y="20">Separated text styles</text>
+ <text x="10" y="50" style="fill:black; stroke:white; stroke-width:1px; stroke-linejoin:round">Fill and stroke being defined in the same element.</text>
+ <g style="stroke:white; stroke-width:3px; stroke-linejoin:round">
+  <text id="text_group">
+   <tspan x="10" y="80">Text being included within group with styles</tspan>
+   <tspan x="10" y="95">and then used outside per clone.</tspan>
+  </text>
+ </g>
+ <use xlink:href="#text_group" style="stroke:none;"/>
+ <text x="10" y="125" style="background-color:white">SVG does not support "background" for text.</text>
+</svg>

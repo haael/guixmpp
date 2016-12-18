@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Generated with glade 3.16.1 -->
 <interface>
-  <!-- interface-requires gtk+ 3.0 -->
+  <requires lib="gtk+" version="3.10"/>
+  <object class="GtkToggleAction" id="toggleaction1"/>
   <object class="GtkWindow" id="main_window">
     <property name="can_focus">False</property>
-    <signal name="destroy" handler="on_window_destroy" swapped="no"/>
     <signal name="delete-event" handler="on_window_delete_event" swapped="no"/>
+    <signal name="destroy" handler="on_window_destroy" swapped="no"/>
     <child>
       <object class="GtkNotebook" id="notebook1">
         <property name="visible">True</property>
@@ -39,7 +41,6 @@
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">True</property>
-                    <property name="use_action_appearance">False</property>
                     <signal name="clicked" handler="on_button_clicked" swapped="no"/>
                   </object>
                   <packing>
@@ -56,7 +57,6 @@
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">True</property>
-                    <property name="use_action_appearance">False</property>
                     <signal name="toggled" handler="on_togglebutton_toggled" swapped="no"/>
                   </object>
                   <packing>
@@ -98,8 +98,6 @@
                   <object class="GtkComboBoxText" id="comboboxtext1">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="entry_text_column">0</property>
-                    <property name="id_column">1</property>
                     <items>
                       <item translatable="yes">Jeden</item>
                       <item translatable="yes">Dwa</item>
@@ -121,12 +119,23 @@
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">True</property>
-                    <property name="use_action_appearance">False</property>
                     <property name="relief">none</property>
                     <property name="use_stock">True</property>
                     <property name="focus_on_click">False</property>
                     <property name="orientation">vertical</property>
                     <signal name="value-changed" handler="on_range_value_changed" swapped="no"/>
+                    <child internal-child="plus_button">
+                      <object class="GtkButton" id="scalebutton-plus_button1">
+                        <property name="can_focus">False</property>
+                        <property name="receives_default">False</property>
+                      </object>
+                    </child>
+                    <child internal-child="minus_button">
+                      <object class="GtkButton" id="scalebutton-minus_button1">
+                        <property name="can_focus">False</property>
+                        <property name="receives_default">False</property>
+                      </object>
+                    </child>
                   </object>
                   <packing>
                     <property name="left_attach">1</property>
@@ -142,7 +151,6 @@
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">False</property>
-                    <property name="use_action_appearance">False</property>
                     <property name="xalign">0</property>
                     <property name="draw_indicator">True</property>
                     <signal name="toggled" handler="on_togglebutton_toggled" swapped="no"/>
@@ -157,10 +165,9 @@
                 <child>
                   <object class="GtkSwitch" id="switch1">
                     <property name="use_action_appearance">False</property>
+                    <property name="related_action">toggleaction1</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
-                    <property name="action_name">on_switch_action</property>
-                    <property name="use_action_appearance">False</property>
                     <signal name="activate" handler="on_switch_activate" swapped="no"/>
                   </object>
                   <packing>
@@ -174,7 +181,10 @@
                   <object class="GtkScale" id="scale1">
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
+                    <property name="show_fill_level">True</property>
+                    <property name="fill_level">1000</property>
                     <property name="round_digits">1</property>
+                    <property name="digits">2</property>
                     <signal name="value-changed" handler="on_range_value_changed" swapped="no"/>
                   </object>
                   <packing>
@@ -185,7 +195,45 @@
                   </packing>
                 </child>
                 <child>
-                  <placeholder/>
+                  <object class="GtkBox" id="box1">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="orientation">vertical</property>
+                    <child>
+                      <object class="GtkLabel" id="label3">
+                        <property name="height_request">10</property>
+                        <property name="visible">True</property>
+                        <property name="can_focus">False</property>
+                        <property name="label" translatable="yes">label</property>
+                      </object>
+                      <packing>
+                        <property name="expand">True</property>
+                        <property name="fill">True</property>
+                        <property name="position">0</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="label2">
+                        <property name="visible">True</property>
+                        <property name="can_focus">False</property>
+                        <property name="label" translatable="yes">label</property>
+                      </object>
+                      <packing>
+                        <property name="expand">True</property>
+                        <property name="fill">True</property>
+                        <property name="position">1</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <placeholder/>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="left_attach">1</property>
+                    <property name="top_attach">4</property>
+                    <property name="width">1</property>
+                    <property name="height">1</property>
+                  </packing>
                 </child>
               </object>
               <packing>

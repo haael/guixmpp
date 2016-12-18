@@ -1,0 +1,101 @@
+<?xml version="1.0"?>
+<?xml-stylesheet href="html.xsl" type="text/xsl"?>
+
+<app xmlns="http://haael.net/2014/app" xmlns:form="http://www.w3.org/2002/xforms" xmlns:event="http://www.w3.org/2001/xml-events" xmlns:model="model">
+
+ <form:model>
+  <form:instance>
+   <model:root> <model:field1/> <model:field2 value="true"/> <model:field3/> <model:field4/> <model:field5/> <model:field6/> </model:root>
+  </form:instance>
+  <form:bind nodeset="model:field2/@value" type="xs:boolean"/>
+ </form:model>
+
+ <vbox>
+  <hbox>
+
+   <vbox>
+
+    <hbox size="50px">
+     <form:input ref="model:field1" incremental="true">
+      <form:label>field1 </form:label>
+     </form:input>
+    </hbox>
+
+    <space size="5px" expand="2"/>
+
+    <form:secret ref="model:field3" incremental="true">
+     <form:label>field3 </form:label>
+    </form:secret>
+
+    <space size="100px"/>
+
+   </vbox>
+
+   <space/>
+
+   <vbox size="300px">
+    <form:input ref="model:field2/@value" incremental="true">
+     <form:label>field2</form:label>
+    </form:input>
+
+    <form:trigger>
+     <form:label>Reset</form:label>
+     <form:action event:event="DOMActivate">
+      <form:reset/>
+     </form:action>
+    </form:trigger>
+
+    <form:input ref="model:field2/@value" incremental="true">
+     <form:label>field2</form:label>
+    </form:input>
+
+    <form:trigger>
+     <form:label>field1="buka"</form:label>
+     <form:action event:event="DOMActivate">
+      <form:setvalue ref="model:field1">buka</form:setvalue>
+     </form:action>
+    </form:trigger>
+
+   </vbox>
+
+   <space/>
+
+  </hbox>
+
+  <vbox expand="0">
+   <form:output value="model:field1"><form:label>field1 </form:label></form:output>
+  </vbox>
+
+  <hbox>
+   <vbox>
+    <form:range ref="model:field5" start="0" end="100" step="1" appearance="full"><form:label>range </form:label></form:range>
+
+<form:select ref="model:field6" appearance="compact">
+  <form:label>Flavors</form:label>
+  <form:choices>
+    <form:item>
+      <form:label>Vanilla</form:label>
+      <form:value>v</form:value>
+    </form:item>
+    <form:item>
+      <form:label>Strawberry</form:label>
+      <form:value>s</form:value>
+    </form:item>
+    <form:item>
+      <form:label>Chocolate</form:label>
+      <form:value>c</form:value>
+    </form:item>
+  </form:choices>
+</form:select>
+   </vbox>
+   <space/>
+   <form:textarea ref="model:field4"><form:label>field4 </form:label></form:textarea>
+  </hbox>
+
+  <space/>
+
+
+ </vbox>
+
+</app>
+

@@ -4,265 +4,250 @@
 from __future__ import unicode_literals
 
 
-import copy
-import io
-
 from gi.repository import GObject as gobject
 from gi.repository import Gtk as gtk
 from gi.repository import GLib as glib
 
-import rsvg
 import cairo
+import math
+
+from lxml import etree
 
 
 
-def bind(view, model):
-	model._Model__view = view
-	view._View__model = model
-
-def unbind(view, model):
-	model._Model__view = None
-	view._View__model = None
+def draw_path
 
 
-class LocalModel:
-	def __init__(self):
-		self.__items = {}
+
+
+
+root = etree.parse('SVG_logo.svg')
+
+class namespace:
+	svg = 'http://www.w3.org/2000/svg'
+	xlink = 'http://www.w3.org/1999/xlink'
+
+
+def parse_size(src, size):
+	if src is None:
+		return None
 	
-	def __update(self):
-		self.__generate_svg('drawingarea1')
-		#print(self.__items)
-		self.__view._View__update()
-	
-	def __generate_svg(self, name):
-		try:
-			node = self[name]
-		except KeyError:
-			return
-		
-		try:
-			width = node['width']
-			height = node['height']
-		except KeyError:
-			width = 0
-			height = 0
-		
-		svgbuffer = io.BytesIO()
-		surface = cairo.SVGSurface(svgbuffer, width, height)
-		
-		ctx = cairo.Context(surface)
-		ctx.set_source_rgb(0, 0, 0)
-		ctx.paint()
-		ctx.set_source_rgb(1, 1, 1)
-		ctx.set_line_width(20)
-		ctx.rectangle(100, 100, width - 200, height - 200)
-		ctx.stroke()
-
-		ctx.set_source_rgb(0, 0, 1)
-		ctx.set_line_width(1)
-		ctx.rectangle(121, 121, width - 242, height - 242)
-		try:
-			state = self['togglebutton1']['active']
-		except KeyError:
-			state = False
-		if state:
-			ctx.fill()
+	try:
+		return float(src)
+	except ValueError:
+		if src[-1:] == '%':
+			return float(src[:-1]) / 100 * size
 		else:
-			ctx.stroke()
-		
-		try:
-			text = self['entry1']['text']
-			ctx.set_source_rgb(1, 1, 1)
-			ctx.set_font_size(20)
-			ctx.move_to(130, height / 2)
-			ctx.text_path(text)
-			ctx.fill()
-		except KeyError:
-			pass
-		
-		surface.finish()
-		node['svg'] = svgbuffer.getvalue()
-	
-	def __getitem__(self, key):
-		try:
-			return self.__items[key]
-		except KeyError:
-			node = {}
-			self.__items[key] = node
-			return node
-	
-	def __setitem__(self, key, value):
-		self.__items[key] = value
-	
-	def __delitem__(self, key):
-		del self.__items[key]
-	
-	def __iter__(self):
-		for name in self.__items.keys():
-			yield name
+			raise
+
+def parse_color(src, default):
+	if src == 'currentColor':
+		return default
+	elif len(src) == 7 and src[0] == '#':
+		r = int(src[1:3], 16) / 255
+		g = int(src[3:5], 16) / 255
+		b = int(src[5:7], 16) / 255
+		return 1, r, g, b
+	elif len(src) == 9 and src[0] == '#':
+		a = int(src[1:3], 16) / 255
+		r = int(src[3:5], 16) / 255
+		g = int(src[5:7], 16) / 255
+		b = int(src[7:9], 16) / 255
+		return a, r, g, b
+	elif src == 'transparent':
+		return 0, 0, 0, 0
 
 
-class RemoteModel:
-	class Interceptor:
-		def __init__(self, parent, items={}):
-			self.__parent = parent
-			self.__items = copy.deepcopy(items)
-		
-		def __getitem__(self, key):
-			return self.__items[key]
-		
-		def __setitem__(self, key, value):
-			if value is None:
-				del self[key]
-			else:
-				self.__items[key] = value
-		
-		def __delitem__(self, key):
-			del self.__items[key]
-		
-		def __getattr__(self, attr):
-			def method(widget, *args, **kwargs):
-				print(widget, attr, args, kwargs)
-				self.__parent._RemoteModel__xmpp.event("gui_emit_signal", (self.__parent._RemoteModel__jid, widget, attr, args, kwargs))
-			method.name = attr
-			return method
-		
-		def __repr__(self):
-			return repr(self.__items)
-		
-		def __bool__(self):
-			return bool(self.__items)
-	
-	def __init__(self, xmpp, jid):
-		self.__xmpp = xmpp
-		self.__jid = jid
-		self.__items = {}
-		self.__changes = {}
-	
-	def _Model__update(self):
-		todel = [key for (key, value) in self.__changes.items() if (not value) and (value is not None)]
-		for key in todel:
-			del self.__changes[key]
-		if self.__changes:
-			self.__xmpp.event("gui_update_model", (self.__jid, self.__changes))
-		self.__changes = {}
-	
-	def __receive_updated(self, changes):
-		self.__items.update(changes)
-		self.__view._View__update()
-	
-	def __getitem__(self, key):
-		try:
-			node = self.__items[key]
-			self.__changes[key] = node
-			return node
-		except KeyError:
-			node = self.Interceptor(self)
-			self.__changes[key] = node
-			self.__items[key] = node
-			return node
-	
-	def __setitem__(self, key, value):
-		if value is None:
-			del self[key]
-		else:
-			#node = self.Interceptor(self, value)
-			self.__changes[key] = value
-			self.__items[key] = value
-	
-	def __delitem__(self, key):
-		self.__changes[key] = None
-		del self.__items[key]
-	
-	def __iter__(self):
-		for name in self.__items.keys():
-			yield name
+#presentation_attributes = 
+#def parse_presentation_attributes(src, dst):
+#	for key in presentation_attributes:
+#		if key in src:
 
 
-class View:
-	def __init__(self, path=None, data=None):
-		self.__svg_handles = {}
-		self.__builder = gtk.Builder()
-		if path is not None:
-			self.__builder.add_from_file(path)
-		elif data is not None:
-			self.__builder.add_from_string(data)
-		else:
-			raise ValueError("Provide path or string with UI description")
-		self.__builder.connect_signals(self)
+default_attrs = {
+	'color':'transparent', 'stroke':'none', 'fill':'black'
 	
-	def __getitem__(self, attr):
-		return self.__builder.get_object(attr)
+	#'cursor'
+	#'direction', 'display', 'enable-background', 'fill', 'fill-opacity', 'fill-rule', 'filter', 'flood-color'
+	#'flood-opacity',  'image-rendering', 'lighting-color', 'marker-end'
+	#'marker-mid', 'marker-start', 'mask', 'opacity', 'overflow', 'pointer-events', 'shape-rendering', 'stop-color', 'stop-opacity', 'stroke'
+	#'stroke-dasharray', 'stroke-dashoffset', 'stroke-linecap', 'stroke-linejoin', 'stroke-miterlimit', 'stroke-opacity', 'stroke-width'
+	#'visibility'
 	
-	def __getattr__(self, attr):
-		def handle_event(widget, *args):
-			name = gtk.Buildable.get_name(widget)
-			method = getattr(self.__model[name], attr, (lambda w, *a, **k: print("unhandled event:", attr, w, a, k)))
-			kwargs = {}
-			for a in ['name', 'visible', 'has-default', 'has-focus', 'is-focus', 'active']:
-				try:
-					kwargs[a] = widget.get_property(a)
-				except TypeError:
-					pass
-			method(name, *args, **kwargs)
-			self.__model._Model__update()
-		handle_event.name = attr
-		return handle_event
+	#alignment_baseline = element.get('alignment-baseline') or attrs['alignment-baseline']
+	#baseline-shift = element.get('baseline-shift') or attrs['baseline-shift']
+	#'font-family', 'font-size', 'font-size-adjust', 'font-stretch', 'font-style', 'font-variant', 'font-weight'
+	#'glyph-orientation-horizontal', 'glyph-orientation-vertical'
+	#'text-anchor', 'text-decoration', 'text-rendering', 'unicode-bidi', 'word-spacing', 'writing-mode'
+	#'kerning', 'letter-spacing', 'dominant-baseline'
 	
-	def on_svg_draw(self, widget, ctx):
-		ctx.set_source_rgb(0, 0, 0)
-		ctx.paint()
-		ctx.scale(0.8, 0.8)
-		try:
-			self.__svg_handles[gtk.Buildable.get_name(widget)].render_cairo(ctx)
-		except KeyError:
-			pass
+	#'color-interpolation', 'color-interpolation-filters', 'color-profile', 'color-rendering'
+	#clip = value('clip')
+	#clip_path = value('clip-path')
+	#clip_rule = value('clip-rule')
+}
+
+
+def graphics_element(context, element, parent_attrs):
+	#'cursor'
+	#'direction', 'display', 'enable-background', 'fill-opacity', 'fill-rule', 'filter', 'flood-color'
+	#'flood-opacity',  'image-rendering', 'lighting-color', 'marker-end'
+	#'marker-mid', 'marker-start', 'mask', 'opacity', 'overflow', 'pointer-events', 'shape-rendering', 'stop-color', 'stop-opacity', 'stroke'
+	#'stroke-dasharray', 'stroke-dashoffset', 'stroke-linecap', 'stroke-linejoin', 'stroke-miterlimit', 'stroke-opacity', 'stroke-width'
+	#'visibility'
 	
-	def on_size_allocate(self, widget, allocation):
-		node = self.__model[gtk.Buildable.get_name(widget)]
-		node['width'] = allocation.width
-		node['height'] = allocation.height
-		self.__model._Model__update()
+	#alignment_baseline = element.get('alignment-baseline') or attrs['alignment-baseline']
+	#baseline-shift = element.get('baseline-shift') or attrs['baseline-shift']
+	#'font-family', 'font-size', 'font-size-adjust', 'font-stretch', 'font-style', 'font-variant', 'font-weight'
+	#'glyph-orientation-horizontal', 'glyph-orientation-vertical'
+	#'text-anchor', 'text-decoration', 'text-rendering', 'unicode-bidi', 'word-spacing', 'writing-mode'
+	#'kerning', 'letter-spacing', 'dominant-baseline'
 	
-	def on_editable_changed(self, widget):
-		node = self.__model[gtk.Buildable.get_name(widget)]
-		node['text'] = widget.get_buffer().get_text()
-		self.__model._Model__update()
+	#'color-interpolation', 'color-interpolation-filters', 'color-profile', 'color-rendering'
+	#clip = value('clip')
+	#clip_path = value('clip-path')
+	#clip_rule = value('clip-rule')
 	
-	def on_togglebutton_toggled(self, widget):
-		node = self.__model[gtk.Buildable.get_name(widget)]
-		node['active'] = widget.get_active()
-		self.__model._Model__update()
+	def value(name, default='inherit'):
+		v = element.get(name) or default
+		if v == 'inherit':
+			v = parent_attrs[name]
+		return v
 	
-	def on_combobox_changed(self, widget):
-		node = self.__model[gtk.Buildable.get_name(widget)]
-		node['index'] = widget.get_active()
-		self.__model._Model__update()
+	color = parse_color(value('color'))
+	fill = parse_color(value('fill', 'none'), color)
+	stroke = parse_color(value('stroke', 'none'), color)
 	
-	def on_range_value_changed(self, widget, value):
-		node = self.__model[gtk.Buildable.get_name(widget)]
-		node['value'] = value
-		self.__model._Model__update()
-	
-	def __update(self):
-		for name in self.__model:
-			node = self.__model[name]
+	if fill
+
+
+def svg(element, context, attrs):
+	if hasattr(element, 'getroot'):
+		svg(element.getroot(), context, **attrs)
+	elif element.tag == '{%s}svg' % namespace.svg:
+		w = parse_size(element.get('width'), width) or width
+		h = parse_size(element.get('height'), height) or height
+		
+		m = context.get_matrix()
+		viewBox = element.get('viewBox')
+		if viewBox:
+			vbsrc = viewBox.split(' ')
+			vbx = parse_size(vbsrc[0], width)
+			vby = parse_size(vbsrc[1], height)
+			vbw = parse_size(vbsrc[2], width)
+			vbh = parse_size(vbsrc[3], height)
+			context.translate(vbx, vby)
+			context.scale(w / vbw, h / vbh)
+		for child in element:
+			svg(child, context, width=w, height=h, **attrs)
+		context.set_matrix(m)
+
+
+
+
+
+def svg(element, context, width, height):
+	if hasattr(element, 'getroot'):
+		svg(element.getroot(), context, width, height)
+	elif not hasattr(element, 'tag'):
+		for child in element:
+			svg(child, context, width, height)
+	elif element.tag == '{%s}svg' % namespace.svg:
+		w = parse_size(element.get('width'), width) or width
+		h = parse_size(element.get('height'), height) or height
+		context.scale(width / w, height / h)
+		for child in element:
+			svg(child, context, width, height)
+	elif element.tag == '{%s}g' % namespace.svg:
+		for child in element:
+			svg(child, context, width, height)
+	elif element.tag == '{%s}circle' % namespace.svg:
+		cx = parse_size(element.get('cx'), width)
+		cy = parse_size(element.get('cy'), height)
+		r = parse_size(element.get('r'), None)
+		
+		context.arc(cx, cy, r, 0, 2 * math.pi)
+		
+		stroke_width = parse_size(element.get('stroke-width'), None)
+		if stroke_width > 0:
+			context.set_line_width(stroke_width)
+		
+		#context.set_source_rgb(0, 0, 0)
+
+			#m = context.get_matrix()
+			context.identity_matrix()
+			context.stroke()
+			#context.set_matrix(m)
+		
+	elif element.tag == '{%s}rect' % namespace.svg:
+		x = parse_size(element.get('x'), width) or 0
+		y = parse_size(element.get('y'), height) or 0
+		w = parse_size(element.get('width'), width)
+		h = parse_size(element.get('height'), height)
+		rx = parse_size(element.get('rx'), width) or 0
+		ry = parse_size(element.get('ry'), height) or 0
+		
+		if rx != 0 or ry != 0:
+			degrees = math.pi / 180.0
 			
-			if 'svg' in node:
-				self.__svg_handles[name] = rsvg.Handle(data=node['svg'])
-				self[name].queue_draw()
+			m = context.get_matrix()
+			
+			context.translate(x + w - rx, y + ry)
+			context.scale(rx, ry)
+			context.arc(0, 0, 1, -90 * degrees, 0 * degrees)
+			context.set_matrix(m)
+			
+			context.translate(x + w - rx, y + h - ry)
+			context.scale(rx, ry)
+			context.arc(0, 0, 1, 0 * degrees, 90 * degrees)
+			context.set_matrix(m)
+			
+			context.translate(x + rx, y + h - ry)
+			context.scale(rx, ry)
+			context.arc(0, 0, 1, 90 * degrees, 180 * degrees)
+			context.set_matrix(m)
+			
+			context.translate(x + rx, y + ry)
+			context.scale(rx, ry)
+			context.arc(0, 0, 1, 180 * degrees, 270 * degrees)
+			context.set_matrix(m)
+			
+			context.close_path()
+		else:
+			context.rectangle(x, y, w, h)
+		
+		m = context.get_matrix()
+		context.identity_matrix()
+		
+		stroke_width = parse_size(element.get('stroke-width'), None) or 0
+		if stroke_width > 0:
+			context.set_line_width(stroke_width)
+		
+		#context.set_source_rgb(0, 0, 0)
+		context.stroke_preserve()
+		
+		context.set_source_rgb(*parse_color(element.get('fill')))
+		context.fill()
+		
+		context.set_matrix(m)
+	elif element.tag == '{%s}title' % namespace.svg: # TODO: title
+		pass
+	elif element.tag == '{%s}a' % namespace.svg: # TODO: clickability
+		for child in element:
+			svg(child, context, width, height)
+	else:
+		print(element)
+	
 
 
-def handle_ui_description(xmpp, jid, uidesc):
-	view = View(data=uidesc)
-	model = RemoteModel(xmpp, jid)
-	bind(view, model)
-	def close_application(window):
-		xmpp.event('gui_close_application', jid)
-		unbind(view, model)
-	view['main_window'].connect('destroy', close_application)
-	view['main_window'].show()
-	return model
+
+
+
+def draw(widget, context):
+	rect = widget.get_allocation()
+	x = rect.x + rect.width / 2
+	y = rect.y + rect.height / 2
+	svg(root, context, rect.width, rect.height)
 
 
 if __name__ == '__main__':
@@ -273,8 +258,12 @@ if __name__ == '__main__':
 	mainloop = gobject.MainLoop()
 	signal.signal(signal.SIGTERM, lambda signum, frame: mainloop.quit())
 	
-	with open("bunch.glade") as ui:
-		handle_ui_description("aaa@example.net", ui.read())
+	window = gtk.Window(gtk.WindowType.TOPLEVEL)
+	window.connect("destroy", lambda window: mainloop.quit())
+	canvas = gtk.DrawingArea()
+	canvas.connect("draw", lambda canvas, context: draw(canvas, context))
+	window.add(canvas)
+	window.show_all()
 	
 	try:
 		mainloop.run()
