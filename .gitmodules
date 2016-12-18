@@ -1,0 +1,3 @@
+[submodule "submodules/CairoSVG"]
+	path = submodules/CairoSVG
+	url = https://github.com/Kozea/CairoSVG.git
