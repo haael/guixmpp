@@ -4,9 +4,6 @@
 [submodule "submodules/SleekXMPP"]
 	path = submodules/SleekXMPP
 	url = https://github.com/fritzy/SleekXMPP.git
-[submodule "submodules/pycairo"]
-	path = submodules/pycairo
-	url = git://git.cairographics.org/git/pycairo
 [submodule "submodules/slixmpp"]
 	path = submodules/slixmpp
 	url = https://github.com/poezio/slixmpp
