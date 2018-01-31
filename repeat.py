@@ -31,12 +31,30 @@ import hashlib
 class Repeat(gtk.Container):
 	__gtype_name__ = 'Repeat'
 	
+	__gproperties__ = {
+		'model' : (gobject.TYPE_PYOBJECT, "model", "List of dicts - data to display.", gobject.PARAM_READWRITE)
+	}
+	
+	def do_get_property(self, prop):
+		if prop.name == 'model':
+			return self.get_model()
+		else:
+			raise AttributeError("Unknown property %s" % prop.name)
+	
+	def do_set_property(self, prop, value):
+		if prop.name == 'model':
+			self.set_model(value)
+		else:
+			raise AttributeError("Unknown property %s" % prop.name)
+	
 	def __init__(self, *args, **kwargs):
 		super().__init__(*args, **kwargs)
 		self.child = None
 		self.box = gtk.Box()
+		self.box.set_name('__Repeat.box')
 		self.box.set_orientation(gtk.Orientation.VERTICAL)
 		self.box.set_parent(self)
+		self.model = []
 	
 	def set_orientation(self, orientation):
 		self.box.set_orientation(orientation)
@@ -50,9 +68,10 @@ class Repeat(gtk.Container):
 		if __debug__: children_count = 0
 		try:
 			for child in widget.get_children():
+				if __debug__: children_count += 1
+				if child.get_name() == '__Repeat.box': continue
 				new_child = self.clone(child)
 				new_widget.add(new_child)
-				if __debug__: children_count += 1
 				if hasattr(widget, 'query_child_packing') and hasattr(widget, 'set_child_packing'):
 					new_widget.set_child_packing(new_child, *widget.query_child_packing(child))
 		except AttributeError:
@@ -60,7 +79,7 @@ class Repeat(gtk.Container):
 		
 		for prop in widget.props:
 			try:
-				if prop.name == "parent": continue
+				if prop.name == 'parent': continue
 				new_widget.set_property(prop.name, widget.get_property(prop.name))
 				assert len(new_widget.get_children()) == children_count # we mustn`t set properties that add children
 			except TypeError:
@@ -87,19 +106,19 @@ class Repeat(gtk.Container):
 			self.box.remove(child)
 		
 		for line in self.model:
-			#print(line)
 			child = self.clone(self.child)
-			#print("cloned", child)
 			for name, value in line.items():
 				dstchild = child
-				path = name.split(".")
+				path = name.split('.')
 				for pel in path[:-1]:
-					for candchild in dstchild.get_children():
-						if candchild.get_name() == pel:
-							dstchild = candchild
-							break
-					else:
-						#print("no such child:", pel)
+					try:
+						for candchild in dstchild.get_children():
+							if candchild.get_name() == pel:
+								dstchild = candchild
+								break
+						else:
+							pass
+					except AttributeError: #dstchild.get_children
 						pass
 				dstchild.set_property(path[-1], value)
 			self.box.pack_start(child, True, True, 0)
@@ -107,13 +126,13 @@ class Repeat(gtk.Container):
 		self.queue_resize()
 	
 	def do_child_type(self):
-		#print("do_child_type()")
 		return(gtk.Widget.get_type())
 	
 	def do_add(self, widget):
-		#print("do_add")
+		if self.box is widget:
+			return
 		if self.child:
-			raise ValueError("Child already added")
+			raise ValueError("Child already added ('%s' vs. '%s')" % (self.child.get_name(), widget.get_name()))
 		self.child = widget
 		self.child.set_parent(self)
 		self.queue_resize()
@@ -209,13 +228,20 @@ if __name__ == '__main__':
 	button1 = gtk.Button()
 	button1.set_name("button1")
 	box.pack_start(button1, True, True, 0)
-	button2 = gtk.Label()
-	button2.set_name("button2")
-	box.pack_start(button2, True, True, 0)
+
+	repeat2 = Repeat()
+	repeat2.set_orientation(gtk.Orientation.VERTICAL)
+	repeat2.set_name("repeat2")
+
+	label1 = gtk.Button()
+	label1.set_name("label1")
+	repeat2.add(label1)
+
+	box.pack_start(repeat2, True, True, 0)
 	repeat.add(box)
 	#print(button1.path(), button2.path())
 	#repeat.add(gtk.Button("buka"))
-	repeat.set_model([{"button1.label":"1111", "button2.label":"eins"}, {"button1.label":"2222", "button2.label":"zwei"}, {"button2.label":"drei", "button1.label":"3333"}])
+	repeat.set_model([{'button1.label':"1111", 'repeat2.model':[{'label1.label':"1a"}]}, {'button1.label':"2222", 'repeat2.model':[{'label1.label':"2a"}, {'label1.label':"2b"}]}, {"button1.label":"3333", 'repeat2.model':[{'label1.label':"3a"}, {'label1.label':"3b"}, {'label1.label':"3c"}]}])
 	window.add(repeat)
 
 	#print(repeat.get_children())
