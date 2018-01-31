@@ -7,3 +7,6 @@
 [submodule "submodules/slixmpp"]
 	path = submodules/slixmpp
 	url = https://github.com/poezio/slixmpp
+[submodule "submodules/pycairo"]
+	path = submodules/pycairo
+	url = https://github.com/pygobject/pycairo.git
