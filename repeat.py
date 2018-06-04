@@ -1,31 +1,16 @@
 #!/usr/bin/python3
 #-*- coding:utf-8 -*-
 
-from __future__ import unicode_literals
-
 
 import sys
-import signal
-import traceback
 
 import gi
-
 gi.require_version('Gtk', '3.0')
-
 from gi.repository import GObject as gobject
 from gi.repository import GLib as glib
 from gi.repository import Gtk as gtk
 from gi.repository import Gdk as gdk
 from gi.repository import GdkPixbuf
-
-import base64
-import binascii
-import hashlib
-
-#import sleekxmpp
-
-
-
 
 
 class Repeat(gtk.Container):
@@ -149,7 +134,8 @@ class Repeat(gtk.Container):
 			self.queue_resize()
 	
 	def do_forall(self, include_internals, callback, *callback_data):
-		#print("do_forall", include_internals)
+		if __debug__:
+			print('do_forall', include_internals, file=sys.stderr)
 		try:
 			callback(self.box, *callback_data)
 			if self.child:
@@ -158,7 +144,8 @@ class Repeat(gtk.Container):
 			pass
 	
 	def do_realize(self):
-		#print("do_realize")
+		if __debug__:
+			print('do_realize', file=sys.stderr)
 		allocation = self.get_allocation()
 		
 		attr = gdk.WindowAttr()
@@ -180,24 +167,27 @@ class Repeat(gtk.Container):
 		self.set_realized(True)
 
 		self.box.set_parent_window(window)
-		#self.box.set_parent_window(window)
 	
 	def do_get_request_mode(self):
-		#print("do_get_request_mode")
+		if __debug__:
+			print('do_get_request_mode', file=sys.stderr)
 		return gtk.SizeRequestMode.CONSTANT_SIZE
 
 	def do_get_preferred_height(self):
 		height = self.box.get_preferred_height()
-		#print("do_get_preferred_height", height)
+		if __debug__:
+			print('do_get_preferred_height', height, file=sys.stderr)
 		return height
-
+	
 	def do_get_preferred_width(self):
 		width = self.box.get_preferred_width()
-		#print("do_get_preferred_width", width)
+		if __debug__:
+			print('do_get_preferred_width', width, file=sys.stderr)
 		return width
 	
 	def do_size_allocate(self, allocation):
-		#print("do_size_allocate", allocation.x, allocation.y, allocation.width, allocation.height)
+		if __debug__:
+			print('do_size_allocate', allocation.x, allocation.y, allocation.width, allocation.height, file=sys.stderr)
 		self.set_allocation(allocation)
 		if self.get_has_window() and self.get_realized():
 			self.get_window().move_resize(allocation.x, allocation.y, allocation.width, allocation.height)
@@ -208,17 +198,20 @@ class Repeat(gtk.Container):
 			self.box.size_allocate(child_allocation)
 	
 	def do_draw(self, cr):
-		#print("do_draw")
+		if __debug__:
+			print('do_draw', file=sys.stderr)
 		allocation = self.get_allocation()
 		gtk.render_background(self.get_style_context(), cr, 0, 0, allocation.width, allocation.height)
 		self.propagate_draw(self.box, cr)
 
 
 if __name__ == '__main__':
+	import signal
+	
 	glib.threads_init()
 	
 	css = gtk.CssProvider()
-	css.load_from_path('style.css')
+	css.load_from_path('gfx/style.css')
 	gtk.StyleContext().add_provider_for_screen(gdk.Screen.get_default(), css, gtk.STYLE_PROVIDER_PRIORITY_USER)
 	
 	window = gtk.Window()
@@ -226,30 +219,27 @@ if __name__ == '__main__':
 	box = gtk.Box()
 	#box.set_orientation(gtk.Orientation.VERTICAL)
 	button1 = gtk.Button()
-	button1.set_name("button1")
+	button1.set_name('button1')
 	box.pack_start(button1, True, True, 0)
 
 	repeat2 = Repeat()
 	repeat2.set_orientation(gtk.Orientation.VERTICAL)
-	repeat2.set_name("repeat2")
+	repeat2.set_name('repeat2')
 
 	label1 = gtk.Button()
-	label1.set_name("label1")
+	label1.set_name('label1')
 	repeat2.add(label1)
-
+	
 	box.pack_start(repeat2, True, True, 0)
 	repeat.add(box)
-	#print(button1.path(), button2.path())
-	#repeat.add(gtk.Button("buka"))
 	repeat.set_model([{'button1.label':"1111", 'repeat2.model':[{'label1.label':"1a"}]}, {'button1.label':"2222", 'repeat2.model':[{'label1.label':"2a"}, {'label1.label':"2b"}]}, {"button1.label":"3333", 'repeat2.model':[{'label1.label':"3a"}, {'label1.label':"3b"}, {'label1.label':"3c"}]}])
 	window.add(repeat)
-
-	#print(repeat.get_children())
+	
+	window.show_all()
 	
 	mainloop = gobject.MainLoop()
 	signal.signal(signal.SIGTERM, lambda signum, frame: mainloop.quit())
-	window.connect('destroy', lambda widget: mainloop.quit())	
-	window.show_all()
+	window.connect('destroy', lambda widget: mainloop.quit())
 	
 	try:
 		mainloop.run()

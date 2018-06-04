@@ -7,24 +7,24 @@ from __future__ import unicode_literals
 from gi.repository import GObject as gobject
 from gi.repository import Gtk as gtk
 
-import sleekxmpp
-import sleekxmpp.plugins.base
-import sleekxmpp.stanza
-import sleekxmpp.xmlstream
-from sleekxmpp.xmlstream.handler import Callback
-from sleekxmpp.xmlstream.handler.base import BaseHandler
-from sleekxmpp.xmlstream.matcher import MatchXPath
-from sleekxmpp.xmlstream.matcher.base import MatcherBase
+import slixmpp
+import slixmpp.plugins.base
+import slixmpp.stanza
+import slixmpp.xmlstream
+from slixmpp.xmlstream.handler import Callback
+from slixmpp.xmlstream.handler.base import BaseHandler
+from slixmpp.xmlstream.matcher import MatchXPath
+from slixmpp.xmlstream.matcher.base import MatcherBase
 
 
 
-class SVGElement(sleekxmpp.xmlstream.ElementBase):
+class SVGElement(slixmpp.xmlstream.ElementBase):
 	namespace = 'http://www.w3.org/2000/svg'
 	name = 'svg'
 	plugin_attrib = 'svg'
 	
 	def init_from_string(self, xml):
-		element = sleekxmpp.xmlstream.ET.fromstring(xml)
+		element = slixmpp.xmlstream.ET.fromstring(xml)
 		if element.tag != self.name and element.tag != "".join(['{', self.namespace, '}', self.name]):
 			raise ValueError("The supplied XML string must be an SVG document.")
 		self.clear()
@@ -33,7 +33,7 @@ class SVGElement(sleekxmpp.xmlstream.ElementBase):
 		return self
 	
 	def init_from_file(self, path):
-		element = sleekxmpp.xmlstream.ET.parse(path).getroot()
+		element = slixmpp.xmlstream.ET.parse(path).getroot()
 		if element.tag != self.name and element.tag != "".join(['{', self.namespace, '}', self.name]):
 			raise ValueError("The supplied file must be an XML/SVG document.")
 		self.clear()
@@ -42,7 +42,7 @@ class SVGElement(sleekxmpp.xmlstream.ElementBase):
 		return self
 
 
-class extension_SVG(sleekxmpp.plugins.base.base_plugin):
+class extension_SVG(slixmpp.plugins.base.base_plugin):
 	"""
 	"""
 	
@@ -56,7 +56,7 @@ class extension_SVG(sleekxmpp.plugins.base.base_plugin):
 		self.matrix = {}
 		
 		self.xmpp.register_handler(Callback('SVG', MatchXPath('{%s}message/{%s}svg' % (self.xmpp.default_ns, SVGElement.namespace)), self.__message))
-		sleekxmpp.xmlstream.register_stanza_plugin(sleekxmpp.stanza.Message, SVGElement)
+		slixmpp.xmlstream.register_stanza_plugin(slixmpp.stanza.Message, SVGElement)
 	
 	def __message(self, msg):
 		self.xmpp.event('svg_message', msg)
