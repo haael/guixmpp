@@ -1,12 +1,9 @@
 [submodule "submodules/CairoSVG"]
 	path = submodules/CairoSVG
 	url = https://github.com/Kozea/CairoSVG.git
-[submodule "submodules/SleekXMPP"]
-	path = submodules/SleekXMPP
-	url = https://github.com/fritzy/SleekXMPP.git
 [submodule "submodules/slixmpp"]
 	path = submodules/slixmpp
-	url = https://github.com/poezio/slixmpp
+	url = git://git.poez.io/slixmpp
 [submodule "submodules/pycairo"]
 	path = submodules/pycairo
 	url = https://github.com/pygobject/pycairo.git

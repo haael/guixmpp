@@ -2,8 +2,6 @@
 #-*- coding:utf-8 -*-
 
 
-import sys
-
 import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import GObject as gobject
@@ -11,6 +9,10 @@ from gi.repository import GLib as glib
 from gi.repository import Gtk as gtk
 from gi.repository import Gdk as gdk
 from gi.repository import GdkPixbuf
+
+
+if __debug__:
+	import sys
 
 
 class Repeat(gtk.Container):
@@ -206,6 +208,7 @@ class Repeat(gtk.Container):
 
 
 if __name__ == '__main__':
+	import sys
 	import signal
 	
 	glib.threads_init()

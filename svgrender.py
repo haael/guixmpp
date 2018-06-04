@@ -91,9 +91,9 @@ if __name__ == '__main__':
 	def motion_notify_event(canvas, event):
 		rect = canvas.get_allocation()
 		nodes_under_pointer = svgobject.pointer(rect.width, rect.height, event.x, event.y)
-		if __debug__:
-			if nodes_under_pointer:
-				print(event.x, event.y, ', '.join([''.join([node.tag, ('#' + node['id'] if ('id' in node) else '')]) for node in nodes_under_pointer]))
+		#if __debug__:
+		#	if nodes_under_pointer:
+		#		print(event.x, event.y, ', '.join([''.join([node.tag, ('#' + node['id'] if ('id' in node) else '')]) for node in nodes_under_pointer]))
 	canvas.connect('motion-notify-event', motion_notify_event)
 	
 	canvas.add_events(gdk.EventMask.POINTER_MOTION_MASK)
