@@ -6,7 +6,7 @@ apt-get install -y --no-install-recommends python3-dev python3-cffi libcairo2 li
 pip install cssselect2
 pip install defusedxml
 
-pyver=$(python3 --version)
+pyver=$(python3 --version) | cut -c8-10
 (
  cd cairo
  ./setup.sh build
