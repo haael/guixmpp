@@ -2,6 +2,6 @@
 *.pyo
 *~
 __pycache__
-_old.1
-_old.2
-
+cairo
+cairosvg
+slixmpp
