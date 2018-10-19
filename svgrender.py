@@ -26,7 +26,8 @@ class SVGRender:
 			
 			def finish(self):
 				parent.rendered_svg_surface = self.cairo
-				parent.nodes_under_pointer = self.hover_nodes
+				#parent.nodes_under_pointer = self.hover_nodes
+				parent.nodes_under_pointer = []
 		
 		self.Surface = Surface
 	
