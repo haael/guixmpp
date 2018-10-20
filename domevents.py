@@ -10,9 +10,9 @@ class EventTarget():
 
     def addEventListener(self, _type, callback, **kwargs): #~ ToDo EventListener? // void
         if "options" in kwargs:
-            options = kwargs["options"]
+            options = kwargs.get("options")
             if isinstance(options, EventListener) or isinstance(options, EventListener)):
-                _options = kwargs["options"] #EventListener obj or bool
+                _options = options #EventListener obj or bool
             else:
                 _options = False
         """
@@ -22,9 +22,9 @@ class EventTarget():
 
     def removeEventListener(self, _type, callback, **kwargs): #~ ToDo EventListener? // void
         if "options" in kwargs:
-            options = kwargs["options"]
+            options = kwargs.get("options")
             if isinstance(options, EventListener) or isinstance(options, EventListener)):
-                _options = kwargs["options"] #EventListener obj or bool
+                _options = options #EventListener obj or bool
             else:
                 _options = False
         """
@@ -61,9 +61,9 @@ class Event():
         self._isTrusted = False #~ Bool
         self._srcElement = None #~ EventTarget?
         self._currentTarget = None #~  EventTarget?
-        self._composed = kwargs["bubbles"] if "bubbles" in kwargs else False
-        self._cancelable = kwargs["cancelable"] if "cancelable" in kwargs else False
-        self._bubbles = kwargs["composed"] if "composed" in kwargs else False
+        self._composed = kwargs.get("bubbles", False)
+        self._cancelable = kwargs.get("cancelable", False)
+        self._bubbles = kwargs.get("composed", False)
         self.eventPhase = None
         self.defaultPrevented = None
         self.timeStamp = time() #~ ToDo DOMHighResTimeStamp
@@ -101,8 +101,8 @@ class UIEvent(Event):
 
     def __init__(self, _type, **kwargs):
         super().__init__(self, _type, **kwargs)
-        self._view = kwargs["view"] if "view" in kwargs else None #~ ToDo Window?
-        self._detail = kwargs["detail"] if "detail" in kwargs else 0
+        self._view = kwargs.get("view", None) #~ ToDo Window?
+        self._detail = kwargs.get("detail", 0)
 
     #~ property section:
     @property
@@ -114,30 +114,31 @@ class UIEvent(Event):
 class MouseEvent(UIEvent):
 
     def __init__(self, _type, **kwargs):
-        self._screenX = kwargs["screenX"] if "screenX" in kwargs else 0
-        self._screenY = kwargs["screenY"] if "screenY" in kwargs else 0
-        self._clientX = kwargs["clientX"] if "clientX" in kwargs else 0
-        self._clientY = kwargs["clientY"] if "clientY" in kwargs else 0
+        self._screenX = kwargs.get("screenX", 0)
+        self._screenY = kwargs.get("screenY", 0)
+        self._clientX = kwargs.get("clientX", 0)
+        self._clientY = kwargs.get("clientY", 0)
+        self._bubbles = kwargs.get("composed", False)
 
-        self._ctrlKey = kwargs["ctrlKey"] if "ctrlKey" in kwargs else False
-        self._shiftKey = kwargs["shiftKey"] if "shiftKey" in kwargs else False
-        self._altKey = kwargs["altKey"] if "altKey" in kwargs else False
-        self._metaKey = kwargs["metaKey"] if "metaKey" in kwargs else False
+        self._ctrlKey = kwargs.get("ctrlKey", False)
+        self._shiftKey = kwargs.get("shiftKey", False)
+        self._altKey = kwargs.get("altKey", False)
+        self._metaKey = kwargs.get("metaKey", False)
 
-        self._button = kwargs["button"] if "button" in kwargs else 0
+        self._button = kwargs.get("button", 0)
         """
             0 MUST indicate the primary button of the device (in general, the left button or the only button on single-button devices, used to activate a user interface control or select text) or the un-initialized value.
             1 MUST indicate the auxiliary button (in general, the middle button, often combined with a mouse wheel).
             2 MUST indicate the secondary button (in general, the right button, often used to display a context menu).
         """
-        self._buttons = kwargs["buttons"] if "buttons" in kwargs else 0
+        self._buttons = kwargs.get("buttons", 0)
         """ MUST indicate no button is currently active.
             1 MUST indicate the primary button of the device (in general, the left button or the only button on single-button devices, used to activate a user interface control or select text).
             2 MUST indicate the secondary button (in general, the right button, often used to display a context menu), if present.
             4 MUST indicate the auxiliary button (in general, the middle button, often combined with a mouse wheel).
         """
 
-        self._relatedTarget = kwargs["relatedTarget"] if "relatedTarget" in kwargs else None
+        self._relatedTarget = kwargs.get("relatedTarget", None)
 
     def getModifierState(self, keyArg):
         pass
@@ -174,10 +175,10 @@ class WheelEvent(MouseEvent):
 
     def __init__(self, _type, **kwargs):
         super().__init__(self, _type, **kwargs)
-        self._deltaX = kwargs["deltaX"] if "deltaX" in kwargs else 0.0
-        self._deltaY = kwargs["deltaY"] if "deltaY" in kwargs else 0.0
-        self._deltaZ = kwargs["deltaZ"] if "deltaZ" in kwargs else 0.0
-        self._deltaMode = kwargs["deltaMode"] if "deltaMode" in kwargs else 0.0
+        self._deltaX = kwargs.get("deltaX", 0.0)
+        self._deltaY = kwargs.get("deltaY", 0.0)
+        self._deltaZ = kwargs.get("deltaZ", 0.0)
+        self._deltaMode = kwargs.get("deltaMode", 0.0)
 
     #~ property section:
     @property
@@ -193,8 +194,8 @@ class InputEvent(UIEvent):
 
     def __init__(self, _type, **kwargs):
         super().__init__(self, _type, **kwargs)
-        self._data = kwargs["data"] if "data" in kwargs else "" #~ ToDo DOMString
-        self._isComposing = kwargs["isComposing"] if "isComposing" in kwargs else False
+        self._data = kwargs.get("data", "") #~ ToDo DOMString
+        self._isComposing = kwargs.get("isComposing", False)
 
     #~ property section:
     @property
@@ -210,17 +211,17 @@ class KeyboardEvent(UIEvent):
 
     def __init__(self, _type, **kwargs):
         super().__init__(self, _type, **kwargs)
-        self._key = kwargs["key"] if "key" in kwargs else "" #~ ToDo DOMString
-        self._code = kwargs["code"] if "code" in kwargs else "" #~ ToDo DOMString
-        self._location = kwargs["location"] if "location" in kwargs else 0
+        self._key = kwargs.get("key", "") #~ ToDo DOMString
+        self._code = kwargs.get("code", "") #~ ToDo DOMString
+        self._location = kwargs.get("location", 0)
 
-        self._ctrlKey = kwargs["ctrlKey"] if "ctrlKey" in kwargs else False
-        self._shiftKey = kwargs["shiftKey"] if "shiftKey" in kwargs else False
-        self._altKey = kwargs["altKey"] if "altKey" in kwargs else False
-        self._metaKey = kwargs["metaKey"] if "metaKey" in kwargs else False
+        self._ctrlKey = kwargs.get("ctrlKey", False)
+        self._shiftKey = kwargs.get("shiftKey", False)
+        self._altKey = kwargs.get("altKey", False)
+        self._metaKey = kwargs.get("metaKey", False)
 
-        self._repeat = kwargs["repeat"] if "repeat" in kwargs else False
-        self._isComposing = kwargs["isComposing"] if "isComposing" in kwargs else False
+        self._repeat = kwargs.get("repeat", False)
+        self._isComposing = kwargs.get("isComposing", False)
 
     #~ property section:
     @property
@@ -245,7 +246,7 @@ class KeyboardEvent(UIEvent):
 class CompositionEvent(UIEvent):
     def __init__(self, _type, **kwargs):
         super().__init__(self, _type, **kwargs)
-        self._data = kwargs["data"] if "data" in kwargs else "" #~ ToDo DOMString
+        self._data = kwargs.get("data", "") #~ ToDo DOMString
 
     #~ property section:
     @property
@@ -254,7 +255,7 @@ class CompositionEvent(UIEvent):
 class FocusEvent(UIEvent):
     def __init__(self, _type, **kwargs):
         super().__init__(self, _type, **kwargs)
-        self._relatedTarget = kwargs["relatedTarget"] if "relatedTarget" in kwargs else None #~ ToDo EventTarget
+        self._relatedTarget = kwargs.get("relatedTarget", None) #~ ToDo EventTarget
 
     #~ property section:
     @property
