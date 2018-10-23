@@ -3,18 +3,46 @@
 
 from time import time
 
-class EventTarget():
-    #~ ToDo
+class EventTarget(): #~ ToDo
+    #DEFAULTS >> bubbles = False | cancelable = False | composed = False
+    #~ _UIEvents = {"load": lambda: UIEvent("load"),
+    #~              "unload": lambda: UIEvent("unload"),
+    #~              "abort": lambda: UIEvent("abort"),
+    #~              "error": lambda: UIEvent("error"),
+    #~              "select": lambda: UIEvent("select")}
+    #~ _FocusEvents = { "blur": lambda: FocusEvent("blur", composed=True),
+    #~                  "focus": lambda: FocusEvent("focus", composed=True),
+    #~                  "focusin": lambda: FocusEvent("focusin", bubbles=True, composed=True),
+    #~                  "focusout": lambda: FocusEvent("focusout", bubbles=True, composed=True)}
+    #~ _MouseEvents = { "click": lambda: MouseEvent("click", bubbles=True, composed=True, cancelable=True),
+    #~                  "dblclick": lambda: MouseEvent("dblclick", bubbles=True, composed=True, cancelable=True),
+    #~                  "mousedown": lambda: MouseEvent("mousedown", bubbles=True, composed=True, cancelable=True),
+    #~                  "mouseenter": lambda: MouseEvent("mouseenter", composed=True),
+    #~                  "mouseleave": lambda: MouseEvent("mouseleave", composed=True),
+    #~                  "mousemove": lambda: MouseEvent("mousemove", bubbles=True, composed=True, cancelable=True),
+    #~                  "mouseout": lambda: MouseEvent("mouseout", bubbles=True, composed=True, cancelable=True),
+    #~                  "mouseover": lambda: MouseEvent("mouseover", bubbles=True, composed=True, cancelable=True),
+    #~                  "mouseup": lambda: MouseEvent("mouseup", bubbles=True, composed=True, cancelable=True)}
+    #~ _WheelEvents = { "wheel": lambda: WheelEvent("wheel", bubbles=True, composed=True, cancelable=True)}
+    #~ _InputEvents = { "beforeinput": lambda: InputEvent("beforeinput", bubbles=True, composed=True, cancelable=True),
+    #~                  "input": lambda: InputEvent("input", bubbles=True, composed=True)}
+    #~ _KeyboardEvents = {"keydown": lambda: KeyboardEvent("keydown", bubbles=True, composed=True, cancelable=True),
+    #~                    "keyup": lambda: KeyboardEvent("keyup", bubbles=True, composed=True, cancelable=True)}
+    #~ _CompositionEvents = {"compositionstart": lambda: CompositionEvent("compositionstart", bubbles=True, composed=True, cancelable=True),
+    #~                       "compositionupdate": lambda: CompositionEvent("compositionupdate", bubbles=True, composed=True, cancelable=True),
+    #~                       "compositionend": lambda: CompositionEvent("compositionend", bubbles=True, composed=True)}
+
     def __init__(self, **kwargs):
         pass
 
     def addEventListener(self, _type, callback, **kwargs): #~ ToDo EventListener? // void
         if "options" in kwargs:
             options = kwargs.get("options")
-            if isinstance(options, EventListener) or isinstance(options, EventListener)):
+            if isinstance(options, EventListener) or isinstance(options, bool)):
                 _options = options #EventListener obj or bool
             else:
                 _options = False
+
         """
             Let capture, passive, and once be the result of flattening more options.
             Add an event listener with the context object and an event listener whose type is type, callback is callback, capture is capture, passive is passive, and once is once.
@@ -42,10 +70,48 @@ class EventTarget():
         pass
 
 class EventListener():
+    def __init__(self, event=None, kwargs**):
+        self._type = event.type if event != None else ""
+        self.callback = if kwargs.get("callback", lambda: None)
+        self.capture = kwargs.get("capture", False)
+        self.passive = kwargs.get("passive", False)
+        self.once = kwargs.get("once", False)
+        self.removed = False
 
+    def handleEvent(self, event):
+        self._event = event;
+
+    def __TODO(self):
+        self.events = []
+        self.threats = []
 
 class Window(EventTarget):
+    def __init__(self):
+        pass
+
+    def setEvent(self, event):
+        self._event = event
+
+    @property
+    def event(self):
+        return _event
     pass
+
+
+    #~ <script>
+        #~ var triggerAlert = function () {
+            #~ window.alert("Hey Joe");
+        #~ };
+
+        #~ // Assign an event handler
+        #~ document.onclick = triggerAlert;
+
+        #~ // Assign another event handler
+        #~ window.onload = triggerAlert;
+
+        #~ // Remove the event handler that was just assigned
+        #~ window.onload = null;
+    #~ </script>
     #~ ToDo
 
 #Extending to UIEvent, CustomEvent
@@ -61,9 +127,9 @@ class Event():
         self._isTrusted = False #~ Bool
         self._srcElement = None #~ EventTarget?
         self._currentTarget = None #~  EventTarget?
-        self._composed = kwargs.get("bubbles", False)
+        self._composed = kwargs.get("composed", False)
         self._cancelable = kwargs.get("cancelable", False)
-        self._bubbles = kwargs.get("composed", False)
+        self._bubbles = kwargs.get("bubbles", False)
         self.eventPhase = None
         self.defaultPrevented = None
         self.timeStamp = time() #~ ToDo DOMHighResTimeStamp
@@ -98,7 +164,6 @@ class Event():
 
 #Extending to MouseEvent, InputEvent, KeyboardEvent, CompositionEvent, FocusEvent
 class UIEvent(Event):
-
     def __init__(self, _type, **kwargs):
         super().__init__(self, _type, **kwargs)
         self._view = kwargs.get("view", None) #~ ToDo Window?
@@ -114,11 +179,11 @@ class UIEvent(Event):
 class MouseEvent(UIEvent):
 
     def __init__(self, _type, **kwargs):
+        super().__init__(self, _type, **kwargs)
         self._screenX = kwargs.get("screenX", 0)
         self._screenY = kwargs.get("screenY", 0)
         self._clientX = kwargs.get("clientX", 0)
         self._clientY = kwargs.get("clientY", 0)
-        self._bubbles = kwargs.get("composed", False)
 
         self._ctrlKey = kwargs.get("ctrlKey", False)
         self._shiftKey = kwargs.get("shiftKey", False)
@@ -261,4 +326,9 @@ class FocusEvent(UIEvent):
     @property
     def relatedTarget(self): return self._relatedTarget;
 
-#
+#####################################
+# Event types                       #
+#####################################
+
+
+
