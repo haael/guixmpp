@@ -18,6 +18,7 @@ class SVGRender:
 		class Surface(cairosvg.surface.Surface):
 			def create_recording_surface(self, output, width, height):
 				surface = cairo.RecordingSurface(cairo.CONTENT_COLOR, (0, 0, width, height))
+				parent.rendered_svg_surface = surface
 				context = cairo.Context(surface)
 				parent.background(context)
 				return surface
@@ -25,9 +26,11 @@ class SVGRender:
 			surface_class = create_recording_surface
 			
 			def finish(self):
-				parent.rendered_svg_surface = self.cairo
-				#parent.nodes_under_pointer = self.hover_nodes
-				parent.nodes_under_pointer = []
+				assert parent.rendered_svg_surface is self.cairo
+				try:
+					parent.nodes_under_pointer = self.hover_nodes
+				except AttributeError:
+					parent.nodes_under_pointer = []
 		
 		self.Surface = Surface
 	
@@ -41,7 +44,7 @@ class SVGRender:
 	
 	def pointer(self, width, height, pointer_x, pointer_y):
 		self.Surface.convert(url=self.path, dpi=72, parent_width=width, parent_height=height, mouse=(pointer_x, pointer_y))
-		return self.nodes_under_pointer
+		return self.nodes_under_pointer, self.rendered_svg_surface
 
 
 if __name__ == '__main__':
@@ -74,7 +77,7 @@ if __name__ == '__main__':
 			gtk.render_background(style_context, context, -canvas_allocation.x, -canvas_allocation.y, parent_allocation.width, parent_allocation.height)
 			gtk.render_frame(style_context, context, -canvas_allocation.x, -canvas_allocation.y, parent_allocation.width, parent_allocation.height)
 	
-	svgobject = SVGRenderBg('gfx/Comparison of several satellite navigation system orbits.svg')
+	svgobject = SVGRenderBg('gfx/Steering_wheel.svg')
 	
 	rendered_svg_surface = None
 	
@@ -85,16 +88,21 @@ if __name__ == '__main__':
 	canvas.connect('configure-event', configure_event)
 	
 	def draw(canvas, context):
-		context.set_source_surface(rendered_svg_surface)
+		if rendered_svg_surface:
+			context.set_source_surface(rendered_svg_surface)
+		else:
+			context.set_source_rgba(1, 1, 1)
 		context.paint()
 	canvas.connect('draw', draw)
 	
 	def motion_notify_event(canvas, event):
+		global rendered_svg_surface
 		rect = canvas.get_allocation()
-		nodes_under_pointer = svgobject.pointer(rect.width, rect.height, event.x, event.y)
+		nodes_under_pointer, rendered_svg_surface = svgobject.pointer(rect.width, rect.height, event.x, event.y)
 		if __debug__:
 			if nodes_under_pointer:
 				print(event.x, event.y, ', '.join([''.join([node.tag, ('#' + node['id'] if ('id' in node) else '')]) for node in nodes_under_pointer]))
+		canvas.queue_draw()
 	canvas.connect('motion-notify-event', motion_notify_event)
 	
 	canvas.add_events(gdk.EventMask.POINTER_MOTION_MASK)
