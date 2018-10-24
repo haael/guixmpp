@@ -26,8 +26,10 @@ class SVGRender:
 			
 			def finish(self):
 				parent.rendered_svg_surface = self.cairo
-				#parent.nodes_under_pointer = self.hover_nodes
-				parent.nodes_under_pointer = []
+				try:
+					parent.nodes_under_pointer = self.hover_nodes
+				except AttributeError:
+					parent.nodes_under_pointer = []
 		
 		self.Surface = Surface
 	
@@ -72,9 +74,10 @@ if __name__ == '__main__':
 			parent_allocation = parent.get_allocation()
 			style_context = parent.get_style_context()
 			gtk.render_background(style_context, context, -canvas_allocation.x, -canvas_allocation.y, parent_allocation.width, parent_allocation.height)
+			return
 			gtk.render_frame(style_context, context, -canvas_allocation.x, -canvas_allocation.y, parent_allocation.width, parent_allocation.height)
 	
-	svgobject = SVGRenderBg('gfx/Comparison of several satellite navigation system orbits.svg')
+	svgobject = SVGRenderBg('gfx/BYR_color_wheel.svg')
 	
 	rendered_svg_surface = None
 	
@@ -85,7 +88,10 @@ if __name__ == '__main__':
 	canvas.connect('configure-event', configure_event)
 	
 	def draw(canvas, context):
-		context.set_source_surface(rendered_svg_surface)
+		if rendered_svg_surface:
+			context.set_source_surface(rendered_svg_surface)
+		else:
+			context.set_source_rgba(1, 1, 1, 0)
 		context.paint()
 	canvas.connect('draw', draw)
 	
@@ -95,6 +101,8 @@ if __name__ == '__main__':
 		if __debug__:
 			if nodes_under_pointer:
 				print(event.x, event.y, ', '.join([''.join([node.tag, ('#' + node['id'] if ('id' in node) else '')]) for node in nodes_under_pointer]))
+			else:
+				print(event.x, event.y)
 	canvas.connect('motion-notify-event', motion_notify_event)
 	
 	canvas.add_events(gdk.EventMask.POINTER_MOTION_MASK)
