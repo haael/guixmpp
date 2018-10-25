@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+# /usr/bin/python3
 #-*- coding: utf-8 -*-
 
 from time import time
@@ -109,6 +109,8 @@ class Event():
         #except for any nodes in shadow trees of which the shadow root’s mode is "closed" that
         # are not reachable from event’s currentTarget.
 
+    def composedPath(self): #~ ToDo
+        pass
 
 #Extending to MouseEvent, InputEvent, KeyboardEvent, CompositionEvent, FocusEvent
 class UIEvent(Event):
