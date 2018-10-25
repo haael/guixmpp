@@ -85,7 +85,10 @@ class SVGWidget(gtk.DrawingArea):
 		self.add_events(gdk.EventMask.POINTER_MOTION_MASK)
 	
 	def load_url(self, url):
-		self.tree = cairosvg.parser.Tree(url=url)
+		self.document = cairosvg.parser.Tree(url=url)
+		if self.get_realized():
+			rect = self.get_allocation()
+			self.rendered_svg_surface = self.SVGRenderBg.render(self.document, rect.width, rect.height)
 		self.queue_draw()
 	
 	def handle_configure_event(self, drawingarea, event):
