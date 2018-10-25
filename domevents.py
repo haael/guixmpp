@@ -107,7 +107,7 @@ class Event():
         """#~ ToDo Doc String"""
             #Returns the item objects of event’s path (objects on which listeners will be invoked),
         #except for any nodes in shadow trees of which the shadow root’s mode is "closed" that
-        #are not reachable from event’s currentTarget.
+        # are not reachable from event’s currentTarget.
 
 
 #Extending to MouseEvent, InputEvent, KeyboardEvent, CompositionEvent, FocusEvent
