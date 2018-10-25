@@ -3,332 +3,203 @@
 
 from time import time
 
-class EventTarget(): #~ ToDo
-    #DEFAULTS >> bubbles = False | cancelable = False | composed = False
-    #~ _UIEvents = {"load": lambda: UIEvent("load"),
-    #~              "unload": lambda: UIEvent("unload"),
-    #~              "abort": lambda: UIEvent("abort"),
-    #~              "error": lambda: UIEvent("error"),
-    #~              "select": lambda: UIEvent("select")}
-    #~ _FocusEvents = { "blur": lambda: FocusEvent("blur", composed=True),
-    #~                  "focus": lambda: FocusEvent("focus", composed=True),
-    #~                  "focusin": lambda: FocusEvent("focusin", bubbles=True, composed=True),
-    #~                  "focusout": lambda: FocusEvent("focusout", bubbles=True, composed=True)}
-    #~ _MouseEvents = { "click": lambda: MouseEvent("click", bubbles=True, composed=True, cancelable=True),
-    #~                  "dblclick": lambda: MouseEvent("dblclick", bubbles=True, composed=True, cancelable=True),
-    #~                  "mousedown": lambda: MouseEvent("mousedown", bubbles=True, composed=True, cancelable=True),
-    #~                  "mouseenter": lambda: MouseEvent("mouseenter", composed=True),
-    #~                  "mouseleave": lambda: MouseEvent("mouseleave", composed=True),
-    #~                  "mousemove": lambda: MouseEvent("mousemove", bubbles=True, composed=True, cancelable=True),
-    #~                  "mouseout": lambda: MouseEvent("mouseout", bubbles=True, composed=True, cancelable=True),
-    #~                  "mouseover": lambda: MouseEvent("mouseover", bubbles=True, composed=True, cancelable=True),
-    #~                  "mouseup": lambda: MouseEvent("mouseup", bubbles=True, composed=True, cancelable=True)}
-    #~ _WheelEvents = { "wheel": lambda: WheelEvent("wheel", bubbles=True, composed=True, cancelable=True)}
-    #~ _InputEvents = { "beforeinput": lambda: InputEvent("beforeinput", bubbles=True, composed=True, cancelable=True),
-    #~                  "input": lambda: InputEvent("input", bubbles=True, composed=True)}
-    #~ _KeyboardEvents = {"keydown": lambda: KeyboardEvent("keydown", bubbles=True, composed=True, cancelable=True),
-    #~                    "keyup": lambda: KeyboardEvent("keyup", bubbles=True, composed=True, cancelable=True)}
-    #~ _CompositionEvents = {"compositionstart": lambda: CompositionEvent("compositionstart", bubbles=True, composed=True, cancelable=True),
-    #~                       "compositionupdate": lambda: CompositionEvent("compositionupdate", bubbles=True, composed=True, cancelable=True),
-    #~                       "compositionend": lambda: CompositionEvent("compositionend", bubbles=True, composed=True)}
+class AccessError(Exception):
+    def __init__(self, message):
+        self.message = message
 
-    def __init__(self, **kwargs):
-        pass
+class WriteAccess():
+    def __init__(self, parent):
+        super().__setattr__('parent', parent)
 
-    def addEventListener(self, _type, callback, **kwargs): #~ ToDo EventListener? // void
-        if "options" in kwargs:
-            options = kwargs.get("options")
-            if isinstance(options, EventListener) or isinstance(options, bool)):
-                _options = options #EventListener obj or bool
-            else:
-                _options = False
+    def __getattr__(self, attr):
+        return getattr(self.parent, attr)
 
-        """
-            Let capture, passive, and once be the result of flattening more options.
-            Add an event listener with the context object and an event listener whose type is type, callback is callback, capture is capture, passive is passive, and once is once.
-        """
+    def __setattr__(self, attr, value):
+        self.parent._Event__private_setattr(attr, value)
 
-    def removeEventListener(self, _type, callback, **kwargs): #~ ToDo EventListener? // void
-        if "options" in kwargs:
-            options = kwargs.get("options")
-            if isinstance(options, EventListener) or isinstance(options, EventListener)):
-                _options = options #EventListener obj or bool
-            else:
-                _options = False
-        """
-            If the context object’s relevant global object is a ServiceWorkerGlobalScope object and its associated service worker’s script resource’s has ever been evaluated flag is set, then throw a TypeError. [SERVICE-WORKERS]
-            Let capture be the result of flattening options.
-            If the context object’s event listener list contains an event listener whose type is type, callback is callback, and capture is capture, then remove an event listener with the context object and that event listener.
-        """
-
-    def dispatchEvent(self, event): #~ // bool
-        """
-            If event’s dispatch flag is set, or if its initialized flag is not set, then throw an "InvalidStateError" DOMException.
-            Initialize event’s isTrusted attribute to false.
-            Return the result of dispatching event to the context object.
-        """
-        pass
-
-class EventListener():
-    def __init__(self, event=None, kwargs**):
-        self._type = event.type if event != None else ""
-        self.callback = if kwargs.get("callback", lambda: None)
-        self.capture = kwargs.get("capture", False)
-        self.passive = kwargs.get("passive", False)
-        self.once = kwargs.get("once", False)
-        self.removed = False
-
-    def handleEvent(self, event):
-        self._event = event;
-
-    def __TODO(self):
-        self.events = []
-        self.threats = []
-
-class Window(EventTarget):
-    def __init__(self):
-        pass
-
-    def setEvent(self, event):
-        self._event = event
-
-    @property
-    def event(self):
-        return _event
-    pass
-
-
-    #~ <script>
-        #~ var triggerAlert = function () {
-            #~ window.alert("Hey Joe");
-        #~ };
-
-        #~ // Assign an event handler
-        #~ document.onclick = triggerAlert;
-
-        #~ // Assign another event handler
-        #~ window.onload = triggerAlert;
-
-        #~ // Remove the event handler that was just assigned
-        #~ window.onload = null;
-    #~ </script>
-    #~ ToDo
-
-#Extending to UIEvent, CustomEvent
+#Extending to UIEvent
 class Event():
+    """#~ ToDo Doc String"""
     NONE = 0
     CAPTURING_PHASE = 1
     AT_TARGET = 2
     BUBBLING_PHASE = 3
 
-    def __init__(self, _type, **kwargs):
-        self._type = _type
-        self._target = None #~ EventTarget?
-        self._isTrusted = False #~ Bool
-        self._srcElement = None #~ EventTarget?
-        self._currentTarget = None #~  EventTarget?
-        self._composed = kwargs.get("composed", False)
-        self._cancelable = kwargs.get("cancelable", False)
-        self._bubbles = kwargs.get("bubbles", False)
+    _EVENTS = { "load": {},
+                "unload": {},
+                "abort": {},
+                "error": {},
+                "select": {},
+                "blur": {"composed":True},
+                "focus": {"composed":True},
+                "focusin": {"bubbles":True, "composed":True},
+                "focusout": {"bubbles":True, "composed":True},
+                "click": {"bubbles":True, "composed":True, "cancelable":True},
+                "dblclick": {"bubbles":True, "composed":True, "cancelable":True},
+                "mousedown": {"bubbles":True, "composed":True, "cancelable":True},
+                "mouseenter": {"composed":True},
+                "mouseleave": {"composed":True},
+                "mousemove": {"bubbles":True, "composed":True, "cancelable":True},
+                "mouseout": {"bubbles":True, "composed":True, "cancelable":True},
+                "mouseover": {"bubbles":True, "composed":True, "cancelable":True},
+                "mouseup": {"bubbles":True, "composed":True, "cancelable":True},
+                "wheel": {"bubbles":True, "composed":True, "cancelable":True},
+                "beforeinput": {"bubbles":True, "composed":True, "cancelable":True},
+                "input": {"bubbles":True, "composed":True},
+                "keydown": {"bubbles":True, "composed":True, "cancelable":True},
+                "keyup": {"bubbles":True, "composed":True, "cancelable":True},
+                "compositionstart": {"bubbles":True, "composed":True, "cancelable":True},
+                "compositionupdate": {"bubbles":True, "composed":True, "cancelable":True},
+                "compositionend": {"bubbles":True, "composed":True, "cancelable":True}}
+                #DEFAULTS >> bubbles = False | cancelable = False | composed = False
+
+    def __init__(self, type_, **kwargs):
+        if type_ in EVENTS:
+            WriteAccess(self).type_ = type_
+            WriteAccess(self).composed = EVENTS.get(type_).get("composed", False)
+            WriteAccess(self).cancelable = EVENTS.get(type_).get("cancelable", False)
+            WriteAccess(self).bubbles = EVENTS.get(type_).get("bubbles", False)
+        else:
+            raise AttributeError("Type is not defined.")
+
+        WriteAccess(self).target = None
+        WriteAccess(self).isTrusted = False
+        WriteAccess(self).srcElement = None
+        WriteAccess(self).currentTarget = None
+
         self.eventPhase = None
         self.defaultPrevented = None
         self.timeStamp = time() #~ ToDo DOMHighResTimeStamp
+        if kwargs != {}: #If kwargs isn't empty.
+            raise TypeError("Check arguments names or remove surplus.")
+
+    def __setattr__(self, attr, value):
+        if attr in ("eventPhase", "defaultPrevented", "timeStamp"):
+            self.__dict__[attr] = value
+        else:
+            raise AccessError("Attribute can't be overwritted")
+
+    def __delattr__(self, val):
+        raise AccessError("Attribute can't be deleted.")
+
+    def __private_setattr(self, attr, value):
+        super().__setattr__(attr, value)
 
     def stopPropagation(self): #~ ToDo
-        pass
+        """#~ ToDo Doc String"""
+        #When dispatched in a tree, invoking this method prevents event from reaching any
+        #objects other than the current object.
 
     def stopImmediatePropagation(self): #~ ToDo
-        pass
+        """#~ ToDo Doc String"""
+        #Invoking this method prevents event from reaching any registered event listeners after
+        #the current one finishes running and, when dispatched in a tree, also prevents
+        #event from reaching any other objects.
 
     def preventDefault(self): #~ ToDo
-        pass
+        """#~ ToDo||Set defaultPrevented to True if cancelation is indicated else set to False."""
+        #~ If cancelation is succesful
+        #~ self.defaultPrevented = True
+        #~ Else
+        #~ self.defaultPrevented = False
+
+    def composedPath(self): #~ ToDo
+        """#~ ToDo Doc String"""
+            #Returns the item objects of event’s path (objects on which listeners will be invoked),
+        #except for any nodes in shadow trees of which the shadow root’s mode is "closed" that
+        # are not reachable from event’s currentTarget.
 
     def composedPath(self): #~ ToDo
         pass
 
-    #~ property section:
-    @property
-    def type(self): return self._type;
-    @property
-    def target(self): return self._target;
-    @property
-    def srcElement(self): return self._srcElement;
-    @property
-    def currentTarget(self): return self._currentTarget;
-    @property
-    def composed(self): return self._composed;
-    @property
-    def cancelable(self): return self._cancelable;
-    @property
-    def bubbles(self): return self._bubbles;
-
 #Extending to MouseEvent, InputEvent, KeyboardEvent, CompositionEvent, FocusEvent
 class UIEvent(Event):
-    def __init__(self, _type, **kwargs):
-        super().__init__(self, _type, **kwargs)
-        self._view = kwargs.get("view", None) #~ ToDo Window?
-        self._detail = kwargs.get("detail", 0)
+    """#~ ToDo Doc String"""
 
-    #~ property section:
-    @property
-    def view(self): return self._view;
-    @property
-    def detail(self): return self._detail;
+    def __init__(self, type_, **kwargs):
+        WriteAccess(self).view = kwargs.pop("view", None)
+        WriteAccess(self).detail = kwargs.pop("detail", 0)
+        super().__init__(self, type_, **kwargs)
+
 
 #Extending to WheelEvent
 class MouseEvent(UIEvent):
+    """#~ ToDo Doc String"""
 
-    def __init__(self, _type, **kwargs):
-        super().__init__(self, _type, **kwargs)
-        self._screenX = kwargs.get("screenX", 0)
-        self._screenY = kwargs.get("screenY", 0)
-        self._clientX = kwargs.get("clientX", 0)
-        self._clientY = kwargs.get("clientY", 0)
+    def __init__(self, type_, **kwargs):
+        WriteAccess(self).screenX = kwargs.pop("screenX", 0)
+        WriteAccess(self).screenY = kwargs.pop("screenY", 0)
+        WriteAccess(self).clientX = kwargs.pop("clientX", 0)
+        WriteAccess(self).clientY = kwargs.pop("clientY", 0)
 
-        self._ctrlKey = kwargs.get("ctrlKey", False)
-        self._shiftKey = kwargs.get("shiftKey", False)
-        self._altKey = kwargs.get("altKey", False)
-        self._metaKey = kwargs.get("metaKey", False)
+        WriteAccess(self).ctrlKey = kwargs.pop("ctrlKey", False)
+        WriteAccess(self).shiftKey = kwargs.pop("shiftKey", False)
+        WriteAccess(self).altKey = kwargs.pop("altKey", False)
+        WriteAccess(self).metaKey = kwargs.pop("metaKey", False)
 
-        self._button = kwargs.get("button", 0)
-        """
-            0 MUST indicate the primary button of the device (in general, the left button or the only button on single-button devices, used to activate a user interface control or select text) or the un-initialized value.
-            1 MUST indicate the auxiliary button (in general, the middle button, often combined with a mouse wheel).
-            2 MUST indicate the secondary button (in general, the right button, often used to display a context menu).
-        """
-        self._buttons = kwargs.get("buttons", 0)
-        """ MUST indicate no button is currently active.
-            1 MUST indicate the primary button of the device (in general, the left button or the only button on single-button devices, used to activate a user interface control or select text).
-            2 MUST indicate the secondary button (in general, the right button, often used to display a context menu), if present.
-            4 MUST indicate the auxiliary button (in general, the middle button, often combined with a mouse wheel).
-        """
+        WriteAccess(self).button = kwargs.pop("button", 0)
+        WriteAccess(self).buttons = kwargs.pop("buttons", 0)
 
-        self._relatedTarget = kwargs.get("relatedTarget", None)
+        WriteAccess(self).relatedTarget = kwargs.pop("relatedTarget", None)
+        super().__init__(self, type_, **kwargs)
 
     def getModifierState(self, keyArg):
         pass
         #ToDo Returns true if it is a modifier key and the modifier is activated, false otherwise.
 
-    #~ property section:
-    @property
-    def screenX(self): return self._screenX;
-    @property
-    def screenY(self): return self._screenY;
-    @property
-    def clientX(self): return self._clientX;
-    @property
-    def clientY(self): return self._clientY;
-    @property
-    def ctrlKey(self): return self._ctrlKey;
-    @property
-    def shiftKey(self): return self._shiftKey;
-    @property
-    def altKey(self): return self._altKey;
-    @property
-    def metaKey(self): return self._metaKey;
-    @property
-    def button(self): return self._button;
-    @property
-    def buttons(self): return self._buttons;
-    @property
-    def relatedTarget(self): return self._relatedTarget;
-
 class WheelEvent(MouseEvent):
+    """#~ ToDo Doc String"""
     DOM_DELTA_PIXEL = 0x00
     DOM_DELTA_LINE = 0x01
     DOM_DELTA_PAGE = 0x02
 
-    def __init__(self, _type, **kwargs):
-        super().__init__(self, _type, **kwargs)
-        self._deltaX = kwargs.get("deltaX", 0.0)
-        self._deltaY = kwargs.get("deltaY", 0.0)
-        self._deltaZ = kwargs.get("deltaZ", 0.0)
-        self._deltaMode = kwargs.get("deltaMode", 0.0)
-
-    #~ property section:
-    @property
-    def deltaX(self): return self._deltaX;
-    @property
-    def deltaY(self): return self._deltaY;
-    @property
-    def deltaZ(self): return self._deltaZ;
-    @property
-    def deltaMode(self): return self._deltaMode;
+    def __init__(self, type_, **kwargs):
+        WriteAccess(self).deltaX = kwargs.pop("deltaX", 0.0)
+        WriteAccess(self).deltaY = kwargs.pop("deltaY", 0.0)
+        WriteAccess(self).deltaZ = kwargs.pop("deltaZ", 0.0)
+        WriteAccess(self).deltaMode = kwargs.pop("deltaMode", 0.0)
+        super().__init__(self, type_, **kwargs)
 
 class InputEvent(UIEvent):
+    """#~ ToDo Doc String"""
 
-    def __init__(self, _type, **kwargs):
-        super().__init__(self, _type, **kwargs)
-        self._data = kwargs.get("data", "") #~ ToDo DOMString
-        self._isComposing = kwargs.get("isComposing", False)
-
-    #~ property section:
-    @property
-    def data(self): return self._data;
-    @property
-    def isComposing(self): return self._isComposing;
+    def __init__(self, type_, **kwargs):
+        WriteAccess(self).data = kwargs.pop("data", "")
+        WriteAccess(self).isComposing = kwargs.pop("isComposing", False)
+        super().__init__(self, type_, **kwargs)
 
 class KeyboardEvent(UIEvent):
+    """#~ ToDo Doc String"""
     DOM_KEY_LOCATION_STANDARD = 0x00
     DOM_KEY_LOCATION_LEFT = 0x01
     DOM_KEY_LOCATION_RIGHT = 0x02
     DOM_KEY_LOCATION_NUMPAD = 0x03
 
-    def __init__(self, _type, **kwargs):
-        super().__init__(self, _type, **kwargs)
-        self._key = kwargs.get("key", "") #~ ToDo DOMString
-        self._code = kwargs.get("code", "") #~ ToDo DOMString
-        self._location = kwargs.get("location", 0)
+    def __init__(self, type_, **kwargs):
+        WriteAccess(self).key = kwargs.pop("key", "")
+        WriteAccess(self).code = kwargs.pop("code", "")
+        WriteAccess(self).location = kwargs.pop("location", 0)
 
-        self._ctrlKey = kwargs.get("ctrlKey", False)
-        self._shiftKey = kwargs.get("shiftKey", False)
-        self._altKey = kwargs.get("altKey", False)
-        self._metaKey = kwargs.get("metaKey", False)
+        WriteAccess(self).ctrlKey = kwargs.pop("ctrlKey", False)
+        WriteAccess(self).shiftKey = kwargs.pop("shiftKey", False)
+        WriteAccess(self).altKey = kwargs.pop("altKey", False)
+        WriteAccess(self).metaKey = kwargs.pop("metaKey", False)
 
-        self._repeat = kwargs.get("repeat", False)
-        self._isComposing = kwargs.get("isComposing", False)
-
-    #~ property section:
-    @property
-    def key(self): return self._key;
-    @property
-    def code(self): return self._code;
-    @property
-    def location(self): return self._location;
-    @property
-    def ctrlKey(self): return self._ctrlKey;
-    @property
-    def shiftKey(self): return self._shiftKey;
-    @property
-    def altKey(self): return self._altKey;
-    @property
-    def metaKey(self): return self._metaKey;
-    @property
-    def repeat(self): return self._repeat;
-    @property
-    def isComposing(self): return self._isComposing;
+        WriteAccess(self).repeat = kwargs.pop("repeat", False)
+        WriteAccess(self).isComposing = kwargs.pop("isComposing", False)
+        super().__init__(self, type_, **kwargs)
 
 class CompositionEvent(UIEvent):
-    def __init__(self, _type, **kwargs):
-        super().__init__(self, _type, **kwargs)
-        self._data = kwargs.get("data", "") #~ ToDo DOMString
+    """#~ ToDo Doc String"""
 
-    #~ property section:
-    @property
-    def data(self): return self._data;
+    def __init__(self, type_, **kwargs):
+        WriteAccess(self).data = kwargs.pop("data", "")
+        super().__init__(self, type_, **kwargs)
 
 class FocusEvent(UIEvent):
-    def __init__(self, _type, **kwargs):
-        super().__init__(self, _type, **kwargs)
-        self._relatedTarget = kwargs.get("relatedTarget", None) #~ ToDo EventTarget
+    """#~ ToDo Doc String"""
 
-    #~ property section:
-    @property
-    def relatedTarget(self): return self._relatedTarget;
-
-#####################################
-# Event types                       #
-#####################################
-
-
+    def __init__(self, type_, **kwargs):
+        WriteAccess(self).relatedTarget = kwargs.pop("relatedTarget", None)
+        super().__init__(self, type_, **kwargs)
 
