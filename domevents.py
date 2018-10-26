@@ -24,33 +24,33 @@ class Event():
     CAPTURING_PHASE = 1
     AT_TARGET = 2
     BUBBLING_PHASE = 3
-    #~ _EVENTS = { "load": {},
-                #~ "unload": {},
-                #~ "abort": {},
-                #~ "error": {},
-                #~ "select": {},
-                #~ "blur": {"composed":True},
-                #~ "focus": {"composed":True},
-                #~ "focusin": {"bubbles":True, "composed":True},
-                #~ "focusout": {"bubbles":True, "composed":True},
-                #~ "click": {"bubbles":True, "composed":True, "cancelable":True},
-                #~ "dblclick": {"bubbles":True, "composed":True, "cancelable":True},
-                #~ "mousedown": {"bubbles":True, "composed":True, "cancelable":True},
-                #~ "mouseenter": {"composed":True},
-                #~ "mouseleave": {"composed":True},
-                #~ "mousemove": {"bubbles":True, "composed":True, "cancelable":True},
-                #~ "mouseout": {"bubbles":True, "composed":True, "cancelable":True},
-                #~ "mouseover": {"bubbles":True, "composed":True, "cancelable":True},
-                #~ "mouseup": {"bubbles":True, "composed":True, "cancelable":True},
-                #~ "wheel": {"bubbles":True, "composed":True, "cancelable":True},
-                #~ "beforeinput": {"bubbles":True, "composed":True, "cancelable":True},
-                #~ "input": {"bubbles":True, "composed":True},
-                #~ "keydown": {"bubbles":True, "composed":True, "cancelable":True},
-                #~ "keyup": {"bubbles":True, "composed":True, "cancelable":True},
-                #~ "compositionstart": {"bubbles":True, "composed":True, "cancelable":True},
-                #~ "compositionupdate": {"bubbles":True, "composed":True, "cancelable":True},
-                #~ "compositionend": {"bubbles":True, "composed":True, "cancelable":True}}
-                #~ #DEFAULTS >> bubbles = False | cancelable = False | composed = False
+    __EVENTS = { "load": {},
+                "unload": {},
+                "abort": {},
+                "error": {},
+                "select": {},
+                "blur": {"composed":True},
+                "focus": {"composed":True},
+                "focusin": {"bubbles":True, "composed":True},
+                "focusout": {"bubbles":True, "composed":True},
+                "click": {"bubbles":True, "composed":True, "cancelable":True},
+                "dblclick": {"bubbles":True, "composed":True, "cancelable":True},
+                "mousedown": {"bubbles":True, "composed":True, "cancelable":True},
+                "mouseenter": {"composed":True},
+                "mouseleave": {"composed":True},
+                "mousemove": {"bubbles":True, "composed":True, "cancelable":True},
+                "mouseout": {"bubbles":True, "composed":True, "cancelable":True},
+                "mouseover": {"bubbles":True, "composed":True, "cancelable":True},
+                "mouseup": {"bubbles":True, "composed":True, "cancelable":True},
+                "wheel": {"bubbles":True, "composed":True, "cancelable":True},
+                "beforeinput": {"bubbles":True, "composed":True, "cancelable":True},
+                "input": {"bubbles":True, "composed":True},
+                "keydown": {"bubbles":True, "composed":True, "cancelable":True},
+                "keyup": {"bubbles":True, "composed":True, "cancelable":True},
+                "compositionstart": {"bubbles":True, "composed":True, "cancelable":True},
+                "compositionupdate": {"bubbles":True, "composed":True, "cancelable":True},
+                "compositionend": {"bubbles":True, "composed":True, "cancelable":True}}
+                #DEFAULTS >> bubbles = False | cancelable = False | composed = False
 
 
     def __init__(self, type_, **kwargs):
@@ -86,9 +86,9 @@ class Event():
     def _validate(self, type_):
         try:
             WriteAccess(self).type_ = type_
-            WriteAccess(self).composed = self._EVENTS[type_].get("composed", False)
-            WriteAccess(self).cancelable = self._EVENTS[type_].get("cancelable", False)
-            WriteAccess(self).bubbles = self._EVENTS[type_].get("bubbles", False)
+            WriteAccess(self).composed = self.__EVENTS[type_].get("composed", False)
+            WriteAccess(self).cancelable = self.__EVENTS[type_].get("cancelable", False)
+            WriteAccess(self).bubbles = self.__EVENTS[type_].get("bubbles", False)
         except KeyError:
             raise ValueError("Type \"{}\" is not allowed here. Allowed types are: {}.".format(type_, list(self._EVENTS.keys())))
 
@@ -121,7 +121,7 @@ class Event():
 #Extending to MouseEvent, InputEvent, KeyboardEvent, CompositionEvent, FocusEvent
 class UIEvent(Event):
     """#~ ToDo Doc String"""
-    _EVENTS = { "load": {},
+    __EVENTS = { "load": {},
                 "unload": {},
                 "abort": {},
                 "error": {},
@@ -140,7 +140,7 @@ class UIEvent(Event):
 #Extending to WheelEvent
 class MouseEvent(UIEvent):
     """#~ ToDo Doc String"""
-    _EVENTS = { "click": {"bubbles":True, "composed":True, "cancelable":True},
+    __EVENTS = { "click": {"bubbles":True, "composed":True, "cancelable":True},
                 "dblclick": {"bubbles":True, "composed":True, "cancelable":True},
                 "mousedown": {"bubbles":True, "composed":True, "cancelable":True},
                 "mouseenter": {"composed":True},
@@ -182,7 +182,7 @@ class WheelEvent(MouseEvent):
     DOM_DELTA_PIXEL = 0x00
     DOM_DELTA_LINE = 0x01
     DOM_DELTA_PAGE = 0x02
-    _EVENTS = { "wheel": {"bubbles":True, "composed":True, "cancelable":True}}
+    __EVENTS = { "wheel": {"bubbles":True, "composed":True, "cancelable":True}}
 
     def __init__(self, type_, **kwargs):
         self._validate(type_)
@@ -197,7 +197,7 @@ class WheelEvent(MouseEvent):
 
 class InputEvent(UIEvent):
     """#~ ToDo Doc String"""
-    _EVENTS = { "beforeinput": {"bubbles":True, "composed":True, "cancelable":True},
+    __EVENTS = { "beforeinput": {"bubbles":True, "composed":True, "cancelable":True},
                 "input": {"bubbles":True, "composed":True}}
 
     def __init__(self, type_, **kwargs):
@@ -214,7 +214,7 @@ class KeyboardEvent(UIEvent):
     DOM_KEY_LOCATION_LEFT = 0x01
     DOM_KEY_LOCATION_RIGHT = 0x02
     DOM_KEY_LOCATION_NUMPAD = 0x03
-    _EVENTS = { "keydown": {"bubbles":True, "composed":True, "cancelable":True},
+    __EVENTS = { "keydown": {"bubbles":True, "composed":True, "cancelable":True},
                 "keyup": {"bubbles":True, "composed":True, "cancelable":True}}
 
     def __init__(self, type_, **kwargs):
@@ -236,7 +236,7 @@ class KeyboardEvent(UIEvent):
 
 class CompositionEvent(UIEvent):
     """#~ ToDo Doc String"""
-    _EVENTS = { "compositionstart": {"bubbles":True, "composed":True, "cancelable":True},
+    __EVENTS = { "compositionstart": {"bubbles":True, "composed":True, "cancelable":True},
                 "compositionupdate": {"bubbles":True, "composed":True, "cancelable":True},
                 "compositionend": {"bubbles":True, "composed":True, "cancelable":True}}
 
@@ -250,7 +250,7 @@ class CompositionEvent(UIEvent):
 
 class FocusEvent(UIEvent):
     """#~ ToDo Doc String"""
-    _EVENTS = { "blur": {"composed":True},
+    __EVENTS = { "blur": {"composed":True},
                 "focus": {"composed":True},
                 "focusin": {"bubbles":True, "composed":True},
                 "focusout": {"bubbles":True, "composed":True}}
@@ -294,11 +294,18 @@ if __debug__ and __name__ == "__main__":
     try: we.DOM_DELTA_PIXEL = 2;
     except AccessError as exc: print(exc)
 
-    try: we._EVENTS = { "nowy": {"bubbles":True, "composed":False, "cancelable":False}}
+    try: del(we.DOM_DELTA_LINE);
+    except AccessError as exc: print(exc)
+
+    try: we.__EVENTS = { "nowy": {"bubbles":True, "composed":False, "cancelable":False}}
     except AccessError as exc: print(exc);
 
-    we._EVENTS["nowy"] = {"bubbles":True, "composed":False, "cancelable":False}; #BRAK BŁĘDU, pozwala na inserty do słownika.
-    #~ except AccessError as exc: print(exc);
+    try: del(we.__EVENTS);
+    except AccessError as exc: print(exc);
+
+    try: we.__EVENTS["nowy"] = {"bubbles":True, "composed":False, "cancelable":False};
+    except AttributeError as exc: print(exc);
+
 
     ## declaration tests
     print("\n\tDeclaration tests")
