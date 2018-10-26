@@ -1,4 +1,4 @@
-# /usr/bin/python3
+#!/usr/bin/python3
 #-*- coding: utf-8 -*-
 
 from time import time
@@ -24,44 +24,38 @@ class Event():
     CAPTURING_PHASE = 1
     AT_TARGET = 2
     BUBBLING_PHASE = 3
+    #~ _EVENTS = { "load": {},
+                #~ "unload": {},
+                #~ "abort": {},
+                #~ "error": {},
+                #~ "select": {},
+                #~ "blur": {"composed":True},
+                #~ "focus": {"composed":True},
+                #~ "focusin": {"bubbles":True, "composed":True},
+                #~ "focusout": {"bubbles":True, "composed":True},
+                #~ "click": {"bubbles":True, "composed":True, "cancelable":True},
+                #~ "dblclick": {"bubbles":True, "composed":True, "cancelable":True},
+                #~ "mousedown": {"bubbles":True, "composed":True, "cancelable":True},
+                #~ "mouseenter": {"composed":True},
+                #~ "mouseleave": {"composed":True},
+                #~ "mousemove": {"bubbles":True, "composed":True, "cancelable":True},
+                #~ "mouseout": {"bubbles":True, "composed":True, "cancelable":True},
+                #~ "mouseover": {"bubbles":True, "composed":True, "cancelable":True},
+                #~ "mouseup": {"bubbles":True, "composed":True, "cancelable":True},
+                #~ "wheel": {"bubbles":True, "composed":True, "cancelable":True},
+                #~ "beforeinput": {"bubbles":True, "composed":True, "cancelable":True},
+                #~ "input": {"bubbles":True, "composed":True},
+                #~ "keydown": {"bubbles":True, "composed":True, "cancelable":True},
+                #~ "keyup": {"bubbles":True, "composed":True, "cancelable":True},
+                #~ "compositionstart": {"bubbles":True, "composed":True, "cancelable":True},
+                #~ "compositionupdate": {"bubbles":True, "composed":True, "cancelable":True},
+                #~ "compositionend": {"bubbles":True, "composed":True, "cancelable":True}}
+                #~ #DEFAULTS >> bubbles = False | cancelable = False | composed = False
 
-    _EVENTS = { "load": {},
-                "unload": {},
-                "abort": {},
-                "error": {},
-                "select": {},
-                "blur": {"composed":True},
-                "focus": {"composed":True},
-                "focusin": {"bubbles":True, "composed":True},
-                "focusout": {"bubbles":True, "composed":True},
-                "click": {"bubbles":True, "composed":True, "cancelable":True},
-                "dblclick": {"bubbles":True, "composed":True, "cancelable":True},
-                "mousedown": {"bubbles":True, "composed":True, "cancelable":True},
-                "mouseenter": {"composed":True},
-                "mouseleave": {"composed":True},
-                "mousemove": {"bubbles":True, "composed":True, "cancelable":True},
-                "mouseout": {"bubbles":True, "composed":True, "cancelable":True},
-                "mouseover": {"bubbles":True, "composed":True, "cancelable":True},
-                "mouseup": {"bubbles":True, "composed":True, "cancelable":True},
-                "wheel": {"bubbles":True, "composed":True, "cancelable":True},
-                "beforeinput": {"bubbles":True, "composed":True, "cancelable":True},
-                "input": {"bubbles":True, "composed":True},
-                "keydown": {"bubbles":True, "composed":True, "cancelable":True},
-                "keyup": {"bubbles":True, "composed":True, "cancelable":True},
-                "compositionstart": {"bubbles":True, "composed":True, "cancelable":True},
-                "compositionupdate": {"bubbles":True, "composed":True, "cancelable":True},
-                "compositionend": {"bubbles":True, "composed":True, "cancelable":True}}
-                #DEFAULTS >> bubbles = False | cancelable = False | composed = False
 
     def __init__(self, type_, **kwargs):
-        if type_ in EVENTS:
-            WriteAccess(self).type_ = type_
-            WriteAccess(self).composed = EVENTS.get(type_).get("composed", False)
-            WriteAccess(self).cancelable = EVENTS.get(type_).get("cancelable", False)
-            WriteAccess(self).bubbles = EVENTS.get(type_).get("bubbles", False)
-        else:
-            raise AttributeError("Type is not defined.")
-
+        if type(self)==Event:
+            raise ValueError("Direct declaration class 'Event' is not allowed.")
         WriteAccess(self).target = None
         WriteAccess(self).isTrusted = False
         WriteAccess(self).srcElement = None
@@ -70,20 +64,34 @@ class Event():
         self.eventPhase = None
         self.defaultPrevented = None
         self.timeStamp = time() #~ ToDo DOMHighResTimeStamp
-        if kwargs != {}: #If kwargs isn't empty.
-            raise TypeError("Check arguments names or remove surplus.")
+        if kwargs:
+            raise TypeError("Check arguments names or remove surplus.\nNot allowed kwarguments: {}".format(list(kwargs.keys())))
+
 
     def __setattr__(self, attr, value):
         if attr in ("eventPhase", "defaultPrevented", "timeStamp"):
-            self.__dict__[attr] = value
+            self.__private_setattr(attr, value)
         else:
-            raise AccessError("Attribute can't be overwritted")
+            raise AccessError("Attribute '{}' can't be overwritted".format(attr))
 
-    def __delattr__(self, val):
-        raise AccessError("Attribute can't be deleted.")
+
+    def __delattr__(self, attr):
+        raise AccessError("Attribute '{}' can't be deleted.".format(attr))
+
 
     def __private_setattr(self, attr, value):
         super().__setattr__(attr, value)
+
+
+    def _validate(self, type_):
+        try:
+            WriteAccess(self).type_ = type_
+            WriteAccess(self).composed = self._EVENTS[type_].get("composed", False)
+            WriteAccess(self).cancelable = self._EVENTS[type_].get("cancelable", False)
+            WriteAccess(self).bubbles = self._EVENTS[type_].get("bubbles", False)
+        except KeyError:
+            raise ValueError("Type \"{}\" is not allowed here. Allowed types are: {}.".format(type_, list(self._EVENTS.keys())))
+
 
     def stopPropagation(self): #~ ToDo
         """#~ ToDo Doc String"""
@@ -109,24 +117,44 @@ class Event():
         #except for any nodes in shadow trees of which the shadow root’s mode is "closed" that
         # are not reachable from event’s currentTarget.
 
-    def composedPath(self): #~ ToDo
-        pass
 
 #Extending to MouseEvent, InputEvent, KeyboardEvent, CompositionEvent, FocusEvent
 class UIEvent(Event):
     """#~ ToDo Doc String"""
+    _EVENTS = { "load": {},
+                "unload": {},
+                "abort": {},
+                "error": {},
+                "select": {}}
+
 
     def __init__(self, type_, **kwargs):
+        if type(self) == UIEvent:
+            self._validate(type_)
+
         WriteAccess(self).view = kwargs.pop("view", None)
         WriteAccess(self).detail = kwargs.pop("detail", 0)
-        super().__init__(self, type_, **kwargs)
+        super().__init__(type_, **kwargs)
 
 
 #Extending to WheelEvent
 class MouseEvent(UIEvent):
     """#~ ToDo Doc String"""
+    _EVENTS = { "click": {"bubbles":True, "composed":True, "cancelable":True},
+                "dblclick": {"bubbles":True, "composed":True, "cancelable":True},
+                "mousedown": {"bubbles":True, "composed":True, "cancelable":True},
+                "mouseenter": {"composed":True},
+                "mouseleave": {"composed":True},
+                "mousemove": {"bubbles":True, "composed":True, "cancelable":True},
+                "mouseout": {"bubbles":True, "composed":True, "cancelable":True},
+                "mouseover": {"bubbles":True, "composed":True, "cancelable":True},
+                "mouseup": {"bubbles":True, "composed":True, "cancelable":True}}
+
 
     def __init__(self, type_, **kwargs):
+        if type(self) == MouseEvent:
+            self._validate(type_)
+
         WriteAccess(self).screenX = kwargs.pop("screenX", 0)
         WriteAccess(self).screenY = kwargs.pop("screenY", 0)
         WriteAccess(self).clientX = kwargs.pop("clientX", 0)
@@ -141,32 +169,44 @@ class MouseEvent(UIEvent):
         WriteAccess(self).buttons = kwargs.pop("buttons", 0)
 
         WriteAccess(self).relatedTarget = kwargs.pop("relatedTarget", None)
-        super().__init__(self, type_, **kwargs)
+        super().__init__(type_, **kwargs)
+
 
     def getModifierState(self, keyArg):
         pass
         #ToDo Returns true if it is a modifier key and the modifier is activated, false otherwise.
+
 
 class WheelEvent(MouseEvent):
     """#~ ToDo Doc String"""
     DOM_DELTA_PIXEL = 0x00
     DOM_DELTA_LINE = 0x01
     DOM_DELTA_PAGE = 0x02
+    _EVENTS = { "wheel": {"bubbles":True, "composed":True, "cancelable":True}}
 
     def __init__(self, type_, **kwargs):
+        self._validate(type_)
+
         WriteAccess(self).deltaX = kwargs.pop("deltaX", 0.0)
         WriteAccess(self).deltaY = kwargs.pop("deltaY", 0.0)
         WriteAccess(self).deltaZ = kwargs.pop("deltaZ", 0.0)
         WriteAccess(self).deltaMode = kwargs.pop("deltaMode", 0.0)
-        super().__init__(self, type_, **kwargs)
+        super().__init__(type_, **kwargs)
+
+
 
 class InputEvent(UIEvent):
     """#~ ToDo Doc String"""
+    _EVENTS = { "beforeinput": {"bubbles":True, "composed":True, "cancelable":True},
+                "input": {"bubbles":True, "composed":True}}
 
     def __init__(self, type_, **kwargs):
+        self._validate(type_)
+
         WriteAccess(self).data = kwargs.pop("data", "")
         WriteAccess(self).isComposing = kwargs.pop("isComposing", False)
-        super().__init__(self, type_, **kwargs)
+        super().__init__(type_, **kwargs)
+
 
 class KeyboardEvent(UIEvent):
     """#~ ToDo Doc String"""
@@ -174,8 +214,12 @@ class KeyboardEvent(UIEvent):
     DOM_KEY_LOCATION_LEFT = 0x01
     DOM_KEY_LOCATION_RIGHT = 0x02
     DOM_KEY_LOCATION_NUMPAD = 0x03
+    _EVENTS = { "keydown": {"bubbles":True, "composed":True, "cancelable":True},
+                "keyup": {"bubbles":True, "composed":True, "cancelable":True}}
 
     def __init__(self, type_, **kwargs):
+        self._validate(type_)
+
         WriteAccess(self).key = kwargs.pop("key", "")
         WriteAccess(self).code = kwargs.pop("code", "")
         WriteAccess(self).location = kwargs.pop("location", 0)
@@ -187,19 +231,92 @@ class KeyboardEvent(UIEvent):
 
         WriteAccess(self).repeat = kwargs.pop("repeat", False)
         WriteAccess(self).isComposing = kwargs.pop("isComposing", False)
-        super().__init__(self, type_, **kwargs)
+        super().__init__(type_, **kwargs)
+
 
 class CompositionEvent(UIEvent):
     """#~ ToDo Doc String"""
+    _EVENTS = { "compositionstart": {"bubbles":True, "composed":True, "cancelable":True},
+                "compositionupdate": {"bubbles":True, "composed":True, "cancelable":True},
+                "compositionend": {"bubbles":True, "composed":True, "cancelable":True}}
+
 
     def __init__(self, type_, **kwargs):
+        self._validate(type_)
+
         WriteAccess(self).data = kwargs.pop("data", "")
-        super().__init__(self, type_, **kwargs)
+        super().__init__(type_, **kwargs)
+
 
 class FocusEvent(UIEvent):
     """#~ ToDo Doc String"""
-
+    _EVENTS = { "blur": {"composed":True},
+                "focus": {"composed":True},
+                "focusin": {"bubbles":True, "composed":True},
+                "focusout": {"bubbles":True, "composed":True}}
     def __init__(self, type_, **kwargs):
+        self._validate(type_)
+
         WriteAccess(self).relatedTarget = kwargs.pop("relatedTarget", None)
-        super().__init__(self, type_, **kwargs)
+        super().__init__(type_, **kwargs)
+
+if __debug__ and __name__ == "__main__":
+    ## variable tests
+    print("\tVariable tests")
+    ui = UIEvent("load")
+    we = WheelEvent("wheel", deltaY=3.0)
+    ke = KeyboardEvent("keydown")
+    fe = FocusEvent("focusin")
+    try:
+        ui.composed = True
+    except AccessError as exc:
+        print(exc)
+    try:
+        fe.relatedTarget = None
+    except AccessError as exc:
+        print(exc)
+    print("timeStamp:", ui.timeStamp)
+    ui.timeStamp = 0
+    print("timeStamp overwrited:", ui.timeStamp)
+    try:
+        del ui.timeStamp
+    except AccessError as exc:
+        print(exc)
+    print("DeltaX/Y:", we.deltaX, we.deltaY)
+    print("Event type default for 'load'|composed", ui.composed, "cancelable", ui.cancelable, "bubbles", ui.bubbles)
+    print("Event type default for 'wheel'|composed", we.composed, "cancelable", we.cancelable, "bubbles", we.bubbles)
+    print("Event type default for 'keydown'|composed", ke.composed, "cancelable", ke.cancelable, "bubbles", ke.bubbles)
+    print("Event type default for 'focusin'|composed", fe.composed, "cancelable", fe.cancelable, "bubbles", fe.bubbles)
+
+    ## constants tests
+    print("\n\tConstants tests")
+    print(we.DOM_DELTA_PIXEL)
+    try: we.DOM_DELTA_PIXEL = 2;
+    except AccessError as exc: print(exc)
+
+    try: we._EVENTS = { "nowy": {"bubbles":True, "composed":False, "cancelable":False}}
+    except AccessError as exc: print(exc);
+
+    we._EVENTS["nowy"] = {"bubbles":True, "composed":False, "cancelable":False}; #BRAK BŁĘDU, pozwala na inserty do słownika.
+    #~ except AccessError as exc: print(exc);
+
+    ## declaration tests
+    print("\n\tDeclaration tests")
+    try: Event(); #Empty Event
+    except TypeError as exc: print(exc);
+
+    try: Event("load"); #Event declaration
+    except ValueError as exc: print(exc);
+
+    try: UIEvent("blur"); #Wrong type
+    except ValueError as exc: print(exc);
+
+    try: WheelEvent(); #Empty declaration
+    except TypeError as exc: print(exc);
+
+    try: MouseEvent("click", test=True) #Not allowed kwargs
+    except TypeError as exc: print(exc);
+
+    try: KeyboardEvent("load") #Parent type
+    except ValueError as exc: print(exc);
 
