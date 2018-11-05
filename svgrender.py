@@ -114,6 +114,7 @@ class SVGWidget(gtk.DrawingArea):
 		if __debug__:
 			if self.nodes_under_pointer:
 				print("Shift:", ms_ev.shiftKey, "| Alt:", ms_ev.altKey, "| Ctrl:", ms_ev.ctrlKey)
+				print(ms_ev)
 				print(int(ms_ev.clientX), int(ms_ev.clientY), ', '.join([''.join([node.tag, ('#' + node['id'] if ('id' in node) else '')]) for node in self.nodes_under_pointer]))
 		#canvas.queue_draw()
 
