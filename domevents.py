@@ -83,6 +83,13 @@ class Event():
         super().__setattr__(attr, value)
 
 
+    def __repr__(self):
+        rejected = ("type_", "composed", "cancelable", "bubbles", "target", "isTrusted", "srcElement", "currentTarget",\
+                    "eventPhase", "defaultPrevented", "timeStamp", "currentTarget")
+        return "{}(\"{}\", {})".format(type(self).__name__, self.type_,
+                ", ".join(k+"="+str(v) if not v == "" else k+"="+"\"\"" for k,v in self.__dict__.items() if k not in rejected))
+
+
     def _validate(self, type_):
         try:
             WriteAccess(self).type_ = type_
