@@ -8,13 +8,11 @@ from gi.repository import Gtk as gtk
 from gi.repository import Gdk as gdk
 
 from domevents import *
-import inspect
 import cairo
 
 import cairosvg.surface
 import cairosvg.parser
 
-import string
 
 
 class SVGRender(cairosvg.surface.Surface):
