@@ -5,6 +5,7 @@
 import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk as gtk
+from gi.repository import Gdk as gdk
 
 from domevents import *
 import inspect
@@ -105,14 +106,13 @@ class SVGWidget(gtk.DrawingArea):
 		context.paint()
 
 	def handle_motion_notify_event(self, drawingarea, event):
+		rect = self.get_allocation()
+		self.nodes_under_pointer, self.rendered_svg_surface = self.SVGRenderBg.pointer(self.document, rect.width, rect.height, event.x, event.y)
 		ms_ev = MouseEvent("mousemove", clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
 						shiftKey=bool(event.state & gdk.ModifierType.SHIFT_MASK), \
 						ctrlKey=bool(event.state & gdk.ModifierType.CONTROL_MASK), \
 						altKey=bool(event.state & gdk.ModifierType.MOD1_MASK), \
 						metaKey=bool(event.state & gdk.ModifierType.META_MASK))
-
-		rect = self.get_allocation()
-		self.nodes_under_pointer, self.rendered_svg_surface = self.SVGRenderBg.pointer(self.document, rect.width, rect.height, event.x, event.y)
 		if __debug__:
 			if self.nodes_under_pointer:
 				print("Shift:", ms_ev.shiftKey, "| Alt:", ms_ev.altKey, "| Ctrl:", ms_ev.ctrlKey)
@@ -123,11 +123,7 @@ class SVGWidget(gtk.DrawingArea):
 if __name__ == '__main__':
 	import signal
 
-	import gi
-	gi.require_version('Gtk', '3.0')
 	from gi.repository import GObject as gobject
-	from gi.repository import Gtk as gtk
-	from gi.repository import Gdk as gdk
 	from gi.repository import GLib as glib
 
 	glib.threads_init()
@@ -149,7 +145,6 @@ if __name__ == '__main__':
 	signal.signal(signal.SIGTERM, lambda signum, frame: mainloop.quit())
 	window.connect('destroy', lambda window: mainloop.quit())
 
-	#~ print(help(gtk.DrawingArea))
 	try:
 		mainloop.run()
 	except KeyboardInterrupt:
