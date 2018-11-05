@@ -13,6 +13,7 @@ import cairo
 import cairosvg.surface
 import cairosvg.parser
 
+import string
 
 
 class SVGRender(cairosvg.surface.Surface):
@@ -79,7 +80,6 @@ class SVGWidget(gtk.DrawingArea):
 
 		self.rendered_svg_surface = None
 		self.nodes_under_pointer = []
-
 		self.connect('configure-event', self.handle_configure_event)
 		self.connect('draw', self.handle_draw)
 		self.connect('motion-notify-event', self.handle_motion_notify_event)
@@ -105,15 +105,18 @@ class SVGWidget(gtk.DrawingArea):
 		context.paint()
 
 	def handle_motion_notify_event(self, drawingarea, event):
+		ms_ev = MouseEvent("mousemove", clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+						shiftKey=bool(event.state & gdk.ModifierType.SHIFT_MASK), \
+						ctrlKey=bool(event.state & gdk.ModifierType.CONTROL_MASK), \
+						altKey=bool(event.state & gdk.ModifierType.MOD1_MASK), \
+						metaKey=bool(event.state & gdk.ModifierType.META_MASK))
+
 		rect = self.get_allocation()
 		self.nodes_under_pointer, self.rendered_svg_surface = self.SVGRenderBg.pointer(self.document, rect.width, rect.height, event.x, event.y)
 		if __debug__:
 			if self.nodes_under_pointer:
-				MsEv = MouseEvent("mousemove", clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=True if event.state&1 else False, ctrlKey=True if event.state&4 else False, \
-								altKey=True if event.state&8 else False)
-				print(repr(MsEv))
-				print(int(event.x), int(event.y), ', '.join([''.join([node.tag, ('#' + node['id'] if ('id' in node) else '')]) for node in self.nodes_under_pointer]))
+				print("Shift:", ms_ev.shiftKey, "| Alt:", ms_ev.altKey, "| Ctrl:", ms_ev.ctrlKey)
+				print(int(ms_ev.clientX), int(ms_ev.clientY), ', '.join([''.join([node.tag, ('#' + node['id'] if ('id' in node) else '')]) for node in self.nodes_under_pointer]))
 		#canvas.queue_draw()
 
 
@@ -146,6 +149,7 @@ if __name__ == '__main__':
 	signal.signal(signal.SIGTERM, lambda signum, frame: mainloop.quit())
 	window.connect('destroy', lambda window: mainloop.quit())
 
+	#~ print(help(gtk.DrawingArea))
 	try:
 		mainloop.run()
 	except KeyboardInterrupt:
