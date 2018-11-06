@@ -82,8 +82,10 @@ class SVGWidget(gtk.DrawingArea):
 		self.connect('configure-event', self.handle_configure_event)
 		self.connect('draw', self.handle_draw)
 		self.connect('motion-notify-event', self.handle_motion_notify_event)
+		self.connect('button-press-event', self.handle_button_press_event)
 
 		self.add_events(gdk.EventMask.POINTER_MOTION_MASK)
+		self.add_events(gdk.EventMask.BUTTON_PRESS_MASK)
 
 	def load_url(self, url):
 		self.document = cairosvg.parser.Tree(url=url)
@@ -117,6 +119,15 @@ class SVGWidget(gtk.DrawingArea):
 				print("Shift:", ms_ev.shiftKey, "| Alt:", ms_ev.altKey, "| Ctrl:", ms_ev.ctrlKey)
 				print(int(ms_ev.clientX), int(ms_ev.clientY), ', '.join([''.join([node.tag, ('#' + node['id'] if ('id' in node) else '')]) for node in self.nodes_under_pointer]))
 		#canvas.queue_draw()
+
+	def handle_button_press_event(self, drawingarea, event):
+		currently_active_button = {256: 1, 512: 4, 1024: 2}
+		ms_ev = MouseEvent("click", clientX=event.x, clientY=event.y, button=event.button-1, buttons=currently_active_button.get(int(event.state), 0))
+		print(ms_ev)
+		if __debug__:
+			print("CurrentlyActive:", currently_active_button.get(int(event.state), 0))
+			print("Clicked:", event.button-1)
+
 
 
 if __name__ == '__main__':
