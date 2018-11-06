@@ -130,6 +130,7 @@ class SVGWidget(gtk.DrawingArea):
 
 
 
+
 if __name__ == '__main__':
 	import signal
 
