@@ -108,12 +108,14 @@ class SVGWidget(gtk.DrawingArea):
 	def handle_motion_notify_event(self, drawingarea, event):
 		rect = self.get_allocation()
 		self.nodes_under_pointer, self.rendered_svg_surface = self.SVGRenderBg.pointer(self.document, rect.width, rect.height, event.x, event.y)
-		ms_ev = MouseEvent("mousemove", clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-						shiftKey=bool(event.state & gdk.ModifierType.SHIFT_MASK), \
-						ctrlKey=bool(event.state & gdk.ModifierType.CONTROL_MASK), \
-						altKey=bool(event.state & gdk.ModifierType.MOD1_MASK), \
-						metaKey=bool(event.state & gdk.ModifierType.META_MASK))
-		print(ms_ev)
+		if self.nodes_under_pointer:
+			ms_ev = MouseEvent("mousemove", target=self.nodes_under_pointer[-1], \
+							clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+							shiftKey=bool(event.state & gdk.ModifierType.SHIFT_MASK), \
+							ctrlKey=bool(event.state & gdk.ModifierType.CONTROL_MASK), \
+							altKey=bool(event.state & gdk.ModifierType.MOD1_MASK), \
+							metaKey=bool(event.state & gdk.ModifierType.META_MASK))
+			print(ms_ev)
 		if __debug__:
 			if self.nodes_under_pointer:
 				print("Shift:", ms_ev.shiftKey, "| Alt:", ms_ev.altKey, "| Ctrl:", ms_ev.ctrlKey)
@@ -121,16 +123,28 @@ class SVGWidget(gtk.DrawingArea):
 		#canvas.queue_draw()
 
 	def handle_button_press_event(self, drawingarea, event):
-		currently_active_button = 0
-		currently_active_button |= 1 if bool(event.state & gdk.ModifierType.BUTTON1_MASK) else 0
-		currently_active_button |= 2 if bool(event.state & gdk.ModifierType.BUTTON3_MASK) else 0
-		currently_active_button |= 4 if bool(event.state & gdk.ModifierType.BUTTON2_MASK) else 0
-		ms_ev = MouseEvent("mousedown", clientX=event.x, clientY=event.y, button=event.button-1, buttons=currently_active_button)
-		print(ms_ev)
+		currently_active_buttons = 0
+		if bool(event.state & gdk.ModifierType.BUTTON1_MASK):
+			currently_active_buttons |= 1
+		if bool(event.state & gdk.ModifierType.BUTTON3_MASK):
+			currently_active_buttons |= 2
+		if bool(event.state & gdk.ModifierType.BUTTON2_MASK):
+			currently_active_buttons |= 4
+		if bool(event.button == gdk.BUTTON_PRIMARY):
+			active_button = 0
+		elif bool(event.button == gdk.BUTTON_SECONDARY):
+			active_button = 2
+		elif bool(event.button == gdk.BUTTON_MIDDLE):
+			active_button = 1
+		if self.nodes_under_pointer:
+			ms_ev = MouseEvent(	"mousedown", target=self.nodes_under_pointer[-1], \
+								clientX=event.x, clientY=event.y, \
+								screenX=event.x_root, screenY=event.y_root, \
+								button=active_button, buttons=currently_active_buttons)
+			print(ms_ev)
 		if __debug__:
-			print("CurrentlyActive:", currently_active_button)
-			print("CurrentlyActive:", event.state)
-			print("Clicked:", event.button-1)
+			print("CurrentlyActive:", currently_active_buttons)
+			print("Clicked:", active_button)
 
 
 
