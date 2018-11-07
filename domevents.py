@@ -29,7 +29,7 @@ class Event():
     def __init__(self, type_, **kwargs):
         if type(self)==Event:
             raise ValueError("Direct declaration class 'Event' is not allowed.")
-        WriteAccess(self).target = None
+        WriteAccess(self).target = kwargs.pop("target", None)
         WriteAccess(self).isTrusted = False
         WriteAccess(self).srcElement = None
         WriteAccess(self).currentTarget = None
