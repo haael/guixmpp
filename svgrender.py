@@ -116,8 +116,7 @@ class SVGWidget(gtk.DrawingArea):
 							altKey=bool(event.state & gdk.ModifierType.MOD1_MASK), \
 							metaKey=bool(event.state & gdk.ModifierType.META_MASK))
 			print(ms_ev)
-		if __debug__:
-			if self.nodes_under_pointer:
+			if __debug__:
 				print("Shift:", ms_ev.shiftKey, "| Alt:", ms_ev.altKey, "| Ctrl:", ms_ev.ctrlKey)
 				print(int(ms_ev.clientX), int(ms_ev.clientY), ', '.join([''.join([node.tag, ('#' + node['id'] if ('id' in node) else '')]) for node in self.nodes_under_pointer]))
 		#canvas.queue_draw()
@@ -142,8 +141,7 @@ class SVGWidget(gtk.DrawingArea):
 								screenX=event.x_root, screenY=event.y_root, \
 								button=active_button, buttons=currently_active_buttons)
 			print(ms_ev)
-		if __debug__:
-			if self.nodes_under_pointer:
+			if __debug__:
 				print("CurrentlyActive:", currently_active_buttons)
 				print("Clicked:", active_button)
 
