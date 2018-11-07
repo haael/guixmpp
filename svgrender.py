@@ -83,9 +83,11 @@ class SVGWidget(gtk.DrawingArea):
 		self.connect('draw', self.handle_draw)
 		self.connect('motion-notify-event', self.handle_motion_notify_event)
 		self.connect('button-press-event', self.handle_button_press_event)
+		self.connect('button-release-event', self.handle_button_release_event)
 
 		self.add_events(gdk.EventMask.POINTER_MOTION_MASK)
 		self.add_events(gdk.EventMask.BUTTON_PRESS_MASK)
+		self.add_events(gdk.EventMask.BUTTON_RELEASE_MASK)
 
 	def load_url(self, url):
 		self.document = cairosvg.parser.Tree(url=url)
@@ -163,6 +165,33 @@ class SVGWidget(gtk.DrawingArea):
 				print("Shift:", ms_ev.shiftKey, "| Alt:", ms_ev.altKey, "| Ctrl:", ms_ev.ctrlKey)
 				print("CurrentlyActive:", currently_active_buttons)
 				print("Clicked:", active_button)
+
+	def handle_button_release_event(self, drawingarea, event):
+		if self.nodes_under_pointer:
+			currently_active_buttons = 0
+			if event.state & gdk.ModifierType.BUTTON1_MASK:
+				currently_active_buttons |= 1
+			if event.state & gdk.ModifierType.BUTTON3_MASK:
+				currently_active_buttons |= 2
+			if event.state & gdk.ModifierType.BUTTON2_MASK:
+				currently_active_buttons |= 4
+			if event.button == gdk.BUTTON_PRIMARY:
+				active_button = 0
+			elif event.button == gdk.BUTTON_SECONDARY:
+				active_button = 2
+			elif event.button == gdk.BUTTON_MIDDLE:
+				active_button = 1
+			keys = self.get_keys(event)
+			ms_ev = MouseEvent(	"mouseup", target=self.nodes_under_pointer[-1], \
+								detail=1 , clientX=event.x, clientY=event.y, \
+								screenX=event.x_root, screenY=event.y_root, \
+								shiftKey=keys["Shift"], ctrlKey=keys["Ctrl"], \
+								altKey=keys["Alt"], metaKey=keys["Meta"], \
+								button=active_button, buttons=currently_active_buttons)
+		print(ms_ev)
+		if __debug__:
+			print("Release:", currently_active_button)
+			print("Pressed:", active_button)
 
 if __name__ == '__main__':
 	import signal
