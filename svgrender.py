@@ -94,7 +94,8 @@ class SVGWidget(gtk.DrawingArea):
 			self.rendered_svg_surface = self.SVGRenderBg.render(self.document, rect.width, rect.height)
 		self.queue_draw()
 
-	def get_keys(self, event):
+	@staticmethod
+	def get_keys(event):
 		return {"Shift": bool(event.state & gdk.ModifierType.SHIFT_MASK),\
 				"Ctrl": bool(event.state & gdk.ModifierType.CONTROL_MASK),\
 				"Alt": bool(event.state & (gdk.ModifierType.MOD1_MASK | gdk.ModifierType.MOD5_MASK)),\
@@ -126,8 +127,8 @@ class SVGWidget(gtk.DrawingArea):
 			keys = self.get_keys(event)
 			ms_ev = MouseEvent("mousemove", target=self.nodes_under_pointer[-1], \
 							clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-							shiftKey=keys.get("Shift"), ctrlKey=keys.get("Ctrl"), \
-							altKey=keys.get("Alt"), metaKey=keys.get("Meta"), \
+							shiftKey=keys["Shift"], ctrlKey=keys["Ctrl"], \
+							altKey=keys["Alt"], metaKey=keys["Meta"], \
 							buttons=currently_active_buttons)
 			print(ms_ev)
 			if __debug__:
@@ -154,8 +155,8 @@ class SVGWidget(gtk.DrawingArea):
 			ms_ev = MouseEvent(	"mousedown", target=self.nodes_under_pointer[-1], \
 								detail=1 , clientX=event.x, clientY=event.y, \
 								screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=keys.get("Shift"), ctrlKey=keys.get("Ctrl"), \
-								altKey=keys.get("Alt"), metaKey=keys.get("Meta"), \
+								shiftKey=keys["Shift"], ctrlKey=keys["Ctrl"], \
+								altKey=keys["Alt"], metaKey=keys["Meta"], \
 								button=active_button, buttons=currently_active_buttons)
 			print(ms_ev)
 			if __debug__:
