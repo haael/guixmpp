@@ -94,6 +94,14 @@ class SVGWidget(gtk.DrawingArea):
 			self.rendered_svg_surface = self.SVGRenderBg.render(self.document, rect.width, rect.height)
 		self.queue_draw()
 
+	@staticmethod
+	def get_keys(event):
+		return {"Shift": bool(event.state & gdk.ModifierType.SHIFT_MASK),\
+				"Ctrl": bool(event.state & gdk.ModifierType.CONTROL_MASK),\
+				"Alt": bool(event.state & (gdk.ModifierType.MOD1_MASK | gdk.ModifierType.MOD5_MASK)),\
+				"Meta": bool(event.state & (gdk.ModifierType.META_MASK | gdk.ModifierType.SUPER_MASK | gdk.ModifierType.MOD4_MASK))}
+
+
 	def handle_configure_event(self, drawingarea, event):
 		rect = self.get_allocation()
 		self.rendered_svg_surface = self.SVGRenderBg.render(self.document, rect.width, rect.height)
@@ -109,12 +117,19 @@ class SVGWidget(gtk.DrawingArea):
 		rect = self.get_allocation()
 		self.nodes_under_pointer, self.rendered_svg_surface = self.SVGRenderBg.pointer(self.document, rect.width, rect.height, event.x, event.y)
 		if self.nodes_under_pointer:
+			currently_active_buttons = 0
+			if event.state & gdk.ModifierType.BUTTON1_MASK:
+				currently_active_buttons |= 1
+			if event.state & gdk.ModifierType.BUTTON3_MASK:
+				currently_active_buttons |= 2
+			if event.state & gdk.ModifierType.BUTTON2_MASK:
+				currently_active_buttons |= 4
+			keys = self.get_keys(event)
 			ms_ev = MouseEvent("mousemove", target=self.nodes_under_pointer[-1], \
 							clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-							shiftKey=bool(event.state & gdk.ModifierType.SHIFT_MASK), \
-							ctrlKey=bool(event.state & gdk.ModifierType.CONTROL_MASK), \
-							altKey=bool(event.state & gdk.ModifierType.MOD1_MASK), \
-							metaKey=bool(event.state & gdk.ModifierType.META_MASK))
+							shiftKey=keys["Shift"], ctrlKey=keys["Ctrl"], \
+							altKey=keys["Alt"], metaKey=keys["Meta"], \
+							buttons=currently_active_buttons)
 			print(ms_ev)
 			if __debug__:
 				print("Shift:", ms_ev.shiftKey, "| Alt:", ms_ev.altKey, "| Ctrl:", ms_ev.ctrlKey)
@@ -136,17 +151,18 @@ class SVGWidget(gtk.DrawingArea):
 				active_button = 2
 			elif event.button == gdk.BUTTON_MIDDLE:
 				active_button = 1
+			keys = self.get_keys(event)
 			ms_ev = MouseEvent(	"mousedown", target=self.nodes_under_pointer[-1], \
-								clientX=event.x, clientY=event.y, \
+								detail=1 , clientX=event.x, clientY=event.y, \
 								screenX=event.x_root, screenY=event.y_root, \
+								shiftKey=keys["Shift"], ctrlKey=keys["Ctrl"], \
+								altKey=keys["Alt"], metaKey=keys["Meta"], \
 								button=active_button, buttons=currently_active_buttons)
 			print(ms_ev)
 			if __debug__:
+				print("Shift:", ms_ev.shiftKey, "| Alt:", ms_ev.altKey, "| Ctrl:", ms_ev.ctrlKey)
 				print("CurrentlyActive:", currently_active_buttons)
 				print("Clicked:", active_button)
-
-
-
 
 if __name__ == '__main__':
 	import signal
