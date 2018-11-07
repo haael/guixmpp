@@ -163,9 +163,6 @@ class SVGWidget(gtk.DrawingArea):
 				print("CurrentlyActive:", currently_active_buttons)
 				print("Clicked:", active_button)
 
-
-
-
 if __name__ == '__main__':
 	import signal
 
