@@ -121,11 +121,15 @@ class SVGWidget(gtk.DrawingArea):
 		#canvas.queue_draw()
 
 	def handle_button_press_event(self, drawingarea, event):
-		currently_active_button = {256: 1, 512: 4, 1024: 2}
-		ms_ev = MouseEvent("click", clientX=event.x, clientY=event.y, button=event.button-1, buttons=currently_active_button.get(int(event.state), 0))
+		currently_active_button = 0
+		currently_active_button |= 1 if bool(event.state & gdk.ModifierType.BUTTON1_MASK) else 0
+		currently_active_button |= 2 if bool(event.state & gdk.ModifierType.BUTTON3_MASK) else 0
+		currently_active_button |= 4 if bool(event.state & gdk.ModifierType.BUTTON2_MASK) else 0
+		ms_ev = MouseEvent("mousedown", clientX=event.x, clientY=event.y, button=event.button-1, buttons=currently_active_button)
 		print(ms_ev)
 		if __debug__:
-			print("CurrentlyActive:", currently_active_button.get(int(event.state), 0))
+			print("CurrentlyActive:", currently_active_button)
+			print("CurrentlyActive:", event.state)
 			print("Clicked:", event.button-1)
 
 
