@@ -124,11 +124,11 @@ class SVGWidget(gtk.DrawingArea):
 	def handle_button_press_event(self, drawingarea, event):
 		if self.nodes_under_pointer:
 			currently_active_buttons = 0
-			if bool(event.state & gdk.ModifierType.BUTTON1_MASK):
+			if event.state & gdk.ModifierType.BUTTON1_MASK:
 				currently_active_buttons |= 1
-			if bool(event.state & gdk.ModifierType.BUTTON3_MASK):
+			if event.state & gdk.ModifierType.BUTTON3_MASK:
 				currently_active_buttons |= 2
-			if bool(event.state & gdk.ModifierType.BUTTON2_MASK):
+			if event.state & gdk.ModifierType.BUTTON2_MASK:
 				currently_active_buttons |= 4
 			if event.button == gdk.BUTTON_PRIMARY:
 				active_button = 0
