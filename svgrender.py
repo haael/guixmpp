@@ -123,28 +123,29 @@ class SVGWidget(gtk.DrawingArea):
 		#canvas.queue_draw()
 
 	def handle_button_press_event(self, drawingarea, event):
-		currently_active_buttons = 0
-		if bool(event.state & gdk.ModifierType.BUTTON1_MASK):
-			currently_active_buttons |= 1
-		if bool(event.state & gdk.ModifierType.BUTTON3_MASK):
-			currently_active_buttons |= 2
-		if bool(event.state & gdk.ModifierType.BUTTON2_MASK):
-			currently_active_buttons |= 4
-		if bool(event.button == gdk.BUTTON_PRIMARY):
-			active_button = 0
-		elif bool(event.button == gdk.BUTTON_SECONDARY):
-			active_button = 2
-		elif bool(event.button == gdk.BUTTON_MIDDLE):
-			active_button = 1
 		if self.nodes_under_pointer:
+			currently_active_buttons = 0
+			if bool(event.state & gdk.ModifierType.BUTTON1_MASK):
+				currently_active_buttons |= 1
+			if bool(event.state & gdk.ModifierType.BUTTON3_MASK):
+				currently_active_buttons |= 2
+			if bool(event.state & gdk.ModifierType.BUTTON2_MASK):
+				currently_active_buttons |= 4
+			if event.button == gdk.BUTTON_PRIMARY:
+				active_button = 0
+			elif event.button == gdk.BUTTON_SECONDARY:
+				active_button = 2
+			elif event.button == gdk.BUTTON_MIDDLE:
+				active_button = 1
 			ms_ev = MouseEvent(	"mousedown", target=self.nodes_under_pointer[-1], \
 								clientX=event.x, clientY=event.y, \
 								screenX=event.x_root, screenY=event.y_root, \
 								button=active_button, buttons=currently_active_buttons)
 			print(ms_ev)
 		if __debug__:
-			print("CurrentlyActive:", currently_active_buttons)
-			print("Clicked:", active_button)
+			if self.nodes_under_pointer:
+				print("CurrentlyActive:", currently_active_buttons)
+				print("Clicked:", active_button)
 
 
 
