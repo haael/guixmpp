@@ -13,6 +13,7 @@ import cairo
 import cairosvg.surface
 import cairosvg.parser
 
+from enum import Enum
 
 
 class SVGRender(cairosvg.surface.Surface):
@@ -73,12 +74,21 @@ class SVGWidget(gtk.DrawingArea):
 				gtk.render_background(style_context, context, -canvas_allocation.x, -canvas_allocation.y, parent_allocation.width, parent_allocation.height)
 				gtk.render_frame(style_context, context, -canvas_allocation.x, -canvas_allocation.y, parent_allocation.width, parent_allocation.height)
 
+		class NodesUnderPointerRelation(Enum):
+			CHANGED = 1
+			EXIT = 2
+			ENTER = 3
+			OVER = 4
+			OUT = 5
+
 		self.SVGRenderBg = SVGRenderBg
+		self.NodesUnderPointerRelation = NodesUnderPointerRelation
 
 		self.document = cairosvg.parser.Tree(bytestring=self.EMPTY_SVG)
 
 		self.rendered_svg_surface = None
 		self.nodes_under_pointer = []
+		self.previous_nodes_under_pointer = []
 		self.connect('configure-event', self.handle_configure_event)
 		self.connect('draw', self.handle_draw)
 		self.connect('motion-notify-event', self.handle_motion_notify_event)
@@ -103,6 +113,46 @@ class SVGWidget(gtk.DrawingArea):
 				"Alt": bool(event.state & (gdk.ModifierType.MOD1_MASK | gdk.ModifierType.MOD5_MASK)),\
 				"Meta": bool(event.state & (gdk.ModifierType.META_MASK | gdk.ModifierType.SUPER_MASK | gdk.ModifierType.MOD4_MASK))}
 
+	@staticmethod
+	def get_pressed_mouse_buttons(event):
+		active_buttons = 0
+		if event.state & gdk.ModifierType.BUTTON1_MASK:
+			active_buttons |= 1
+		if event.state & gdk.ModifierType.BUTTON3_MASK:
+			active_buttons |= 2
+		if event.state & gdk.ModifierType.BUTTON2_MASK:
+			active_buttons |= 4
+		return active_buttons
+
+	@staticmethod
+	def get_pressed_mouse_button(event):
+		active_button = 0
+		if event.button == gdk.BUTTON_PRIMARY:
+			active_button = 0
+		elif event.button == gdk.BUTTON_SECONDARY:
+			active_button = 2
+		elif event.button == gdk.BUTTON_MIDDLE:
+			active_button = 1
+		return active_button
+
+	def get_nodes_relation_mark(self):
+		if self.previous_nodes_under_pointer != self.nodes_under_pointer:
+			if self.previous_nodes_under_pointer and self.nodes_under_pointer:
+				return self.NodesUnderPointerRelation.CHANGED
+			elif self.previous_nodes_under_pointer:
+				return self.NodesUnderPointerRelation.EXIT
+			elif self.nodes_under_pointer:
+				return self.NodesUnderPointerRelation.ENTER
+		else:
+			if self.previous_nodes_under_pointer:
+				return self.NodesUnderPointerRelation.OVER
+			else:
+				return self.NodesUnderPointerRelation.OUT
+
+	def update_nodes_under_pointer(self, event):
+		self.previous_nodes_under_pointer = self.nodes_under_pointer
+		rect = self.get_allocation()
+		self.nodes_under_pointer, self.rendered_svg_surface = self.SVGRenderBg.pointer(self.document, rect.width, rect.height, event.x, event.y)
 
 	def handle_configure_event(self, drawingarea, event):
 		rect = self.get_allocation()
@@ -116,82 +166,56 @@ class SVGWidget(gtk.DrawingArea):
 		context.paint()
 
 	def handle_motion_notify_event(self, drawingarea, event):
-		rect = self.get_allocation()
-		self.nodes_under_pointer, self.rendered_svg_surface = self.SVGRenderBg.pointer(self.document, rect.width, rect.height, event.x, event.y)
-		if self.nodes_under_pointer:
-			currently_active_buttons = 0
-			if event.state & gdk.ModifierType.BUTTON1_MASK:
-				currently_active_buttons |= 1
-			if event.state & gdk.ModifierType.BUTTON3_MASK:
-				currently_active_buttons |= 2
-			if event.state & gdk.ModifierType.BUTTON2_MASK:
-				currently_active_buttons |= 4
+		self.update_nodes_under_pointer(event)
+		mark = self.get_nodes_relation_mark()
+		if mark != self.NodesUnderPointerRelation.OUT:
+			mouse_buttons = self.get_pressed_mouse_buttons(event)
 			keys = self.get_keys(event)
-			ms_ev = MouseEvent("mousemove", target=self.nodes_under_pointer[-1], \
-							clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-							shiftKey=keys["Shift"], ctrlKey=keys["Ctrl"], \
-							altKey=keys["Alt"], metaKey=keys["Meta"], \
-							buttons=currently_active_buttons)
-			print(ms_ev)
-			if __debug__:
-				print("Shift:", ms_ev.shiftKey, "| Alt:", ms_ev.altKey, "| Ctrl:", ms_ev.ctrlKey)
-				print(int(ms_ev.clientX), int(ms_ev.clientY), ', '.join([''.join([node.tag, ('#' + node['id'] if ('id' in node) else '')]) for node in self.nodes_under_pointer]))
+			if mark == self.NodesUnderPointerRelation.ENTER:
+				if self.previous_nodes_under_pointer:
+					related = self.previous_nodes_under_pointer[-1]
+				else:
+					related = None
+				ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
+								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+								shiftKey=keys["Shift"], ctrlKey=keys["Ctrl"], \
+								altKey=keys["Alt"], metaKey=keys["Meta"], \
+								buttons=mouse_buttons, relatedTarget=related)
+				print(ms_ev)
+			elif mark == self.NodesUnderPointerRelation.OVER:
+				ms_ev = MouseEvent("mousemove", target=self.nodes_under_pointer[-1], \
+								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+								shiftKey=keys["Shift"], ctrlKey=keys["Ctrl"], \
+								altKey=keys["Alt"], metaKey=keys["Meta"], \
+								buttons=mouse_buttons)
+				print(ms_ev)
 		#canvas.queue_draw()
 
 	def handle_button_press_event(self, drawingarea, event):
 		if self.nodes_under_pointer:
-			currently_active_buttons = 0
-			if event.state & gdk.ModifierType.BUTTON1_MASK:
-				currently_active_buttons |= 1
-			if event.state & gdk.ModifierType.BUTTON3_MASK:
-				currently_active_buttons |= 2
-			if event.state & gdk.ModifierType.BUTTON2_MASK:
-				currently_active_buttons |= 4
-			if event.button == gdk.BUTTON_PRIMARY:
-				active_button = 0
-			elif event.button == gdk.BUTTON_SECONDARY:
-				active_button = 2
-			elif event.button == gdk.BUTTON_MIDDLE:
-				active_button = 1
+			mouse_buttons = self.get_pressed_mouse_button(event)
+			mouse_button = self.get_pressed_mouse_button(event)
 			keys = self.get_keys(event)
 			ms_ev = MouseEvent(	"mousedown", target=self.nodes_under_pointer[-1], \
 								detail=1 , clientX=event.x, clientY=event.y, \
 								screenX=event.x_root, screenY=event.y_root, \
 								shiftKey=keys["Shift"], ctrlKey=keys["Ctrl"], \
 								altKey=keys["Alt"], metaKey=keys["Meta"], \
-								button=active_button, buttons=currently_active_buttons)
+								button=mouse_button, buttons=mouse_buttons)
 			print(ms_ev)
-			if __debug__:
-				print("Shift:", ms_ev.shiftKey, "| Alt:", ms_ev.altKey, "| Ctrl:", ms_ev.ctrlKey)
-				print("CurrentlyActive:", currently_active_buttons)
-				print("Clicked:", active_button)
 
 	def handle_button_release_event(self, drawingarea, event):
 		if self.nodes_under_pointer:
-			currently_active_buttons = 0
-			if event.state & gdk.ModifierType.BUTTON1_MASK:
-				currently_active_buttons |= 1
-			if event.state & gdk.ModifierType.BUTTON3_MASK:
-				currently_active_buttons |= 2
-			if event.state & gdk.ModifierType.BUTTON2_MASK:
-				currently_active_buttons |= 4
-			if event.button == gdk.BUTTON_PRIMARY:
-				active_button = 0
-			elif event.button == gdk.BUTTON_SECONDARY:
-				active_button = 2
-			elif event.button == gdk.BUTTON_MIDDLE:
-				active_button = 1
+			mouse_buttons = self.get_pressed_mouse_button(event)
+			mouse_button = self.get_pressed_mouse_button(event)
 			keys = self.get_keys(event)
 			ms_ev = MouseEvent(	"mouseup", target=self.nodes_under_pointer[-1], \
 								detail=1 , clientX=event.x, clientY=event.y, \
 								screenX=event.x_root, screenY=event.y_root, \
 								shiftKey=keys["Shift"], ctrlKey=keys["Ctrl"], \
 								altKey=keys["Alt"], metaKey=keys["Meta"], \
-								button=active_button, buttons=currently_active_buttons)
-		print(ms_ev)
-		if __debug__:
-			print("Release:", currently_active_button)
-			print("Pressed:", active_button)
+								button=mouse_button, buttons=mouse_buttons)
+			print(ms_ev)
 
 if __name__ == '__main__':
 	import signal
