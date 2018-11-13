@@ -74,7 +74,7 @@ class SVGWidget(gtk.DrawingArea):
 				gtk.render_background(style_context, context, -canvas_allocation.x, -canvas_allocation.y, parent_allocation.width, parent_allocation.height)
 				gtk.render_frame(style_context, context, -canvas_allocation.x, -canvas_allocation.y, parent_allocation.width, parent_allocation.height)
 
-		class BorderCrossed(Enum):
+		class NodesUnderPointerRelation(Enum):
 			CHANGED = 1
 			EXIT = 2
 			ENTER = 3
@@ -82,13 +82,13 @@ class SVGWidget(gtk.DrawingArea):
 			OUT = 5
 
 		self.SVGRenderBg = SVGRenderBg
-		self.BorderCrossed = BorderCrossed
+		self.NodesUnderPointerRelation = NodesUnderPointerRelation
 
 		self.document = cairosvg.parser.Tree(bytestring=self.EMPTY_SVG)
 
 		self.rendered_svg_surface = None
 		self.nodes_under_pointer = []
-		self.previous_nodes = []
+		self.previous_nodes_under_pointer = []
 		self.connect('configure-event', self.handle_configure_event)
 		self.connect('draw', self.handle_draw)
 		self.connect('motion-notify-event', self.handle_motion_notify_event)
@@ -114,18 +114,18 @@ class SVGWidget(gtk.DrawingArea):
 				"Meta": bool(event.state & (gdk.ModifierType.META_MASK | gdk.ModifierType.SUPER_MASK | gdk.ModifierType.MOD4_MASK))}
 
 	@staticmethod
-	def get_curently_pressed_mouse_button(event):
-		currently_active_buttons = 0
+	def get_pressed_mouse_buttons(event):
+		active_buttons = 0
 		if event.state & gdk.ModifierType.BUTTON1_MASK:
-			currently_active_buttons |= 1
+			active_buttons |= 1
 		if event.state & gdk.ModifierType.BUTTON3_MASK:
-			currently_active_buttons |= 2
+			active_buttons |= 2
 		if event.state & gdk.ModifierType.BUTTON2_MASK:
-			currently_active_buttons |= 4
-		return currently_active_buttons
+			active_buttons |= 4
+		return active_buttons
 
 	@staticmethod
-	def get_now_pressed_mouse_button(event):
+	def get_pressed_mouse_button(event):
 		active_button = 0
 		if event.button == gdk.BUTTON_PRIMARY:
 			active_button = 0
@@ -135,22 +135,22 @@ class SVGWidget(gtk.DrawingArea):
 			active_button = 1
 		return active_button
 
-	def get_relative_node_mark(self):
-		if self.previous_nodes != self.nodes_under_pointer:
-			if self.previous_nodes and self.nodes_under_pointer:
-				return self.BorderCrossed.CHANGED
-			elif self.previous_nodes:
-				return self.BorderCrossed.EXIT
+	def get_nodes_relation_mark(self):
+		if self.previous_nodes_under_pointer != self.nodes_under_pointer:
+			if self.previous_nodes_under_pointer and self.nodes_under_pointer:
+				return self.NodesUnderPointerRelation.CHANGED
+			elif self.previous_nodes_under_pointer:
+				return self.NodesUnderPointerRelation.EXIT
 			elif self.nodes_under_pointer:
-				return self.BorderCrossed.ENTER
+				return self.NodesUnderPointerRelation.ENTER
 		else:
-			if self.previous_nodes:
-				return self.BorderCrossed.OVER
+			if self.previous_nodes_under_pointer:
+				return self.NodesUnderPointerRelation.OVER
 			else:
-				return self.BorderCrossed.OUT
+				return self.NodesUnderPointerRelation.OUT
 
 	def update_nodes_under_pointer(self, event):
-		self.previous_nodes = self.nodes_under_pointer
+		self.previous_nodes_under_pointer = self.nodes_under_pointer
 		rect = self.get_allocation()
 		self.nodes_under_pointer, self.rendered_svg_surface = self.SVGRenderBg.pointer(self.document, rect.width, rect.height, event.x, event.y)
 
@@ -167,13 +167,13 @@ class SVGWidget(gtk.DrawingArea):
 
 	def handle_motion_notify_event(self, drawingarea, event):
 		self.update_nodes_under_pointer(event)
-		mark = self.get_relative_node_mark()
-		if mark != self.BorderCrossed.OUT:
-			mouse_buttons = self.get_curently_pressed_mouse_button(event)
+		mark = self.get_nodes_relation_mark()
+		if mark != self.NodesUnderPointerRelation.OUT:
+			mouse_buttons = self.get_pressed_mouse_buttons(event)
 			keys = self.get_keys(event)
-			if mark == self.BorderCrossed.ENTER:
-				if self.previous_nodes:
-					related = self.previous_nodes[-1]
+			if mark == self.NodesUnderPointerRelation.ENTER:
+				if self.previous_nodes_under_pointer:
+					related = self.previous_nodes_under_pointer[-1]
 				else:
 					related = None
 				ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
@@ -182,7 +182,7 @@ class SVGWidget(gtk.DrawingArea):
 								altKey=keys["Alt"], metaKey=keys["Meta"], \
 								buttons=mouse_buttons, relatedTarget=related)
 				print(ms_ev)
-			elif mark == self.BorderCrossed.OVER:
+			elif mark == self.NodesUnderPointerRelation.OVER:
 				ms_ev = MouseEvent("mousemove", target=self.nodes_under_pointer[-1], \
 								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
 								shiftKey=keys["Shift"], ctrlKey=keys["Ctrl"], \
@@ -193,8 +193,8 @@ class SVGWidget(gtk.DrawingArea):
 
 	def handle_button_press_event(self, drawingarea, event):
 		if self.nodes_under_pointer:
-			mouse_buttons = self.get_curently_pressed_mouse_button(event)
-			mouse_button = self.get_now_pressed_mouse_button(event)
+			mouse_buttons = self.get_pressed_mouse_button(event)
+			mouse_button = self.get_pressed_mouse_button(event)
 			keys = self.get_keys(event)
 			ms_ev = MouseEvent(	"mousedown", target=self.nodes_under_pointer[-1], \
 								detail=1 , clientX=event.x, clientY=event.y, \
@@ -206,8 +206,8 @@ class SVGWidget(gtk.DrawingArea):
 
 	def handle_button_release_event(self, drawingarea, event):
 		if self.nodes_under_pointer:
-			mouse_buttons = self.get_curently_pressed_mouse_button(event)
-			mouse_button = self.get_now_pressed_mouse_button(event)
+			mouse_buttons = self.get_pressed_mouse_button(event)
+			mouse_button = self.get_pressed_mouse_button(event)
 			keys = self.get_keys(event)
 			ms_ev = MouseEvent(	"mouseup", target=self.nodes_under_pointer[-1], \
 								detail=1 , clientX=event.x, clientY=event.y, \
