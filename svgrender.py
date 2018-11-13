@@ -13,6 +13,7 @@ import cairo
 import cairosvg.surface
 import cairosvg.parser
 
+from enum import Enum
 
 
 class SVGRender(cairosvg.surface.Surface):
@@ -73,14 +74,21 @@ class SVGWidget(gtk.DrawingArea):
 				gtk.render_background(style_context, context, -canvas_allocation.x, -canvas_allocation.y, parent_allocation.width, parent_allocation.height)
 				gtk.render_frame(style_context, context, -canvas_allocation.x, -canvas_allocation.y, parent_allocation.width, parent_allocation.height)
 
+		class BorderCrossed(Enum):
+			CHANGED = 1
+			EXIT = 2
+			ENTER = 3
+			OVER = 4
+			OUT = 5
+
 		self.SVGRenderBg = SVGRenderBg
+		self.BorderCrossed = BorderCrossed
 
 		self.document = cairosvg.parser.Tree(bytestring=self.EMPTY_SVG)
 
 		self.rendered_svg_surface = None
 		self.nodes_under_pointer = []
 		self.previous_nodes = []
-		self.border_crossed = ""
 		self.connect('configure-event', self.handle_configure_event)
 		self.connect('draw', self.handle_draw)
 		self.connect('motion-notify-event', self.handle_motion_notify_event)
@@ -133,16 +141,16 @@ class SVGWidget(gtk.DrawingArea):
 		self.nodes_under_pointer, self.rendered_svg_surface = self.SVGRenderBg.pointer(self.document, rect.width, rect.height, event.x, event.y)
 		if self.previous_nodes != self.nodes_under_pointer:
 			if self.previous_nodes and self.nodes_under_pointer:
-				self.border_crossed = 'Changed'
+				return self.BorderCrossed.CHANGED
 			elif self.previous_nodes:
-				self.border_crossed = 'Exit'
+				return self.BorderCrossed.EXIT
 			elif self.nodes_under_pointer:
-				self.border_crossed = 'Enter'
+				return self.BorderCrossed.ENTER
 		else:
 			if self.previous_nodes:
-				self.border_crossed = 'Over'
+				return self.BorderCrossed.OVER
 			else:
-				self.border_crossed = 'Out'
+				return self.BorderCrossed.OUT
 
 	def handle_configure_event(self, drawingarea, event):
 		rect = self.get_allocation()
@@ -156,16 +164,28 @@ class SVGWidget(gtk.DrawingArea):
 		context.paint()
 
 	def handle_motion_notify_event(self, drawingarea, event):
-		self.get_pointer_crossborder_mark(event)
-		if self.nodes_under_pointer:
+		mark = self.get_pointer_crossborder_mark(event)
+		if mark != self.BorderCrossed.OUT:
 			mouse_buttons = self.get_curently_pressed_mouse_button(event)
 			keys = self.get_keys(event)
-			ms_ev = MouseEvent("mousemove", target=self.nodes_under_pointer[-1], \
-							clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-							shiftKey=keys["Shift"], ctrlKey=keys["Ctrl"], \
-							altKey=keys["Alt"], metaKey=keys["Meta"], \
-							buttons=mouse_buttons)
-			print(ms_ev)
+			if mark == self.BorderCrossed.ENTER:
+				if self.previous_nodes:
+					related = self.previous_nodes[-1]
+				else:
+					related = None
+				ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
+								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+								shiftKey=keys["Shift"], ctrlKey=keys["Ctrl"], \
+								altKey=keys["Alt"], metaKey=keys["Meta"], \
+								buttons=mouse_buttons, relatedTarget=related)
+				print(ms_ev)
+			elif mark == self.BorderCrossed.OVER:
+				ms_ev = MouseEvent("mousemove", target=self.nodes_under_pointer[-1], \
+								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+								shiftKey=keys["Shift"], ctrlKey=keys["Ctrl"], \
+								altKey=keys["Alt"], metaKey=keys["Meta"], \
+								buttons=mouse_buttons)
+				print(ms_ev)
 		#canvas.queue_draw()
 
 	def handle_button_press_event(self, drawingarea, event):
