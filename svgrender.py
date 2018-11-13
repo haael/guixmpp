@@ -127,7 +127,7 @@ class SVGWidget(gtk.DrawingArea):
 			active_button = 1
 		return active_button
 
-	def get_pointer_crossborder_mark(self):
+	def get_pointer_crossborder_mark(self, event):
 		self.previous_nodes = self.nodes_under_pointer
 		rect = self.get_allocation()
 		self.nodes_under_pointer, self.rendered_svg_surface = self.SVGRenderBg.pointer(self.document, rect.width, rect.height, event.x, event.y)
@@ -156,7 +156,7 @@ class SVGWidget(gtk.DrawingArea):
 		context.paint()
 
 	def handle_motion_notify_event(self, drawingarea, event):
-		get_pointer_crossborder_mark()
+		self.get_pointer_crossborder_mark(event)
 		if self.nodes_under_pointer:
 			mouse_buttons = self.get_curently_pressed_mouse_button(event)
 			keys = self.get_keys(event)
@@ -166,9 +166,6 @@ class SVGWidget(gtk.DrawingArea):
 							altKey=keys["Alt"], metaKey=keys["Meta"], \
 							buttons=mouse_buttons)
 			print(ms_ev)
-			if __debug__:
-				print("Shift:", ms_ev.shiftKey, "| Alt:", ms_ev.altKey, "| Ctrl:", ms_ev.ctrlKey)
-				print(int(ms_ev.clientX), int(ms_ev.clientY), ', '.join([''.join([node.tag, ('#' + node['id'] if ('id' in node) else '')]) for node in self.nodes_under_pointer]))
 		#canvas.queue_draw()
 
 	def handle_button_press_event(self, drawingarea, event):
@@ -183,10 +180,6 @@ class SVGWidget(gtk.DrawingArea):
 								altKey=keys["Alt"], metaKey=keys["Meta"], \
 								button=mouse_button, buttons=mouse_buttons)
 			print(ms_ev)
-			if __debug__:
-				print("Shift:", ms_ev.shiftKey, "| Alt:", ms_ev.altKey, "| Ctrl:", ms_ev.ctrlKey)
-				print("CurrentlyActive:", mouse_buttons)
-				print("Clicked:", mouse_button)
 
 	def handle_button_release_event(self, drawingarea, event):
 		if self.nodes_under_pointer:
@@ -200,9 +193,6 @@ class SVGWidget(gtk.DrawingArea):
 								altKey=keys["Alt"], metaKey=keys["Meta"], \
 								button=mouse_button, buttons=mouse_buttons)
 			print(ms_ev)
-			if __debug__:
-				print("Release:", currently_active_button)
-				print("Pressed:", active_button)
 
 if __name__ == '__main__':
 	import signal
