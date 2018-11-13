@@ -135,10 +135,7 @@ class SVGWidget(gtk.DrawingArea):
 			active_button = 1
 		return active_button
 
-	def get_pointer_crossborder_mark(self, event):
-		self.previous_nodes = self.nodes_under_pointer
-		rect = self.get_allocation()
-		self.nodes_under_pointer, self.rendered_svg_surface = self.SVGRenderBg.pointer(self.document, rect.width, rect.height, event.x, event.y)
+	def get_relative_node_mark(self):
 		if self.previous_nodes != self.nodes_under_pointer:
 			if self.previous_nodes and self.nodes_under_pointer:
 				return self.BorderCrossed.CHANGED
@@ -152,6 +149,11 @@ class SVGWidget(gtk.DrawingArea):
 			else:
 				return self.BorderCrossed.OUT
 
+	def update_nodes_under_pointer(self, event):
+		self.previous_nodes = self.nodes_under_pointer
+		rect = self.get_allocation()
+		self.nodes_under_pointer, self.rendered_svg_surface = self.SVGRenderBg.pointer(self.document, rect.width, rect.height, event.x, event.y)
+
 	def handle_configure_event(self, drawingarea, event):
 		rect = self.get_allocation()
 		self.rendered_svg_surface = self.SVGRenderBg.render(self.document, rect.width, rect.height)
@@ -164,7 +166,8 @@ class SVGWidget(gtk.DrawingArea):
 		context.paint()
 
 	def handle_motion_notify_event(self, drawingarea, event):
-		mark = self.get_pointer_crossborder_mark(event)
+		self.update_nodes_under_pointer(event)
+		mark = self.get_relative_node_mark()
 		if mark != self.BorderCrossed.OUT:
 			mouse_buttons = self.get_curently_pressed_mouse_button(event)
 			keys = self.get_keys(event)
