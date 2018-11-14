@@ -62,7 +62,7 @@ class SVGWidget(gtk.DrawingArea):
 		CHANGED = 1
 		EXIT = 2
 		ENTER = 3
-		OVER = 4
+		MOVE = 4
 		OUT = 5
 
 	class Keys(Enum):
@@ -148,10 +148,10 @@ class SVGWidget(gtk.DrawingArea):
 				marks.add(self.NodesUnderPointerRelation.EXIT)
 			if self.nodes_under_pointer:
 				marks.add(self.NodesUnderPointerRelation.ENTER)
-				marks.add(self.NodesUnderPointerRelation.OVER)
+				marks.add(self.NodesUnderPointerRelation.MOVE)
 		else:
 			if self.previous_nodes_under_pointer:
-				marks.add(self.NodesUnderPointerRelation.OVER)
+				marks.add(self.NodesUnderPointerRelation.MOVE)
 			else:
 				marks.add(self.NodesUnderPointerRelation.OUT)
 		return frozenset(marks)
@@ -182,20 +182,20 @@ class SVGWidget(gtk.DrawingArea):
 				previous_related_target = self.previous_nodes_under_pointer[-1]
 			else:
 				previous_related_target = None
-			if self.NodesUnderPointerRelation.OVER in marks:
+			if self.NodesUnderPointerRelation.MOVE in marks:
 				ms_ev = MouseEvent("mousemove", target=self.nodes_under_pointer[-1], \
 								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								buttons=mouse_buttons)
 				print(ms_ev)
+			if self.NodesUnderPointerRelation.ENTER in marks:
 				ms_ev = MouseEvent("mouseover", target=self.nodes_under_pointer[-1], \
 								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								buttons=mouse_buttons, relatedTarget=previous_related_target)
 				print(ms_ev)
-			if self.NodesUnderPointerRelation.ENTER in marks:
 				ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
 								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
@@ -208,6 +208,12 @@ class SVGWidget(gtk.DrawingArea):
 				else:
 					new_target = None
 				ms_ev = MouseEvent("mouseout", target=new_target, \
+								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+								buttons=mouse_buttons, relatedTarget=new_target)
+				print(ms_ev)
+				ms_ev = MouseEvent("mouseleave", target=new_target, \
 								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
