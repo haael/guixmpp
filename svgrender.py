@@ -86,7 +86,6 @@ class SVGWidget(gtk.DrawingArea):
 				gtk.render_background(style_context, context, -canvas_allocation.x, -canvas_allocation.y, parent_allocation.width, parent_allocation.height)
 				gtk.render_frame(style_context, context, -canvas_allocation.x, -canvas_allocation.y, parent_allocation.width, parent_allocation.height)
 
-
 		self.SVGRenderBg = SVGRenderBg
 
 		self.document = cairosvg.parser.Tree(bytestring=self.EMPTY_SVG)
@@ -111,12 +110,12 @@ class SVGWidget(gtk.DrawingArea):
 			self.rendered_svg_surface = self.SVGRenderBg.render(self.document, rect.width, rect.height)
 		self.queue_draw()
 
-	@staticmethod
-	def get_keys(event):
-		return {SVGWidget.Keys.SHIFT: bool(event.state & gdk.ModifierType.SHIFT_MASK),\
-				SVGWidget.Keys.CTRL: bool(event.state & gdk.ModifierType.CONTROL_MASK),\
-				SVGWidget.Keys.ALT: bool(event.state & (gdk.ModifierType.MOD1_MASK | gdk.ModifierType.MOD5_MASK)),\
-				SVGWidget.Keys.META: bool(event.state & (gdk.ModifierType.META_MASK | gdk.ModifierType.SUPER_MASK | gdk.ModifierType.MOD4_MASK))}
+	@classmethod
+	def get_keys(cls, event):
+		return {cls.Keys.SHIFT: bool(event.state & gdk.ModifierType.SHIFT_MASK),\
+				cls.Keys.CTRL: bool(event.state & gdk.ModifierType.CONTROL_MASK),\
+				cls.Keys.ALT: bool(event.state & (gdk.ModifierType.MOD1_MASK | gdk.ModifierType.MOD5_MASK)),\
+				cls.Keys.META: bool(event.state & (gdk.ModifierType.META_MASK | gdk.ModifierType.SUPER_MASK | gdk.ModifierType.MOD4_MASK))}
 
 	@staticmethod
 	def get_pressed_mouse_buttons_mask(event):
@@ -140,19 +139,22 @@ class SVGWidget(gtk.DrawingArea):
 			active_button = 1
 		return active_button
 
-	def get_nodes_relation_mark(self):
+	def get_nodes_relation_marks(self):
+		marks = set()
 		if self.previous_nodes_under_pointer != self.nodes_under_pointer:
 			if self.previous_nodes_under_pointer and self.nodes_under_pointer:
-				return self.NodesUnderPointerRelation.CHANGED
-			elif self.previous_nodes_under_pointer:
-				return self.NodesUnderPointerRelation.EXIT
-			elif self.nodes_under_pointer:
-				return self.NodesUnderPointerRelation.ENTER
+				marks.add(self.NodesUnderPointerRelation.CHANGED)
+			if self.previous_nodes_under_pointer:
+				marks.add(self.NodesUnderPointerRelation.EXIT)
+			if self.nodes_under_pointer:
+				marks.add(self.NodesUnderPointerRelation.ENTER)
+				marks.add(self.NodesUnderPointerRelation.OVER)
 		else:
 			if self.previous_nodes_under_pointer:
-				return self.NodesUnderPointerRelation.OVER
+				marks.add(self.NodesUnderPointerRelation.OVER)
 			else:
-				return self.NodesUnderPointerRelation.OUT
+				marks.add(self.NodesUnderPointerRelation.OUT)
+		return frozenset(marks)
 
 	def update_nodes_under_pointer(self, event):
 		self.previous_nodes_under_pointer = self.nodes_under_pointer
@@ -172,38 +174,44 @@ class SVGWidget(gtk.DrawingArea):
 
 	def handle_motion_notify_event(self, drawingarea, event):
 		self.update_nodes_under_pointer(event)
-		mark = self.get_nodes_relation_mark()
-		if mark != self.NodesUnderPointerRelation.OUT:
+		marks = self.get_nodes_relation_marks()
+		if not self.NodesUnderPointerRelation.OUT in marks:
 			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 			keys = self.get_keys(event)
-			if mark == self.NodesUnderPointerRelation.ENTER:
-				if self.previous_nodes_under_pointer:
-					related = self.previous_nodes_under_pointer[-1]
-				else:
-					related = None
-				ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
-								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-								buttons=mouse_buttons, relatedTarget=related)
-				print(ms_ev)
-			elif mark == self.NodesUnderPointerRelation.OVER:
+			if self.previous_nodes_under_pointer:
+				previous_related_target = self.previous_nodes_under_pointer[-1]
+			else:
+				previous_related_target = None
+			if self.NodesUnderPointerRelation.OVER in marks:
 				ms_ev = MouseEvent("mousemove", target=self.nodes_under_pointer[-1], \
 								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								buttons=mouse_buttons)
 				print(ms_ev)
-			elif mark == self.NodesUnderPointerRelation.EXIT:
-				if self.nodes_under_pointer:
-					target_and_related_target = self.nodes_under_pointer[-1]
-				else:
-					target_and_related_target = None
-				ms_ev = MouseEvent("mouseleave", target=target_and_related_target, \
+				ms_ev = MouseEvent("mouseover", target=self.nodes_under_pointer[-1], \
 								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-								buttons=mouse_buttons, relatedTarget=target_and_related_target)
+								buttons=mouse_buttons, relatedTarget=previous_related_target)
+				print(ms_ev)
+			if self.NodesUnderPointerRelation.ENTER in marks:
+				ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
+								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+								buttons=mouse_buttons, relatedTarget=previous_related_target)
+				print(ms_ev)
+			if self.NodesUnderPointerRelation.EXIT in marks:
+				if self.nodes_under_pointer:
+					new_target = self.nodes_under_pointer[-1]
+				else:
+					new_target = None
+				ms_ev = MouseEvent("mouseout", target=new_target, \
+								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+								buttons=mouse_buttons, relatedTarget=new_target)
 				print(ms_ev)
 		#canvas.queue_draw()
 
