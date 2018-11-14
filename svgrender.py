@@ -6,6 +6,7 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk as gtk
 from gi.repository import Gdk as gdk
+from gi.repository import GObject as gobject
 
 from domevents import *
 import cairo
@@ -52,12 +53,16 @@ class SVGRender(cairosvg.surface.Surface):
 		return instance.nodes_under_pointer, instance.rendered_svg_surface
 
 
-
 class SVGWidget(gtk.DrawingArea):
+	__gsignals__ = { \
+		'clicked': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_PYOBJECT,))
+	}
+
 	EMPTY_SVG = b'''<?xml version="1.0" encoding="UTF-8"?>
 		<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 1 1" width="1px" height="1px">
 		</svg>
 	'''
+
 	class NodesUnderPointerRelation(Enum):
 		CHANGED = 1
 		EXIT = 2
@@ -98,7 +103,8 @@ class SVGWidget(gtk.DrawingArea):
 		self.connect('motion-notify-event', self.handle_motion_notify_event)
 		self.connect('button-press-event', self.handle_button_press_event)
 		self.connect('button-release-event', self.handle_button_release_event)
-
+		self.connect('clicked', self.handle_clicked)
+		
 		self.add_events(gdk.EventMask.POINTER_MOTION_MASK)
 		self.add_events(gdk.EventMask.BUTTON_PRESS_MASK)
 		self.add_events(gdk.EventMask.BUTTON_RELEASE_MASK)
@@ -246,11 +252,15 @@ class SVGWidget(gtk.DrawingArea):
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								button=mouse_button, buttons=mouse_buttons)
 			print(ms_ev)
+		self.emit('clicked', event)
+	
+	def handle_clicked(self, drawingarea, event):
+		print("clicked", event)
+
 
 if __name__ == '__main__':
 	import signal
 
-	from gi.repository import GObject as gobject
 	from gi.repository import GLib as glib
 
 	glib.threads_init()
