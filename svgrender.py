@@ -58,6 +58,18 @@ class SVGWidget(gtk.DrawingArea):
 		<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 1 1" width="1px" height="1px">
 		</svg>
 	'''
+	class NodesUnderPointerRelation(Enum):
+		CHANGED = 1
+		EXIT = 2
+		ENTER = 3
+		OVER = 4
+		OUT = 5
+
+	class Keys(Enum):
+		SHIFT = 1
+		ALT = 2
+		CTRL = 4
+		META = 8
 
 	def __init__(self):
 		super().__init__()
@@ -74,15 +86,8 @@ class SVGWidget(gtk.DrawingArea):
 				gtk.render_background(style_context, context, -canvas_allocation.x, -canvas_allocation.y, parent_allocation.width, parent_allocation.height)
 				gtk.render_frame(style_context, context, -canvas_allocation.x, -canvas_allocation.y, parent_allocation.width, parent_allocation.height)
 
-		class NodesUnderPointerRelation(Enum):
-			CHANGED = 1
-			EXIT = 2
-			ENTER = 3
-			OVER = 4
-			OUT = 5
 
 		self.SVGRenderBg = SVGRenderBg
-		self.NodesUnderPointerRelation = NodesUnderPointerRelation
 
 		self.document = cairosvg.parser.Tree(bytestring=self.EMPTY_SVG)
 
@@ -108,13 +113,13 @@ class SVGWidget(gtk.DrawingArea):
 
 	@staticmethod
 	def get_keys(event):
-		return {"Shift": bool(event.state & gdk.ModifierType.SHIFT_MASK),\
-				"Ctrl": bool(event.state & gdk.ModifierType.CONTROL_MASK),\
-				"Alt": bool(event.state & (gdk.ModifierType.MOD1_MASK | gdk.ModifierType.MOD5_MASK)),\
-				"Meta": bool(event.state & (gdk.ModifierType.META_MASK | gdk.ModifierType.SUPER_MASK | gdk.ModifierType.MOD4_MASK))}
+		return {SVGWidget.Keys.SHIFT: bool(event.state & gdk.ModifierType.SHIFT_MASK),\
+				SVGWidget.Keys.CTRL: bool(event.state & gdk.ModifierType.CONTROL_MASK),\
+				SVGWidget.Keys.ALT: bool(event.state & (gdk.ModifierType.MOD1_MASK | gdk.ModifierType.MOD5_MASK)),\
+				SVGWidget.Keys.META: bool(event.state & (gdk.ModifierType.META_MASK | gdk.ModifierType.SUPER_MASK | gdk.ModifierType.MOD4_MASK))}
 
 	@staticmethod
-	def get_pressed_mouse_buttons(event):
+	def get_pressed_mouse_buttons_mask(event):
 		active_buttons = 0
 		if event.state & gdk.ModifierType.BUTTON1_MASK:
 			active_buttons |= 1
@@ -169,7 +174,7 @@ class SVGWidget(gtk.DrawingArea):
 		self.update_nodes_under_pointer(event)
 		mark = self.get_nodes_relation_mark()
 		if mark != self.NodesUnderPointerRelation.OUT:
-			mouse_buttons = self.get_pressed_mouse_buttons(event)
+			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 			keys = self.get_keys(event)
 			if mark == self.NodesUnderPointerRelation.ENTER:
 				if self.previous_nodes_under_pointer:
@@ -178,42 +183,53 @@ class SVGWidget(gtk.DrawingArea):
 					related = None
 				ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
 								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=keys["Shift"], ctrlKey=keys["Ctrl"], \
-								altKey=keys["Alt"], metaKey=keys["Meta"], \
+								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								buttons=mouse_buttons, relatedTarget=related)
 				print(ms_ev)
 			elif mark == self.NodesUnderPointerRelation.OVER:
 				ms_ev = MouseEvent("mousemove", target=self.nodes_under_pointer[-1], \
 								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=keys["Shift"], ctrlKey=keys["Ctrl"], \
-								altKey=keys["Alt"], metaKey=keys["Meta"], \
+								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								buttons=mouse_buttons)
+				print(ms_ev)
+			elif mark == self.NodesUnderPointerRelation.EXIT:
+				if self.nodes_under_pointer:
+					target_and_related_target = self.nodes_under_pointer[-1]
+				else:
+					target_and_related_target = None
+				ms_ev = MouseEvent("mouseleave", target=target_and_related_target, \
+								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+								buttons=mouse_buttons, relatedTarget=target_and_related_target)
 				print(ms_ev)
 		#canvas.queue_draw()
 
 	def handle_button_press_event(self, drawingarea, event):
 		if self.nodes_under_pointer:
-			mouse_buttons = self.get_pressed_mouse_button(event)
+			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 			mouse_button = self.get_pressed_mouse_button(event)
 			keys = self.get_keys(event)
 			ms_ev = MouseEvent(	"mousedown", target=self.nodes_under_pointer[-1], \
 								detail=1 , clientX=event.x, clientY=event.y, \
 								screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=keys["Shift"], ctrlKey=keys["Ctrl"], \
-								altKey=keys["Alt"], metaKey=keys["Meta"], \
+								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								button=mouse_button, buttons=mouse_buttons)
 			print(ms_ev)
 
 	def handle_button_release_event(self, drawingarea, event):
 		if self.nodes_under_pointer:
-			mouse_buttons = self.get_pressed_mouse_button(event)
+			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 			mouse_button = self.get_pressed_mouse_button(event)
 			keys = self.get_keys(event)
 			ms_ev = MouseEvent(	"mouseup", target=self.nodes_under_pointer[-1], \
 								detail=1 , clientX=event.x, clientY=event.y, \
 								screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=keys["Shift"], ctrlKey=keys["Ctrl"], \
-								altKey=keys["Alt"], metaKey=keys["Meta"], \
+								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								button=mouse_button, buttons=mouse_buttons)
 			print(ms_ev)
 
