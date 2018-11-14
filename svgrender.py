@@ -93,6 +93,7 @@ class SVGWidget(gtk.DrawingArea):
 		self.rendered_svg_surface = None
 		self.nodes_under_pointer = []
 		self.previous_nodes_under_pointer = []
+		self.click_count_detail = 0
 		self.connect('configure-event', self.handle_configure_event)
 		self.connect('draw', self.handle_draw)
 		self.connect('motion-notify-event', self.handle_motion_notify_event)
@@ -173,6 +174,8 @@ class SVGWidget(gtk.DrawingArea):
 		context.paint()
 
 	def handle_motion_notify_event(self, drawingarea, event):
+		print()
+		self.click_count_detail = 0 #~ Temporary tolerance for click is absolute not moving
 		self.update_nodes_under_pointer(event)
 		marks = self.get_nodes_relation_marks()
 		if self.NodesUnderPointerRelation.OUT not in marks:
@@ -196,12 +199,13 @@ class SVGWidget(gtk.DrawingArea):
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								buttons=mouse_buttons, relatedTarget=previous_related_target)
 				print(ms_ev)
-				ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
-								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-								buttons=mouse_buttons, relatedTarget=previous_related_target)
-				print(ms_ev)
+				for nodes in self.nodes_under_pointer:
+					ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
+									clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+									shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+									altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+									buttons=mouse_buttons, relatedTarget=previous_related_target)
+					print(ms_ev)
 			if self.NodesUnderPointerRelation.EXIT in marks:
 				if self.nodes_under_pointer:
 					new_target = self.nodes_under_pointer[-1]
@@ -213,26 +217,30 @@ class SVGWidget(gtk.DrawingArea):
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								buttons=mouse_buttons, relatedTarget=new_target)
 				print(ms_ev)
-				ms_ev = MouseEvent("mouseleave", target=new_target, \
-								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-								buttons=mouse_buttons, relatedTarget=new_target)
-				print(ms_ev)
+				for previous_nodes in self.previous_nodes_under_pointer:
+					ms_ev = MouseEvent("mouseleave", target=new_target, \
+									clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+									shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+									altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+									buttons=mouse_buttons, relatedTarget=new_target)
+					print(ms_ev)
 		#canvas.queue_draw()
 
 	def handle_button_press_event(self, drawingarea, event):
 		if self.nodes_under_pointer:
-			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
-			mouse_button = self.get_pressed_mouse_button(event)
-			keys = self.get_keys(event)
-			ms_ev = MouseEvent(	"mousedown", target=self.nodes_under_pointer[-1], \
-								detail=1 , clientX=event.x, clientY=event.y, \
-								screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-								button=mouse_button, buttons=mouse_buttons)
-			print(ms_ev)
+			print()
+			if self.click_count_detail in (0, 1): #Tu
+				self.click_count_detail += 1
+				mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
+				mouse_button = self.get_pressed_mouse_button(event)
+				keys = self.get_keys(event)
+				ms_ev = MouseEvent(	"mousedown", target=self.nodes_under_pointer[-1], \
+									detail=self.click_count_detail, clientX=event.x, clientY=event.y, \
+									screenX=event.x_root, screenY=event.y_root, \
+									shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+									altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+									button=mouse_button, buttons=mouse_buttons)
+				print(ms_ev)
 
 	def handle_button_release_event(self, drawingarea, event):
 		if self.nodes_under_pointer:
@@ -240,12 +248,28 @@ class SVGWidget(gtk.DrawingArea):
 			mouse_button = self.get_pressed_mouse_button(event)
 			keys = self.get_keys(event)
 			ms_ev = MouseEvent(	"mouseup", target=self.nodes_under_pointer[-1], \
-								detail=1 , clientX=event.x, clientY=event.y, \
+								detail=self.click_count_detail, clientX=event.x, clientY=event.y, \
 								screenX=event.x_root, screenY=event.y_root, \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								button=mouse_button, buttons=mouse_buttons)
 			print(ms_ev)
+			if mouse_buttons & 1: #~ Primary button clicked
+				if self.click_count_detail > 0: #~ mousedown, notmoved, released = click
+					ms_ev = MouseEvent(	"click", target=self.nodes_under_pointer[-1], \
+										detail=self.click_count_detail , clientX=event.x, clientY=event.y, \
+										screenX=event.x_root, screenY=event.y_root, \
+										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+										button=mouse_button, buttons=mouse_buttons)
+				if self.click_count_detail & (1 << 1): #~ doublemousedown, not moved, doublereleased = dblclick
+					self.click_count_detail = 0
+					pass #Placeholder for dblclick
+					print(ms_ev)
+			else:
+				self.click_count_detail = 0
+
+
 
 if __name__ == '__main__':
 	import signal
