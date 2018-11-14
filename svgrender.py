@@ -175,7 +175,7 @@ class SVGWidget(gtk.DrawingArea):
 	def handle_motion_notify_event(self, drawingarea, event):
 		self.update_nodes_under_pointer(event)
 		marks = self.get_nodes_relation_marks()
-		if not self.NodesUnderPointerRelation.OUT in marks:
+		if self.NodesUnderPointerRelation.OUT not in marks:
 			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 			keys = self.get_keys(event)
 			if self.previous_nodes_under_pointer:
