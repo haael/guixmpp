@@ -59,7 +59,7 @@ class Event():
     def __repr__(self):
         rejected = ("type_", "composed", "cancelable", "bubbles", "target", "isTrusted", "srcElement", "currentTarget",\
                     "eventPhase", "defaultPrevented", "timeStamp", "currentTarget")
-        return "{}(\"{}\", {})".format(type(self).__name__, self.type_,
+        return "{}(\"{}\", target={}, {})".format(type(self).__name__, self.type_, self.target,
                 ", ".join(k+"="+str(v) if not v == "" else k+"="+"\"\"" for k,v in self.__dict__.items() if k not in rejected))
 
 
@@ -150,6 +150,14 @@ class MouseEvent(UIEvent):
 
         WriteAccess(self).relatedTarget = kwargs.pop("relatedTarget", None)
         super().__init__(type_, **kwargs)
+
+
+    def __repr__(self):
+        rejected = ("type_", "composed", "cancelable", "bubbles", "target", "isTrusted", "srcElement", "currentTarget",\
+                    "eventPhase", "defaultPrevented", "timeStamp", "currentTarget", "clientX", "clientY")
+        return "{}(\"{}\", target={}, clientX={}, clientY={}, {})".format(
+                type(self).__name__, self.type_, self.target, self.clientX, self.clientY,
+                ", ".join(k+"="+str(v) if not v == "" else k+"="+"\"\"" for k,v in self.__dict__.items() if k not in rejected))
 
 
     def getModifierState(self, keyArg):
