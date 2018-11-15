@@ -150,9 +150,9 @@ class SVGWidget(gtk.DrawingArea):
 			active_button = 1
 		return active_button
 
-	def check_click_hysteresis(self, event_client_x, event_client_y, event_timeStamp):
-		if hypot(self.last_mousedown.clientX - event_client_x, self.last_mousedown.clientY - event_client_y) < self.CLICK_RANGE \
-		   and (event_timeStamp - self.last_mousedown.timeStamp) < self.CLICK_TIME:
+	def check_click_hysteresis(self, event_client_x, event_client_y, event_time):
+		if hypot(self.last_mousedown.x - event_client_x, self.last_mousedown.y - event_client_y) < self.CLICK_RANGE \
+		   and (event_time - self.last_mousedown.get_time()) < self.CLICK_TIME:
 			return True
 		return False
 
@@ -206,7 +206,7 @@ class SVGWidget(gtk.DrawingArea):
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								buttons=mouse_buttons)
 				print(ms_ev)
-				if self.last_mousedown and not self.check_click_hysteresis(ms_ev.clientX, ms_ev.clientY, ms_ev.timeStamp):
+				if self.last_mousedown and not self.check_click_hysteresis(event.x, event.y, event.get_time()):
 					self.last_mousedown = False
 			if self.NodesUnderPointerRelation.ENTER in marks:
 				ms_ev = MouseEvent("mouseover", target=self.nodes_under_pointer[-1], \
@@ -238,6 +238,10 @@ class SVGWidget(gtk.DrawingArea):
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								buttons=mouse_buttons, relatedTarget=new_target)
 				print(ms_ev)
+		else:
+			if self.last_mousedown and not self.check_click_hysteresis(event.x, event.y, event.get_time()):
+				self.last_mousedown = False
+
 		#canvas.queue_draw()
 
 	def handle_button_press_event(self, drawingarea, event):
@@ -252,11 +256,11 @@ class SVGWidget(gtk.DrawingArea):
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								button=mouse_button, buttons=mouse_buttons)
-			if not (ms_ev.button or mouse_buttons):
-				self.last_mousedown = ms_ev
-			else:
-				self.last_mousedown = False
-			print(ms_ev)
+		if not self.get_pressed_mouse_button(event) and not self.get_pressed_mouse_buttons_mask(event):
+			self.last_mousedown = event
+		else:
+			self.last_mousedown = False
+		print(ms_ev)
 
 	def handle_button_release_event(self, drawingarea, event):
 		if self.nodes_under_pointer:
@@ -270,8 +274,8 @@ class SVGWidget(gtk.DrawingArea):
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								button=mouse_button, buttons=mouse_buttons)
 			print(ms_ev)
-			if self.last_mousedown and self.check_click_hysteresis(ms_ev.clientX, ms_ev.clientY, ms_ev.timeStamp):
-				self.emit('clicked', event)
+		if self.last_mousedown and self.check_click_hysteresis(event.x, event.y, event.get_time()):
+			self.emit('clicked', event)
 
 
 	def handle_clicked(self, drawingarea, event):
