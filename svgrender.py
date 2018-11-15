@@ -63,7 +63,7 @@ class SVGWidget(gtk.DrawingArea):
 		</svg>
 	'''
 	CLICK_TIME = float("inf")
-	CLICK_RANAGE = 5
+	CLICK_RANGE = 5
 
 	class NodesUnderPointerRelation(Enum):
 		CHANGED = 1
@@ -77,19 +77,6 @@ class SVGWidget(gtk.DrawingArea):
 		ALT = 2
 		CTRL = 4
 		META = 8
-
-	class CurrentClickCount():
-		count = 0
-
-		def __int__(self):
-			return self.count
-
-
-		def increment(self):
-			self.count += 1
-
-		def reset(self):
-			self.count = 0
 
 	def __init__(self):
 		super().__init__()
