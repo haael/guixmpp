@@ -190,6 +190,8 @@ class SVGWidget(gtk.DrawingArea):
 		context.paint()
 
 	def handle_motion_notify_event(self, drawingarea, event):
+		if self.last_mousedown and not self.check_click_hysteresis(event.x, event.y, event.get_time()):
+			self.last_mousedown = False
 		self.update_nodes_under_pointer(event)
 		marks = self.get_nodes_relation_marks()
 		if self.NodesUnderPointerRelation.OUT not in marks:
@@ -206,8 +208,6 @@ class SVGWidget(gtk.DrawingArea):
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								buttons=mouse_buttons)
 				print(ms_ev)
-				if self.last_mousedown and not self.check_click_hysteresis(event.x, event.y, event.get_time()):
-					self.last_mousedown = False
 			if self.NodesUnderPointerRelation.ENTER in marks:
 				ms_ev = MouseEvent("mouseover", target=self.nodes_under_pointer[-1], \
 								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
@@ -238,9 +238,6 @@ class SVGWidget(gtk.DrawingArea):
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								buttons=mouse_buttons, relatedTarget=new_target)
 				print(ms_ev)
-		else:
-			if self.last_mousedown and not self.check_click_hysteresis(event.x, event.y, event.get_time()):
-				self.last_mousedown = False
 
 		#canvas.queue_draw()
 
