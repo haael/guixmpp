@@ -265,7 +265,7 @@ class SVGWidget(gtk.DrawingArea):
 			mouse_button = self.get_pressed_mouse_button(event)
 			keys = self.get_keys(event)
 			ms_ev = MouseEvent(	"mouseup", target=self.nodes_under_pointer[-1], \
-								detail=1 , clientX=event.x, clientY=event.y, \
+								detail=self.current_click_count, clientX=event.x, clientY=event.y, \
 								screenX=event.x_root, screenY=event.y_root, \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
@@ -278,10 +278,10 @@ class SVGWidget(gtk.DrawingArea):
 	def handle_clicked(self, drawingarea, event):
 		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 		mouse_button = self.get_pressed_mouse_button(event)
-		if not mouse_button and mouse_buttons == 1: #~ Primary button clicked
+		if not mouse_button and mouse_buttons == 1:
 			keys = self.get_keys(event)
 			ms_ev = MouseEvent(	"click", target=self.nodes_under_pointer[-1], \
-								detail=1 , clientX=event.x, clientY=event.y, \
+								detail=self.current_click_count, clientX=event.x, clientY=event.y, \
 								screenX=event.x_root, screenY=event.y_root, \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
