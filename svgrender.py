@@ -15,6 +15,7 @@ import cairosvg.surface
 import cairosvg.parser
 
 from enum import Enum
+from math import hypot
 
 
 class SVGRender(cairosvg.surface.Surface):
@@ -101,6 +102,7 @@ class SVGWidget(gtk.DrawingArea):
 		self.nodes_under_pointer = []
 		self.previous_nodes_under_pointer = []
 		self.current_click_count = 0
+		self.last_mousedown = False
 		self.connect('configure-event', self.handle_configure_event)
 		self.connect('draw', self.handle_draw)
 		self.connect('motion-notify-event', self.handle_motion_notify_event)
@@ -147,6 +149,12 @@ class SVGWidget(gtk.DrawingArea):
 		elif event.button == gdk.BUTTON_MIDDLE:
 			active_button = 1
 		return active_button
+
+	def check_click_hysteresis(self, event_client_x, event_client_y, event_timeStamp):
+		if hypot(self.last_mousedown.clientX - event_client_x, self.last_mousedown.clientY - event_client_y) < self.CLICK_RANGE \
+		   and (event_timeStamp - self.last_mousedown.timeStamp) < self.CLICK_TIME:
+			return True
+		return False
 
 	def get_nodes_relation_marks(self):
 		marks = set()
@@ -198,6 +206,8 @@ class SVGWidget(gtk.DrawingArea):
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								buttons=mouse_buttons)
 				print(ms_ev)
+				if self.last_mousedown and not self.check_click_hysteresis(ms_ev.clientX, ms_ev.clientY, ms_ev.timeStamp):
+					self.last_mousedown = False
 			if self.NodesUnderPointerRelation.ENTER in marks:
 				ms_ev = MouseEvent("mouseover", target=self.nodes_under_pointer[-1], \
 								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
@@ -242,6 +252,10 @@ class SVGWidget(gtk.DrawingArea):
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								button=mouse_button, buttons=mouse_buttons)
+			if not (ms_ev.button or mouse_buttons):
+				self.last_mousedown = ms_ev
+			else:
+				self.last_mousedown = False
 			print(ms_ev)
 
 	def handle_button_release_event(self, drawingarea, event):
@@ -256,7 +270,8 @@ class SVGWidget(gtk.DrawingArea):
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								button=mouse_button, buttons=mouse_buttons)
 			print(ms_ev)
-		self.emit('clicked', event)
+			if self.last_mousedown and self.check_click_hysteresis(ms_ev.clientX, ms_ev.clientY, ms_ev.timeStamp):
+				self.emit('clicked', event)
 
 
 	def handle_clicked(self, drawingarea, event):
