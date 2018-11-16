@@ -124,7 +124,7 @@ class SVGWidget(gtk.DrawingArea):
 	@classmethod
 	def check_click_hysteresis(cls, press_event, event):
 		if hypot(press_event.x - event.x, press_event.y - event.y) < cls.CLICK_RANGE \
-		   and (press_event.get_time() - event.get_time()) < cls.CLICK_TIME:
+		   and (event.get_time() - press_event.get_time()) < cls.CLICK_TIME:
 			return True
 		return False
 
