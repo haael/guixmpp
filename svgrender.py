@@ -157,6 +157,12 @@ class SVGWidget(gtk.DrawingArea):
 			active_button = 1
 		return active_button
 
+	def gen_nodes_parents(self, obj):
+		if obj.parent is not None:
+			parent = self.gen_nodes_parents(obj.parent)
+			yield from parent
+		yield obj
+
 	def get_nodes_relation_marks(self):
 		marks = set()
 		if self.previous_nodes_under_pointer != self.nodes_under_pointer:
@@ -204,7 +210,7 @@ class SVGWidget(gtk.DrawingArea):
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								buttons=mouse_buttons)
-				print(ms_ev)
+				#~ print(ms_ev)
 			if self.NodesUnderPointerRelation.ENTER in marks:
 				if self.previous_nodes_under_pointer:
 					previous_related_target = self.previous_nodes_under_pointer[-1]
@@ -215,13 +221,19 @@ class SVGWidget(gtk.DrawingArea):
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								buttons=mouse_buttons, relatedTarget=previous_related_target)
-				print(ms_ev)
-				ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
-								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-								buttons=mouse_buttons, relatedTarget=previous_related_target)
-				print(ms_ev)
+				#~ print(ms_ev)
+				for nod in self.gen_nodes_parents(self.nodes_under_pointer[-1]):
+					ms_ev = MouseEvent("mouseenter", target=nod, \
+									clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+									shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+									altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+									buttons=mouse_buttons, relatedTarget=previous_related_target)
+				#~ print(ms_ev)
+				if __debug__:
+					print(self.nodes_under_pointer[-1].parent.parent.parent)
+					print(self.nodes_under_pointer[-1].parent.parent)
+					print(self.nodes_under_pointer[-1].parent)
+					print(self.nodes_under_pointer[-1])
 			if self.NodesUnderPointerRelation.EXIT in marks:
 				if self.nodes_under_pointer:
 					new_target = self.nodes_under_pointer[-1]
@@ -233,12 +245,13 @@ class SVGWidget(gtk.DrawingArea):
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								buttons=mouse_buttons, relatedTarget=new_target)
 				print(ms_ev)
-				ms_ev = MouseEvent("mouseleave", target=new_target, \
-								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-								buttons=mouse_buttons, relatedTarget=new_target)
-				print(ms_ev)
+				if self.NodesUnderPointerRelation.CHANGED not in marks:
+					ms_ev = MouseEvent("mouseleave", target=new_target, \
+									clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+									shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+									altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+									buttons=mouse_buttons, relatedTarget=new_target)
+					print(ms_ev)
 
 		#canvas.queue_draw()
 
