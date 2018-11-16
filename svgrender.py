@@ -102,7 +102,7 @@ class SVGWidget(gtk.DrawingArea):
 		self.nodes_under_pointer = []
 		self.previous_nodes_under_pointer = []
 		self.current_click_count = 0
-		self.last_mousedown = False
+		self.last_mousedown = None
 		self.connect('configure-event', self.handle_configure_event)
 		self.connect('draw', self.handle_draw)
 		self.connect('motion-notify-event', self.handle_motion_notify_event)
@@ -191,7 +191,7 @@ class SVGWidget(gtk.DrawingArea):
 
 	def handle_motion_notify_event(self, drawingarea, event):
 		if self.last_mousedown and not self.check_click_hysteresis(event.x, event.y, event.get_time()):
-			self.last_mousedown = False
+			self.last_mousedown = None
 		self.update_nodes_under_pointer(event)
 		marks = self.get_nodes_relation_marks()
 		if self.NodesUnderPointerRelation.OUT not in marks:
@@ -207,7 +207,7 @@ class SVGWidget(gtk.DrawingArea):
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								buttons=mouse_buttons)
-				print(ms_ev)
+				#~ print(ms_ev)
 			if self.NodesUnderPointerRelation.ENTER in marks:
 				ms_ev = MouseEvent("mouseover", target=self.nodes_under_pointer[-1], \
 								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
@@ -253,11 +253,15 @@ class SVGWidget(gtk.DrawingArea):
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								button=mouse_button, buttons=mouse_buttons)
-		if not self.get_pressed_mouse_button(event) and not self.get_pressed_mouse_buttons_mask(event):
+			print(ms_ev)
+		if event.button == gdk.BUTTON_PRIMARY and event.state & (gdk.ModifierType.BUTTON1_MASK | \
+																 gdk.ModifierType.BUTTON2_MASK | \
+																 gdk.ModifierType.BUTTON3_MASK | \
+																 gdk.ModifierType.BUTTON4_MASK | \
+																 gdk.ModifierType.BUTTON5_MASK) == 0:
 			self.last_mousedown = event
 		else:
-			self.last_mousedown = False
-		print(ms_ev)
+			self.last_mousedown = None
 
 	def handle_button_release_event(self, drawingarea, event):
 		if self.nodes_under_pointer:
@@ -278,9 +282,14 @@ class SVGWidget(gtk.DrawingArea):
 	def handle_clicked(self, drawingarea, event):
 		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 		mouse_button = self.get_pressed_mouse_button(event)
-		if not mouse_button and mouse_buttons == 1:
+		print(int(event.state))
+		if event.state & gdk.ModifierType.BUTTON1_MASK:
 			keys = self.get_keys(event)
-			ms_ev = MouseEvent(	"click", target=self.nodes_under_pointer[-1], \
+			if self.nodes_under_pointer:
+				click_target = self.nodes_under_pointer[-1]
+			else:
+				click_target = None
+			ms_ev = MouseEvent(	"click", target=click_target, \
 								detail=self.current_click_count, clientX=event.x, clientY=event.y, \
 								screenX=event.x_root, screenY=event.y_root, \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
