@@ -191,7 +191,7 @@ class SVGWidget(gtk.DrawingArea):
 		context.paint()
 
 	def handle_motion_notify_event(self, drawingarea, event):
-		if self.last_mousedown and self.check_click_hysteresis(self.last_mousedown, event):
+		if self.last_mousedown and not self.check_click_hysteresis(self.last_mousedown, event):
 			self.last_mousedown = None
 		self.update_nodes_under_pointer(event)
 		marks = self.get_nodes_relation_marks()
