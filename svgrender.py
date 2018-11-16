@@ -284,20 +284,17 @@ class SVGWidget(gtk.DrawingArea):
 
 
 	def handle_clicked(self, drawingarea, event):
-		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
-		mouse_button = self.get_pressed_mouse_button(event)
-		keys = self.get_keys(event)
 		if self.nodes_under_pointer:
-			click_target = self.nodes_under_pointer[-1]
-		else:
-			click_target = None
-		ms_ev = MouseEvent(	"click", target=click_target, \
-							detail=self.current_click_count, clientX=event.x, clientY=event.y, \
-							screenX=event.x_root, screenY=event.y_root, \
-							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-							button=mouse_button, buttons=mouse_buttons)
-		print(ms_ev)
+			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
+			mouse_button = self.get_pressed_mouse_button(event)
+			keys = self.get_keys(event)
+			ms_ev = MouseEvent(	"click", target=self.nodes_under_pointer[-1], \
+								detail=self.current_click_count, clientX=event.x, clientY=event.y, \
+								screenX=event.x_root, screenY=event.y_root, \
+								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+								button=mouse_button, buttons=mouse_buttons)
+			print(ms_ev)
 		if __debug__:
 			print("clicked")
 
