@@ -15,6 +15,7 @@ import cairosvg.surface
 import cairosvg.parser
 
 from enum import Enum
+from math import hypot
 
 
 class SVGRender(cairosvg.surface.Surface):
@@ -62,6 +63,8 @@ class SVGWidget(gtk.DrawingArea):
 		<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 1 1" width="1px" height="1px">
 		</svg>
 	'''
+	CLICK_TIME = float("inf")
+	CLICK_RANGE = 5
 
 	class NodesUnderPointerRelation(Enum):
 		CHANGED = 1
@@ -98,16 +101,18 @@ class SVGWidget(gtk.DrawingArea):
 		self.rendered_svg_surface = None
 		self.nodes_under_pointer = []
 		self.previous_nodes_under_pointer = []
+		self.current_click_count = 0
+		self.last_mousedown = None
 		self.connect('configure-event', self.handle_configure_event)
 		self.connect('draw', self.handle_draw)
 		self.connect('motion-notify-event', self.handle_motion_notify_event)
 		self.connect('button-press-event', self.handle_button_press_event)
 		self.connect('button-release-event', self.handle_button_release_event)
 		self.connect('clicked', self.handle_clicked)
-		
+
 		self.add_events(gdk.EventMask.POINTER_MOTION_MASK)
-		self.add_events(gdk.EventMask.BUTTON_PRESS_MASK)
 		self.add_events(gdk.EventMask.BUTTON_RELEASE_MASK)
+		self.add_events(gdk.EventMask.BUTTON_PRESS_MASK)
 
 	def load_url(self, url):
 		self.document = cairosvg.parser.Tree(url=url)
@@ -115,6 +120,13 @@ class SVGWidget(gtk.DrawingArea):
 			rect = self.get_allocation()
 			self.rendered_svg_surface = self.SVGRenderBg.render(self.document, rect.width, rect.height)
 		self.queue_draw()
+
+	@classmethod
+	def check_click_hysteresis(cls, press_event, event):
+		if hypot(press_event.x - event.x, press_event.y - event.y) < cls.CLICK_RANGE \
+		   and (event.get_time() - press_event.get_time()) < cls.CLICK_TIME:
+			return True
+		return False
 
 	@classmethod
 	def get_keys(cls, event):
@@ -179,15 +191,13 @@ class SVGWidget(gtk.DrawingArea):
 		context.paint()
 
 	def handle_motion_notify_event(self, drawingarea, event):
+		if self.last_mousedown and not self.check_click_hysteresis(self.last_mousedown, event):
+			self.last_mousedown = None
 		self.update_nodes_under_pointer(event)
 		marks = self.get_nodes_relation_marks()
 		if self.NodesUnderPointerRelation.OUT not in marks:
 			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 			keys = self.get_keys(event)
-			if self.previous_nodes_under_pointer:
-				previous_related_target = self.previous_nodes_under_pointer[-1]
-			else:
-				previous_related_target = None
 			if self.NodesUnderPointerRelation.MOVE in marks:
 				ms_ev = MouseEvent("mousemove", target=self.nodes_under_pointer[-1], \
 								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
@@ -196,6 +206,10 @@ class SVGWidget(gtk.DrawingArea):
 								buttons=mouse_buttons)
 				print(ms_ev)
 			if self.NodesUnderPointerRelation.ENTER in marks:
+				if self.previous_nodes_under_pointer:
+					previous_related_target = self.previous_nodes_under_pointer[-1]
+				else:
+					previous_related_target = None
 				ms_ev = MouseEvent("mouseover", target=self.nodes_under_pointer[-1], \
 								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
@@ -225,20 +239,30 @@ class SVGWidget(gtk.DrawingArea):
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								buttons=mouse_buttons, relatedTarget=new_target)
 				print(ms_ev)
+
 		#canvas.queue_draw()
 
 	def handle_button_press_event(self, drawingarea, event):
 		if self.nodes_under_pointer:
+			self.current_click_count += 1
 			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 			mouse_button = self.get_pressed_mouse_button(event)
 			keys = self.get_keys(event)
 			ms_ev = MouseEvent(	"mousedown", target=self.nodes_under_pointer[-1], \
-								detail=1 , clientX=event.x, clientY=event.y, \
+								detail=self.current_click_count, clientX=event.x, clientY=event.y, \
 								screenX=event.x_root, screenY=event.y_root, \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								button=mouse_button, buttons=mouse_buttons)
 			print(ms_ev)
+		if event.button == gdk.BUTTON_PRIMARY and event.state & (gdk.ModifierType.BUTTON1_MASK | \
+																 gdk.ModifierType.BUTTON2_MASK | \
+																 gdk.ModifierType.BUTTON3_MASK | \
+																 gdk.ModifierType.BUTTON4_MASK | \
+																 gdk.ModifierType.BUTTON5_MASK) == 0:
+			self.last_mousedown = event
+		else:
+			self.last_mousedown = None
 
 	def handle_button_release_event(self, drawingarea, event):
 		if self.nodes_under_pointer:
@@ -246,16 +270,34 @@ class SVGWidget(gtk.DrawingArea):
 			mouse_button = self.get_pressed_mouse_button(event)
 			keys = self.get_keys(event)
 			ms_ev = MouseEvent(	"mouseup", target=self.nodes_under_pointer[-1], \
-								detail=1 , clientX=event.x, clientY=event.y, \
+								detail=self.current_click_count, clientX=event.x, clientY=event.y, \
 								screenX=event.x_root, screenY=event.y_root, \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								button=mouse_button, buttons=mouse_buttons)
 			print(ms_ev)
-		self.emit('clicked', event)
-	
+		if self.last_mousedown and self.check_click_hysteresis(self.last_mousedown, event):
+			self.last_mousedown = None
+			self.emit('clicked', event)
+
+
 	def handle_clicked(self, drawingarea, event):
-		print("clicked", event)
+		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
+		mouse_button = self.get_pressed_mouse_button(event)
+		keys = self.get_keys(event)
+		if self.nodes_under_pointer:
+			click_target = self.nodes_under_pointer[-1]
+		else:
+			click_target = None
+		ms_ev = MouseEvent(	"click", target=click_target, \
+							detail=self.current_click_count, clientX=event.x, clientY=event.y, \
+							screenX=event.x_root, screenY=event.y_root, \
+							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+							button=mouse_button, buttons=mouse_buttons)
+		print(ms_ev)
+		if __debug__:
+			print("clicked")
 
 
 if __name__ == '__main__':
