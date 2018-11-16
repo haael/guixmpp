@@ -260,7 +260,7 @@ class SVGWidget(gtk.DrawingArea):
 																 gdk.ModifierType.BUTTON3_MASK | \
 																 gdk.ModifierType.BUTTON4_MASK | \
 																 gdk.ModifierType.BUTTON5_MASK) == 0:
-			self.last_mousedown = event
+			self.last_mousedown = event.copy()
 		else:
 			self.last_mousedown = None
 
@@ -279,6 +279,8 @@ class SVGWidget(gtk.DrawingArea):
 		if self.last_mousedown and self.check_click_hysteresis(self.last_mousedown, event):
 			self.last_mousedown = None
 			self.emit('clicked', event)
+		else:
+			self.last_mousedown = None
 
 
 	def handle_clicked(self, drawingarea, event):
