@@ -223,7 +223,7 @@ class SVGWidget(gtk.DrawingArea):
 								buttons=mouse_buttons, relatedTarget=previous_related_target)
 				#~ print(ms_ev)
 				if self.NodesUnderPointerRelation.CHANGED in marks:
-					previous_parents = [elem for elem in self.gen_nodes_parents(self.previous_nodes_under_pointer[-1])]
+					previous_parents = list(self.gen_nodes_parents(self.previous_nodes_under_pointer[-1]))
 					actual_parents_without_previous = [ elem for elem in self.gen_nodes_parents(self.nodes_under_pointer[-1]) \
 														if elem not in previous_parents]
 					for actual in actual_parents_without_previous:
@@ -252,13 +252,26 @@ class SVGWidget(gtk.DrawingArea):
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								buttons=mouse_buttons, relatedTarget=new_target)
 				#~ print(ms_ev)
-				if self.NodesUnderPointerRelation.CHANGED not in marks:
-					ms_ev = MouseEvent("mouseleave", target=new_target, \
-									clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-									shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-									altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-									buttons=mouse_buttons, relatedTarget=new_target)
-					#~ print(ms_ev)
+				if self.NodesUnderPointerRelation.CHANGED in marks:
+					previous_parents = list(self.gen_nodes_parents(self.previous_nodes_under_pointer[-1]))
+					actual_parents_without_previous = [ elem for elem in self.gen_nodes_parents(self.nodes_under_pointer[-1]) \
+														if elem not in previous_parents]
+					for actual in actual_parents_without_previous[::-1]:
+						ms_ev = MouseEvent("mouseleave", target=new_target, \
+										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+										buttons=mouse_buttons, relatedTarget=new_target)
+						#~ print(ms_ev)
+				else:
+					for previous in self.gen_nodes_parents(self.previous_nodes_under_pointer[-1]):
+						ms_ev = MouseEvent("mouseleave", target=new_target, \
+										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+										buttons=mouse_buttons, relatedTarget=new_target)
+						#~ print(ms_ev)
+
 
 		#canvas.queue_draw()
 
