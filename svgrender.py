@@ -244,13 +244,14 @@ class SVGWidget(gtk.DrawingArea):
 				#~ print(ms_ev)
 				if related:
 					for nodes_target in self.nodes_under_pointer[::-1]:
+						if not (nodes_target in self.previous_nodes_under_pointer):
 							ms_ev = MouseEvent("mouseenter", target=nodes_target, \
 											clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
 											shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 											altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 											buttons=mouse_buttons, relatedTarget=related)
 							if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
-						#~ print(ms_ev)
+							#~ print(ms_ev)
 				else:
 					for nodes_target in self.nodes_under_pointer[::-1]:
 						ms_ev = MouseEvent("mouseenter", target=nodes_target, \
