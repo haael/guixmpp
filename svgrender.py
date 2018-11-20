@@ -109,6 +109,7 @@ class SVGWidget(gtk.DrawingArea):
 		self.connect('button-release-event', self.handle_button_release_event)
 		self.connect('clicked', self.handle_clicked)
 
+		if __debug__: print("{:10} | {:10} | {:10}".format("Type", "Target", "relatedTarget"));
 		self.add_events(gdk.EventMask.POINTER_MOTION_MASK)
 		self.add_events(gdk.EventMask.BUTTON_RELEASE_MASK)
 		self.add_events(gdk.EventMask.BUTTON_PRESS_MASK)
@@ -207,8 +208,8 @@ class SVGWidget(gtk.DrawingArea):
 									shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 									altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 									buttons=mouse_buttons, relatedTarget=related)
-				if __debug__: print(ms_ev.type_, ms_ev.target.get('fill'));
-				print(ms_ev)
+				if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+				#~ print(ms_ev)
 				if related:
 					for nodes_target in self.previous_nodes_under_pointer:
 						if nodes_target not in self.nodes_under_pointer:
@@ -217,8 +218,8 @@ class SVGWidget(gtk.DrawingArea):
 										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 										buttons=mouse_buttons, relatedTarget=related)
-							if __debug__: print(ms_ev.type_, ms_ev.target.get('fill'));
-							print(ms_ev)
+							if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+							#~ print(ms_ev)
 				else:
 					for nodes_target in self.previous_nodes_under_pointer:
 						ms_ev = MouseEvent("mouseleave", target=nodes_target, \
@@ -226,8 +227,8 @@ class SVGWidget(gtk.DrawingArea):
 										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 										buttons=mouse_buttons, relatedTarget=related)
-						if __debug__: print(ms_ev.type_, ms_ev.target.get('fill'));
-						print(ms_ev)
+						if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+						#~ print(ms_ev)
 
 			if self.NodesUnderPointerRelation.CHANGE in marks:
 				if self.previous_nodes_under_pointer:
@@ -239,19 +240,18 @@ class SVGWidget(gtk.DrawingArea):
 									shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 									altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 									buttons=mouse_buttons, relatedTarget=related)
-				if __debug__: print(ms_ev.type_, ms_ev.target.get('fill'));
-				print(ms_ev)
+				if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+				#~ print(ms_ev)
 				if related:
 					for nodes_target in self.nodes_under_pointer[::-1]:
-						if nodes_target in self.previous_nodes_under_pointer:
-							break
-						ms_ev = MouseEvent("mouseenter", target=nodes_target, \
-										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-										buttons=mouse_buttons, relatedTarget=related)
-						if __debug__: print(ms_ev.type_, ms_ev.target.get('fill'));
-						print(ms_ev)
+						if nodes_target not in self.previous_nodes_under_pointer:
+							ms_ev = MouseEvent("mouseenter", target=nodes_target, \
+											clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+											shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+											altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+											buttons=mouse_buttons, relatedTarget=related)
+						if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+						#~ print(ms_ev)
 				else:
 					for nodes_target in self.nodes_under_pointer[::-1]:
 						ms_ev = MouseEvent("mouseenter", target=nodes_target, \
@@ -259,8 +259,9 @@ class SVGWidget(gtk.DrawingArea):
 										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 										buttons=mouse_buttons, relatedTarget=related)
-						if __debug__: print(ms_ev.type_, ms_ev.target.get('fill'));
-						print(ms_ev)
+
+						if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+						#~ print(ms_ev)
 
 			if self.NodesUnderPointerRelation.MOVE in marks:
 				ms_ev = MouseEvent("mousemove", target=self.nodes_under_pointer[-1], \
@@ -268,8 +269,8 @@ class SVGWidget(gtk.DrawingArea):
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								buttons=mouse_buttons)
-				if __debug__: print(ms_ev.type_, ms_ev.target.get('fill'));
-				print(ms_ev)
+				#~ if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+				#~ print(ms_ev)
 		#canvas.queue_draw()
 
 	def handle_button_press_event(self, drawingarea, event):
