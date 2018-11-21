@@ -66,12 +66,6 @@ class SVGWidget(gtk.DrawingArea):
 	CLICK_TIME = float("inf")
 	CLICK_RANGE = 5
 
-	class NodesUnderPointerRelation(Enum):
-		OUT = 1
-		CHANGE = 2
-		MOVE = 4
-		OUTSIDE = 8
-
 	class Keys(Enum):
 		SHIFT = 1
 		ALT = 2
@@ -157,20 +151,6 @@ class SVGWidget(gtk.DrawingArea):
 			active_button = 1
 		return active_button
 
-	def get_nodes_relation_marks(self):
-		marks = set()
-		if self.previous_nodes_under_pointer != self.nodes_under_pointer:
-			if self.nodes_under_pointer:
-				marks.add(self.NodesUnderPointerRelation.CHANGE)
-			if self.previous_nodes_under_pointer:
-				marks.add(self.NodesUnderPointerRelation.OUT)
-		else:
-			if self.previous_nodes_under_pointer:
-				marks.add(self.NodesUnderPointerRelation.MOVE)
-			else:
-				marks.add(self.NodesUnderPointerRelation.OUTSIDE)
-		return frozenset(marks)
-
 	def update_nodes_under_pointer(self, event):
 		self.previous_nodes_under_pointer = self.nodes_under_pointer
 		rect = self.get_allocation()
@@ -192,13 +172,13 @@ class SVGWidget(gtk.DrawingArea):
 			self.last_mousedown = None
 		self.update_nodes_under_pointer(event)
 		marks = self.get_nodes_relation_marks()
-		if self.NodesUnderPointerRelation.OUTSIDE not in marks:
+		if self.previous_nodes_under_pointer != self.nodes_under_pointer:
 			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 			keys = self.get_keys(event)
 			#~ if __debug__:
 				#~ print(len(self.nodes_under_pointer))
 
-			if self.NodesUnderPointerRelation.OUT in marks:
+			if self.previous_nodes_under_pointer:
 				if self.nodes_under_pointer:
 					related = self.nodes_under_pointer[-1]
 				else:
@@ -230,7 +210,7 @@ class SVGWidget(gtk.DrawingArea):
 						if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
 						#~ print(ms_ev)
 
-			if self.NodesUnderPointerRelation.CHANGE in marks:
+			if self.nodes_under_pointer:
 				if self.previous_nodes_under_pointer:
 					related = self.previous_nodes_under_pointer[-1]
 				else:
@@ -253,7 +233,7 @@ class SVGWidget(gtk.DrawingArea):
 							if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
 							#~ print(ms_ev)
 				else:
-					for nodes_target in self.nodes_under_pointer[::-1]:
+					for nodes_target in reversed(self.nodes_under_pointer):
 						ms_ev = MouseEvent("mouseenter", target=nodes_target, \
 										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
 										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
@@ -263,14 +243,14 @@ class SVGWidget(gtk.DrawingArea):
 						if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
 						#~ print(ms_ev)
 
-			if self.NodesUnderPointerRelation.MOVE in marks:
-				ms_ev = MouseEvent("mousemove", target=self.nodes_under_pointer[-1], \
-								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-								buttons=mouse_buttons)
-				#~ if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
-				#~ print(ms_ev)
+		elif self.previous_nodes_under_pointer:
+			ms_ev = MouseEvent("mousemove", target=self.nodes_under_pointer[-1], \
+							clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+							buttons=mouse_buttons)
+			#~ if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+			#~ print(ms_ev)
 		#canvas.queue_draw()
 
 	def handle_button_press_event(self, drawingarea, event):
