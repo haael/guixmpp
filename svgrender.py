@@ -244,7 +244,7 @@ class SVGWidget(gtk.DrawingArea):
 				#~ print(ms_ev)
 				if related:
 					for nodes_target in self.nodes_under_pointer[::-1]:
-						if not (nodes_target in self.previous_nodes_under_pointer):
+						if nodes_target not in self.previous_nodes_under_pointer:
 							ms_ev = MouseEvent("mouseenter", target=nodes_target, \
 											clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
 											shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
