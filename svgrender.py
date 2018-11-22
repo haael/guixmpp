@@ -126,6 +126,12 @@ class SVGWidget(gtk.DrawingArea):
 			return True
 		return False
 
+	@staticmethod
+	def gen_nodes_parents(nodes):
+		if nodes.parent() != None:
+			yield from gen_nodes_parents(nodes.parent())
+		yield nodes
+
 	@classmethod
 	def get_keys(cls, event):
 		return {cls.Keys.SHIFT: bool(event.state & gdk.ModifierType.SHIFT_MASK),\
@@ -334,7 +340,6 @@ class SVGWidget(gtk.DrawingArea):
 			if handler == "motion_notify_event":
 				#~ Mousemove
 				assert if_(self.nodes_under_pointer, then=any(_ms_ev.type_ == "mousemove" for _ms_ev in self.emitted_dom_events)), "For a `motion_notify_event`, when `nodes_under_pointer` are not empty, a DOM event `mousemove` should be emitted."
-				assert if_(self.nodes_under_pointer==self.previous_nodes_under_pointer and self.nodes_under_pointer and self.previous_nodes_under_pointer, then=any(_ms_ev.type_ == "mousemove" for _ms_ev in self.emitted_dom_events)), "For a `motion_notify_event`, when `nodes_under_pointer` is equal to `previous_nodes_under_pointer` and both are not empty, a DOM event `mousemove` should be emitted."
 				assert if_(not self.nodes_under_pointer, then=all(_ms_ev.type_ != "mousemove" for _ms_ev in self.emitted_dom_events)), "For a `motion_notify_event`, when `nodes_under_pointer` are empty, a DOM event `mousemove` should not be emitted."
 
 				#~ Mouseleave
@@ -346,13 +351,17 @@ class SVGWidget(gtk.DrawingArea):
 				assert if_(self.nodes_under_pointer and not self.previous_nodes_under_pointer, then=all(_ms_ev.type_ != "mouseleave" for _ms_ev in self.emitted_dom_events)), "For a `motion_notify_event`, when `nodes_under_pointer` are not empty and `previous_nodes_under_pointer` are empty, a DOM event 'mouseleave` should not be emitted"
 
 				#~ Mouseout
-				assert if_(self.nodes_under_pointer != self.previous_nodes_under_pointer and self.previous_nodes_under_pointer, then=any(_ms_ev.type_ == "mouseout" for _ms_ev in self.emitted_dom_events)), "For a `motion_notify_event`, when `previous_nodes_under_pointer` are different to `nodes_under_pointer` and `previous_nodes_under_pointer`, a DOM event 'mouseout` should be emitted"
-				assert if_(self.nodes_under_pointer != self.previous_nodes_under_pointer and len(self.nodes_under_pointer)==len(self.previous_nodes_under_pointer), then=any(_ms_ev.type_ == "mouseout" for _ms_ev in self.emitted_dom_events)), "For a `motion_notify_event`, when `previous_nodes_under_pointer` are different `nodes_under_pointer` are not empty, a DOM event 'mouseout` should not be emitted"
-				assert if_(len(self.nodes_under_pointer) < len(self.previous_nodes_under_pointer), then=any(_ms_ev.type_ == "mouseout" for _ms_ev in self.emitted_dom_events)), "For a `motion_notify_event`, when `nodes_under_pointer` contains less objects then `previous_nodes_under_pointer`, a DOM event 'mouseout` should be emitted"
-				assert if_(self.previous_nodes_under_pointer and self.previous_nodes_under_pointer[-1] not in self.nodes_under_pointer, then=any(_ms_ev.type_ == "mouseout" for _ms_ev in self.emitted_dom_events)), "For a `motion_notify_event`, when top `previous_nodes_under_pointer` not belongs to `nodes_under_pointer`, a DOM event 'mouseout` should be emitted"
+				assert if_(not self.previous_nodes_under_pointer and not self.nodes_under_pointer, then=all(_ms_ev.type_ != "mouseout" for _ms_ev in self.emitted_dom_events)), "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` are empty, a DOM event 'mouseout` should not be emitted"
+
+
+				#~ assert if_(self.nodes_under_pointer != self.previous_nodes_under_pointer and self.previous_nodes_under_pointer, then=any(_ms_ev.type_ == "mouseout" for _ms_ev in self.emitted_dom_events)), "For a `motion_notify_event`, when `previous_nodes_under_pointer` are different to `nodes_under_pointer` and `previous_nodes_under_pointer`, a DOM event 'mouseout` should be emitted"
+				#~ assert if_(self.nodes_under_pointer != self.previous_nodes_under_pointer and len(self.nodes_under_pointer)==len(self.previous_nodes_under_pointer), then=any(_ms_ev.type_ == "mouseout" for _ms_ev in self.emitted_dom_events)), "For a `motion_notify_event`, when `previous_nodes_under_pointer` are different `nodes_under_pointer` are not empty, a DOM event 'mouseout` should not be emitted"
+				#~ assert if_(len(self.nodes_under_pointer) < len(self.previous_nodes_under_pointer), then=any(_ms_ev.type_ == "mouseout" for _ms_ev in self.emitted_dom_events)), "For a `motion_notify_event`, when `nodes_under_pointer` contains less objects then `previous_nodes_under_pointer`, a DOM event 'mouseout` should be emitted"
+				#~ assert if_(self.previous_nodes_under_pointer and self.previous_nodes_under_pointer[-1] not in self.nodes_under_pointer, then=any(_ms_ev.type_ == "mouseout" for _ms_ev in self.emitted_dom_events)), "For a `motion_notify_event`, when top `previous_nodes_under_pointer` not belongs to `nodes_under_pointer`, a DOM event 'mouseout` should be emitted"
 
 				#~ Mouseenter
 				assert if_(self.nodes_under_pointer and not self.previous_nodes_under_pointer, then=any(_ms_ev.type_ == "mouseenter" for _ms_ev in self.emitted_dom_events)), "For a `motion_notify_event`, when `previous_nodes_under_pointer` are empty and `nodes_under_pointer` are not empty, a DOM event 'mouseenter` should be emitted"
+				assert if_(self.nodes_under_pointer != self.previous_nodes_under_pointer and (len(self.nodes_under_pointer)>=len(self.previous_nodes_under_pointer)), then=any(_ms_ev.type_ == "mousenter" for _ms_ev in self.emitted_dom_events)), "For a `motion_notify_event`, when `previous_nodes_under_pointer` are not equal `nodes_under_pointer` and `nodes_under_pointer` contains equal or more number of items, a DOM event 'mouseenter` should be emitted"
 
 			self.emitted_dom_events.clear()
 		#~ if self.previous_nodes_under_pointer != self.nodes_under_pointer:
