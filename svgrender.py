@@ -66,13 +66,6 @@ class SVGWidget(gtk.DrawingArea):
 	CLICK_TIME = float("inf")
 	CLICK_RANGE = 5
 
-	class NodesUnderPointerRelation(Enum):
-		CHANGED = 1
-		EXIT = 2
-		ENTER = 3
-		MOVE = 4
-		OUT = 5
-
 	class Keys(Enum):
 		SHIFT = 1
 		ALT = 2
@@ -110,6 +103,7 @@ class SVGWidget(gtk.DrawingArea):
 		self.connect('button-release-event', self.handle_button_release_event)
 		self.connect('clicked', self.handle_clicked)
 
+		if __debug__: print("{:10} | {:10} | {:10}".format("Type", "Target", "relatedTarget"));
 		self.add_events(gdk.EventMask.POINTER_MOTION_MASK)
 		self.add_events(gdk.EventMask.BUTTON_RELEASE_MASK)
 		self.add_events(gdk.EventMask.BUTTON_PRESS_MASK)
@@ -157,23 +151,6 @@ class SVGWidget(gtk.DrawingArea):
 			active_button = 1
 		return active_button
 
-	def get_nodes_relation_marks(self):
-		marks = set()
-		if self.previous_nodes_under_pointer != self.nodes_under_pointer:
-			if self.previous_nodes_under_pointer and self.nodes_under_pointer:
-				marks.add(self.NodesUnderPointerRelation.CHANGED)
-			if self.previous_nodes_under_pointer:
-				marks.add(self.NodesUnderPointerRelation.EXIT)
-			if self.nodes_under_pointer:
-				marks.add(self.NodesUnderPointerRelation.ENTER)
-				marks.add(self.NodesUnderPointerRelation.MOVE)
-		else:
-			if self.previous_nodes_under_pointer:
-				marks.add(self.NodesUnderPointerRelation.MOVE)
-			else:
-				marks.add(self.NodesUnderPointerRelation.OUT)
-		return frozenset(marks)
-
 	def update_nodes_under_pointer(self, event):
 		self.previous_nodes_under_pointer = self.nodes_under_pointer
 		rect = self.get_allocation()
@@ -194,52 +171,86 @@ class SVGWidget(gtk.DrawingArea):
 		if self.last_mousedown and not self.check_click_hysteresis(self.last_mousedown, event):
 			self.last_mousedown = None
 		self.update_nodes_under_pointer(event)
-		marks = self.get_nodes_relation_marks()
-		if self.NodesUnderPointerRelation.OUT not in marks:
+		if self.previous_nodes_under_pointer != self.nodes_under_pointer:
 			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 			keys = self.get_keys(event)
-			if self.NodesUnderPointerRelation.MOVE in marks:
-				ms_ev = MouseEvent("mousemove", target=self.nodes_under_pointer[-1], \
-								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-								buttons=mouse_buttons)
-				print(ms_ev)
-			if self.NodesUnderPointerRelation.ENTER in marks:
-				if self.previous_nodes_under_pointer:
-					previous_related_target = self.previous_nodes_under_pointer[-1]
-				else:
-					previous_related_target = None
-				ms_ev = MouseEvent("mouseover", target=self.nodes_under_pointer[-1], \
-								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-								buttons=mouse_buttons, relatedTarget=previous_related_target)
-				print(ms_ev)
-				ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
-								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-								buttons=mouse_buttons, relatedTarget=previous_related_target)
-				print(ms_ev)
-			if self.NodesUnderPointerRelation.EXIT in marks:
-				if self.nodes_under_pointer:
-					new_target = self.nodes_under_pointer[-1]
-				else:
-					new_target = None
-				ms_ev = MouseEvent("mouseout", target=new_target, \
-								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-								buttons=mouse_buttons, relatedTarget=new_target)
-				print(ms_ev)
-				ms_ev = MouseEvent("mouseleave", target=new_target, \
-								clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-								buttons=mouse_buttons, relatedTarget=new_target)
-				print(ms_ev)
+			#~ if __debug__: print(len(self.nodes_under_pointer));
 
+			if self.previous_nodes_under_pointer:
+				if self.nodes_under_pointer:
+					related = self.nodes_under_pointer[-1]
+				else:
+					related = None
+				ms_ev = MouseEvent("mouseout", target=self.previous_nodes_under_pointer[-1], \
+									clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+									shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+									altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+									buttons=mouse_buttons, relatedTarget=related)
+				if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+				print(ms_ev)
+				if related:
+					for nodes_target in self.previous_nodes_under_pointer:
+						if nodes_target not in self.nodes_under_pointer:
+							ms_ev = MouseEvent("mouseleave", target=nodes_target, \
+										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+										buttons=mouse_buttons, relatedTarget=related)
+							if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+							print(ms_ev)
+				else:
+					for nodes_target in self.previous_nodes_under_pointer:
+						ms_ev = MouseEvent("mouseleave", target=nodes_target, \
+										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+										buttons=mouse_buttons, relatedTarget=related)
+						if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+						print(ms_ev)
+
+			if self.nodes_under_pointer:
+				if self.previous_nodes_under_pointer:
+					related = self.previous_nodes_under_pointer[-1]
+				else:
+					related = None
+				ms_ev = MouseEvent("mouseover", target=self.nodes_under_pointer[-1], \
+									clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+									shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+									altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+									buttons=mouse_buttons, relatedTarget=related)
+				if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+				print(ms_ev)
+				if related:
+					for nodes_target in reversed(self.nodes_under_pointer):
+						if nodes_target not in self.previous_nodes_under_pointer:
+							ms_ev = MouseEvent("mouseenter", target=nodes_target, \
+											clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+											shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+											altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+											buttons=mouse_buttons, relatedTarget=related)
+							if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+							print(ms_ev)
+				else:
+					for nodes_target in reversed(self.nodes_under_pointer):
+						ms_ev = MouseEvent("mouseenter", target=nodes_target, \
+										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+										buttons=mouse_buttons, relatedTarget=related)
+
+						if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+						print(ms_ev)
+
+		elif self.previous_nodes_under_pointer:
+			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
+			keys = self.get_keys(event)
+			ms_ev = MouseEvent("mousemove", target=self.nodes_under_pointer[-1], \
+							clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+							buttons=mouse_buttons)
+			if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+			print(ms_ev)
 		#canvas.queue_draw()
 
 	def handle_button_press_event(self, drawingarea, event):
@@ -314,7 +325,7 @@ if __name__ == '__main__':
 	window.set_name('main_window')
 
 	svgwidget = SVGWidget()
-	svgwidget.load_url('gfx/BYR_color_wheel.svg')
+	svgwidget.load_url('gfx/drawing.svg')
 	window.add(svgwidget)
 
 	window.show_all()
