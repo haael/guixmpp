@@ -309,8 +309,7 @@ class SVGWidget(gtk.DrawingArea):
 		if __debug__:
 			print("clicked")
 
-	@staticmethod
-	def emit_dom_event(handler, ms_ev):
+	def emit_dom_event(self, handler, ms_ev):
 		print(handler, ms_ev)
 
 
