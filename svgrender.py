@@ -126,11 +126,11 @@ class SVGWidget(gtk.DrawingArea):
 			return True
 		return False
 
-	@staticmethod
-	def gen_nodes_parents(nodes):
-		if nodes.parent() != None:
-			yield from gen_nodes_parents(nodes.parent())
-		yield nodes
+	@classmethod
+	def gen_node_parents(cls, node):
+		if node.parent:
+			yield from cls.gen_node_parents(node.parent)
+		yield node
 
 	@classmethod
 	def get_keys(cls, event):
@@ -268,6 +268,7 @@ class SVGWidget(gtk.DrawingArea):
 
 	def handle_button_press_event(self, drawingarea, event):
 		if self.nodes_under_pointer:
+			#~ if __debug__: print("\n".join(str(i) for i in self.gen_node_parents(self.nodes_under_pointer[-1])))
 			self.current_click_count += 1
 			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 			mouse_button = self.get_pressed_mouse_button(event)
