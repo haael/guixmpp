@@ -251,8 +251,7 @@ class SVGWidget(gtk.DrawingArea):
 						if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
 						self.emit_dom_event("motion_notify_event", ms_ev)
 
-		elif self.previous_nodes_under_pointer:
-		#~ if self.nodes_under_pointer:
+		if self.nodes_under_pointer:
 			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 			keys = self.get_keys(event)
 			ms_ev = MouseEvent("mousemove", target=self.nodes_under_pointer[-1], \
@@ -331,7 +330,7 @@ class SVGWidget(gtk.DrawingArea):
 		if __debug__: self.check_dom_events("clicked")
 
 	def emit_dom_event(self, handler, ms_ev):
-		#~ print(handler, ms_ev)
+		print(handler, ms_ev)
 		if __debug__:
 			self.emitted_dom_events.append(ms_ev)
 
