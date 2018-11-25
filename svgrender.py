@@ -54,6 +54,7 @@ class SVGRender(cairosvg.surface.Surface):
 		return instance.nodes_under_pointer, instance.rendered_svg_surface
 
 
+
 class SVGWidget(gtk.DrawingArea):
 	__gsignals__ = { \
 		'clicked': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_PYOBJECT,))
@@ -178,6 +179,8 @@ class SVGWidget(gtk.DrawingArea):
 		context.paint()
 
 	def handle_motion_notify_event(self, drawingarea, event):
+		if __debug__:
+			assert not self.emitted_dom_events
 		if self.last_mousedown and not self.check_click_hysteresis(self.last_mousedown, event):
 			self.last_mousedown = None
 		self.update_nodes_under_pointer(event)
@@ -263,7 +266,10 @@ class SVGWidget(gtk.DrawingArea):
 			self.emit_dom_event("motion_notify_event", ms_ev)
 		#canvas.queue_draw()
 
-		if __debug__: self.check_dom_events("motion_notify_event")
+		if __debug__:
+			self.check_dom_events("motion_notify_event")
+			assert not self.emitted_dom_events
+
 
 	def handle_button_press_event(self, drawingarea, event):
 		if self.nodes_under_pointer:
@@ -329,18 +335,24 @@ class SVGWidget(gtk.DrawingArea):
 
 		if __debug__: self.check_dom_events("clicked")
 
+
 	def emit_dom_event(self, handler, ms_ev):
 		#~ print(handler, ms_ev)
 		if __debug__:
 			self.emitted_dom_events.append(ms_ev)
 
+
+	def reset_after_exception(self):
+		if __debug__:
+			self.emitted_dom_events.clear()
+
 	if __debug__:
 		def check_dom_events(self, handler):
 
 			if handler == "motion_notify_event":
-				#~ print()
-				#~ print("\n".join(_ms_ev.type_ for _ms_ev in self.emitted_dom_events))
-				#~ print()
+				print()
+				print("\n".join(_ms_ev.type_ for _ms_ev in self.emitted_dom_events))
+				print()
 				#~ Mousemove
 				assert any(_ms_ev.type_ == "mousemove" for _ms_ev in self.emitted_dom_events) if self.nodes_under_pointer else True, "For a `motion_notify_event`, when `nodes_under_pointer` are not empty, a DOM event `mousemove` should be emitted."
 				assert all(_ms_ev.type_ != "mousemove" for _ms_ev in self.emitted_dom_events) if not self.nodes_under_pointer else True, "For a `motion_notify_event`, when `nodes_under_pointer` are empty, a DOM event `mousemove` should not be emitted."
@@ -381,6 +393,7 @@ class SVGWidget(gtk.DrawingArea):
 
 if __name__ == '__main__':
 	import signal
+	import sys
 
 	from gi.repository import GLib as glib
 
@@ -401,6 +414,7 @@ if __name__ == '__main__':
 
 	mainloop = gobject.MainLoop()
 	signal.signal(signal.SIGTERM, lambda signum, frame: mainloop.quit())
+	sys.excepthook = lambda x, y, z: (sys.__excepthook__(x, y, z), svgwidget.reset_after_exception())
 	window.connect('destroy', lambda window: mainloop.quit())
 
 	try:
