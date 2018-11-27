@@ -17,6 +17,9 @@ import cairosvg.parser
 from enum import Enum
 from math import hypot
 
+if __debug__:
+	from collections import Counter
+
 
 class SVGRender(cairosvg.surface.Surface):
 	def create_recording_surface(self, output, width, height):
@@ -352,9 +355,12 @@ class SVGWidget(gtk.DrawingArea):
 			return frozenset(id(anc) for anc in cls.gen_node_parents(node))
 
 		def check_dom_events(self, handler):
-			nup = self.nodes_under_pointer
-			pnup = self.previous_nodes_under_pointer
+			cnt = Counter((_ms_ev.type_, id(_ms_ev.target)) for _ms_ev in self.emitted_dom_events)
+			common, common_num = cnt.most_common(1)[0]
+			assert common_num < 2, "For a DOM Event `"+common[0]+"`, shoudn't be emitted two events with equal target and type."
 			if handler == "motion_notify_event":
+				nup = self.nodes_under_pointer
+				pnup = self.previous_nodes_under_pointer
 				#~ print()
 				#~ print("\n".join(mev.type_ for mev in self.emitted_dom_events))
 				#~ print()
@@ -401,6 +407,13 @@ class SVGWidget(gtk.DrawingArea):
 				assert all(_ms_ev.type_ != "mouseover" for _ms_ev in self.emitted_dom_events) if (not nup and pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` aren't empty and `nodes_under_pointer` are empty, a DOM event 'mouseover` should be emitted"
 				assert all(_ms_ev.type_ != "mouseover" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] == pnup[-1]) else True, "For a `motion_notify_event`, when top `previous_nodes_under_pointer` and top `nodes_under_pointer` are equal, a DOM event 'mouseover` shouldn't be emitted"
 				assert any(_ms_ev.type_ == "mouseover" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1]) else True, "For a `motion_notify_event`, when top `previous_nodes_under_pointer` and top `nodes_under_pointer` are different, a DOM event 'mouseover` should be emitted"
+
+				#~Target
+				assert all(_ms_ev.target != None for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseover" or _ms_ev.type_ == "mouseout"),"For `motion_notify_event` of type `mouseover` or `mouseout`, event target can't be None."
+				assert all(nup and _ms_ev.target == nup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseover" or _ms_ev.type_ == "mouseenter"), "For `motion_notify_event` of type `mouseover` or `mouseenter`, event target should be top `nodes_under_pointer` element"
+				assert all(pnup and _ms_ev.target == pnup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseout" or _ms_ev.type_ == "mouseleave"), "For `motion_notify_event` of type `mouseout` or `mouseleave`, event target should be top `previous_nodes_under_pointer` element"
+
+			assert all(nup and _ms_ev.target == nup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mousedown", "mouseup", "click", "dblclick")), "For types `mousedown`, `mouseup`, `click` and `dblclick, event target should be top `nodes_under_pointer` element"
 
 			self.emitted_dom_events.clear()
 
