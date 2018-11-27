@@ -347,49 +347,62 @@ class SVGWidget(gtk.DrawingArea):
 			self.emitted_dom_events.clear()
 
 	if __debug__:
-		def check_dom_events(self, handler):
+		@classmethod
+		def ancestor(cls, node):
+			return frozenset(id(anc) for anc in cls.gen_node_parents(node))
 
+		def check_dom_events(self, handler):
+			nup = self.nodes_under_pointer
+			pnup = self.previous_nodes_under_pointer
 			if handler == "motion_notify_event":
-				print()
-				print("\n".join(_ms_ev.type_ for _ms_ev in self.emitted_dom_events))
-				print()
+				#~ print()
+				#~ print("\n".join(mev.type_ for mev in self.emitted_dom_events))
+				#~ print()
+				#~ if nup and pnup:
+					#~ print("nup", self.ancestor(nup[-1]))
+					#~ print("pnup", self.ancestor(pnup[-1]))
+					#~ print("nup - pnup", self.ancestor(nup[-1]) - self.ancestor(pnup[-1]))
+					#~ print("pnup - nup", self.ancestor(pnup[-1]) - self.ancestor(nup[-1]))
+				#~ elif nup:
+					#~ print("nup", self.ancestor(nup[-1]))
+				#~ elif pnup:
+					#~ print("nup", self.ancestor(pnup[-1]))
+
 				#~ Mousemove
-				assert any(_ms_ev.type_ == "mousemove" for _ms_ev in self.emitted_dom_events) if self.nodes_under_pointer else True, "For a `motion_notify_event`, when `nodes_under_pointer` are not empty, a DOM event `mousemove` should be emitted."
-				assert all(_ms_ev.type_ != "mousemove" for _ms_ev in self.emitted_dom_events) if not self.nodes_under_pointer else True, "For a `motion_notify_event`, when `nodes_under_pointer` are empty, a DOM event `mousemove` should not be emitted."
-				#Przez przydługie przechowywanie, to się często będzie wyrzucać.
+				assert any(_ms_ev.type_ == "mousemove" for _ms_ev in self.emitted_dom_events) if nup else True, "For a `motion_notify_event`, when `nodes_under_pointer` are not empty, a DOM event `mousemove` should be emitted."
+				assert all(_ms_ev.type_ != "mousemove" for _ms_ev in self.emitted_dom_events) if not nup else True, "For a `motion_notify_event`, when `nodes_under_pointer` are empty, a DOM event `mousemove` should not be emitted."
 
 				#~ Mouseleave
-				#~ assert all(_ms_ev.type_ != "mouseleave" for _ms_ev in self.emitted_dom_events) if (not self.nodes_under_pointer and not self.previous_nodes_under_pointer) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` are empty, a DOM event 'mouseleave` shouldn't be emitted"
-				#~ assert all(_ms_ev.type_ != "mouseleave" for _ms_ev in self.emitted_dom_events) if (self.nodes_under_pointer and not self.previous_nodes_under_pointer) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` are empty and `nodes_under_pointer` aren't empty, a DOM event 'mouseleave` shouldn't be emitted"
-				#~ assert any(_ms_ev.type_ == "mouseleave" for _ms_ev in self.emitted_dom_events) if (not self.nodes_under_pointer and self.previous_nodes_under_pointer) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` aren't empty and `nodes_under_pointer` are empty, a DOM event 'mouseleave` should be emitted"
-				#~ assert any(_ms_ev.type_ == "mouseleave" for _ms_ev in self.emitted_dom_events) if (self.nodes_under_pointer and self.previous_nodes_under_pointer and self.nodes_under_pointer[-1] == self.previous_nodes_under_pointer) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` aren't empty and top element is equal, a DOM event 'mouseleave` should be emitted" #Tu zarówno może, jak i niemoże być wyrzucony
-				#~ assert any(_ms_ev.type_ == "mouseleave" for _ms_ev in self.emitted_dom_events) if (self.nodes_under_pointer and self.previous_nodes_under_pointer and self.nodes_under_pointer[-1] != self.previous_nodes_under_pointer[-1]) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` aren't empty and top element is different, a DOM event 'mouseleave` should be emitted" #Tu zależnie czy wchodzimy w region, mouseleave się pojawi lub nie.
+				assert all(_ms_ev.type_ != "mouseleave" for _ms_ev in self.emitted_dom_events) if (not nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` are empty, a DOM event 'mouseleave` shouldn't be emitted"
+				assert all(_ms_ev.type_ != "mouseleave" for _ms_ev in self.emitted_dom_events) if (nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` are empty and `nodes_under_pointer` aren't empty, a DOM event 'mouseleave` shouldn't be emitted"
+				assert any(_ms_ev.type_ == "mouseleave" for _ms_ev in self.emitted_dom_events) if (not nup and pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` aren't empty and `nodes_under_pointer` are empty, a DOM event 'mouseleave` should be emitted"
+				assert all(_ms_ev.type_ != "mouseleave" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] == pnup[-1]) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` aren't empty and top element is equal, a DOM event 'mouseleave` shouldn't be emitted"
+				assert all(_ms_ev.type_ != "mouseleave" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1] and not (self.ancestor(pnup[-1]) - self.ancestor(nup[-1]))) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` aren't empty and top element is different and top `previous_nodes_under_pointer` have all top `nodes_under_pointer` ancestors, a DOM event 'mouseleave` shouldn't be emitted"
+				assert any(_ms_ev.type_ == "mouseleave" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1] and not (self.ancestor(nup[-1]) - self.ancestor(pnup[-1]))) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` aren't empty and top element is different and top `previous_nodes_under_pointer` have all top `nodes_under_pointer` ancestors, a DOM event 'mouseleave` should be emitted"
 
 				#~ Mouseout
-				assert all(_ms_ev.type_ != "mouseout" for _ms_ev in self.emitted_dom_events) if (not self.nodes_under_pointer and not self.previous_nodes_under_pointer) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` are empty, a DOM event 'mouseout` shouldn't be emitted"
-				assert all(_ms_ev.type_ != "mouseout" for _ms_ev in self.emitted_dom_events) if (self.nodes_under_pointer and not self.previous_nodes_under_pointer) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` are empty and `nodes_under_pointer` aren't empty, a DOM event 'mouseout` shouldn't be emitted"
-				assert any(_ms_ev.type_ == "mouseout" for _ms_ev in self.emitted_dom_events) if not self.nodes_under_pointer and self.previous_nodes_under_pointer else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` aren't empty and `nodes_under_pointer` are empty, a DOM event 'mouseout` should be emitted"
-				assert all(_ms_ev.type_ != "mouseout" for _ms_ev in self.emitted_dom_events) if (self.nodes_under_pointer and self.previous_nodes_under_pointer and self.nodes_under_pointer[-1] == self.previous_nodes_under_pointer[-1]) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` aren't empty and top element is equal, a DOM event 'mouseout` shouldn't be emitted"
-				assert any(_ms_ev.type_ == "mouseout" for _ms_ev in self.emitted_dom_events) if (self.nodes_under_pointer and self.previous_nodes_under_pointer and self.nodes_under_pointer[-1] != self.previous_nodes_under_pointer[-1]) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` aren't empty and top element is different, a DOM event 'mouseout` should be emitted"
+				assert all(_ms_ev.type_ != "mouseout" for _ms_ev in self.emitted_dom_events) if (not nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` are empty, a DOM event 'mouseout` shouldn't be emitted"
+				assert all(_ms_ev.type_ != "mouseout" for _ms_ev in self.emitted_dom_events) if (nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` are empty and `nodes_under_pointer` aren't empty, a DOM event 'mouseout` shouldn't be emitted"
+				assert any(_ms_ev.type_ == "mouseout" for _ms_ev in self.emitted_dom_events) if (not nup and pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` aren't empty and `nodes_under_pointer` are empty, a DOM event 'mouseout` should be emitted"
+				assert all(_ms_ev.type_ != "mouseout" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] == pnup[-1]) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` aren't empty and top element is equal, a DOM event 'mouseout` shouldn't be emitted"
+				assert any(_ms_ev.type_ == "mouseout" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1]) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` aren't empty and top element is different, a DOM event 'mouseout` should be emitted"
 
 				#~ Mouseenter
-				#~ assert all(_ms_ev.type_ != "mouseenter" for _ms_ev in self.emitted_dom_events) if (not self.nodes_under_pointer and not self.previous_nodes_under_pointer) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` are empty, a DOM event 'mouseleave` shouldn't be emitted"
-				#~ assert any(_ms_ev.type_ == "mouseenter" for _ms_ev in self.emitted_dom_events) if (self.nodes_under_pointer and not self.previous_nodes_under_pointer) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` are empty and `nodes_under_pointer` aren't empty, a DOM event 'mouseenter` should be emitted"
-				#~ assert all(_ms_ev.type_ != "mouseenter" for _ms_ev in self.emitted_dom_events) if (not self.nodes_under_pointer and self.previous_nodes_under_pointer) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` aren't empty and `nodes_under_pointer` are empty, a DOM event 'mouseenter` should be emitted"
-				#~ assert any(_ms_ev.type_ == "mouseenter" for _ms_ev in self.emitted_dom_events) if (self.nodes_under_pointer and self.previous_nodes_under_pointer and self.nodes_under_pointer[-1] == self.previous_nodes_under_pointer[-1]) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` aren't empty and top element is equal, a DOM event 'mouseenter` should be emitted" #Tu zarówno może, jak i niemoże być wyrzucony
-				#~ assert any(_ms_ev.type_ == "mouseenter" for _ms_ev in self.emitted_dom_events) if (self.nodes_under_pointer and self.previous_nodes_under_pointer and self.nodes_under_pointer[-1] != self.previous_nodes_under_pointer[-1]) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` aren't empty and top element is different, a DOM event 'mouseenter` should be emitted" #Tu zależnie czy wchodzimy w region, mouseenter się pojawi lub nie.
-
+				assert all(_ms_ev.type_ != "mouseenter" for _ms_ev in self.emitted_dom_events) if (not nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` are empty, a DOM event 'mouseleave` shouldn't be emitted"
+				assert any(_ms_ev.type_ == "mouseenter" for _ms_ev in self.emitted_dom_events) if (nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` are empty and `nodes_under_pointer` aren't empty, a DOM event 'mouseenter` should be emitted"
+				assert all(_ms_ev.type_ != "mouseenter" for _ms_ev in self.emitted_dom_events) if (not nup and pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` aren't empty and `nodes_under_pointer` are empty, a DOM event 'mouseenter` should be emitted"
+				assert all(_ms_ev.type_ != "mouseenter" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] == pnup[-1]) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` aren't empty and top element is equal, a DOM event 'mouseenter` shouldn't be emitted"
+				assert any(_ms_ev.type_ == "mouseenter" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1] and (self.ancestor(pnup[-1]) - self.ancestor(nup[-1]))) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` aren't empty and top element is different and top `previous_nodes_under_pointer` have all top `nodes_under_pointer` ancestors, a DOM event 'mouseenter` should be emitted"
+				assert all(_ms_ev.type_ != "mouseenter" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1] and not (self.ancestor(nup[-1]) - self.ancestor(pnup[-1]))) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` aren't empty and top element is different and top `previous_nodes_under_pointer` have all top `nodes_under_pointer` ancestors, a DOM event 'mouseenter` shouldn't be emitted"
 
 				#~Mouseover
-				assert all(_ms_ev.type_ != "mouseover" for _ms_ev in self.emitted_dom_events) if (not self.nodes_under_pointer and not self.previous_nodes_under_pointer) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` are empty, a DOM event 'mouseover` shouldn't be emitted"
-				assert any(_ms_ev.type_ == "mouseover" for _ms_ev in self.emitted_dom_events) if (self.nodes_under_pointer and not self.previous_nodes_under_pointer) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` are empty and `nodes_under_pointer` aren't empty, a DOM event 'mouseover` should be emitted"
-				assert all(_ms_ev.type_ != "mouseover" for _ms_ev in self.emitted_dom_events) if (not self.nodes_under_pointer and self.previous_nodes_under_pointer) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` aren't empty and `nodes_under_pointer` are empty, a DOM event 'mouseover` should be emitted"
-				assert all(_ms_ev.type_ != "mouseover" for _ms_ev in self.emitted_dom_events) if (self.nodes_under_pointer and self.previous_nodes_under_pointer and self.nodes_under_pointer[-1] == self.previous_nodes_under_pointer[-1]) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` aren't empty and top element is equal, a DOM event 'mouseover` shouldn't be emitted"
-				assert any(_ms_ev.type_ == "mouseover" for _ms_ev in self.emitted_dom_events) if (self.nodes_under_pointer and self.previous_nodes_under_pointer and self.nodes_under_pointer[-1] != self.previous_nodes_under_pointer[-1]) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` aren't empty and top element is different, a DOM event 'mouseover` should be emitted"
+				assert all(_ms_ev.type_ != "mouseover" for _ms_ev in self.emitted_dom_events) if (not nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` are empty, a DOM event 'mouseover` shouldn't be emitted"
+				assert any(_ms_ev.type_ == "mouseover" for _ms_ev in self.emitted_dom_events) if (nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` are empty and `nodes_under_pointer` aren't empty, a DOM event 'mouseover` should be emitted"
+				assert all(_ms_ev.type_ != "mouseover" for _ms_ev in self.emitted_dom_events) if (not nup and pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` aren't empty and `nodes_under_pointer` are empty, a DOM event 'mouseover` should be emitted"
+				assert all(_ms_ev.type_ != "mouseover" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] == pnup[-1]) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` aren't empty and top element is equal, a DOM event 'mouseover` shouldn't be emitted"
+				assert any(_ms_ev.type_ == "mouseover" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1]) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` aren't empty and top element is different, a DOM event 'mouseover` should be emitted"
 
 			self.emitted_dom_events.clear()
-
-
 
 if __name__ == '__main__':
 	import signal
