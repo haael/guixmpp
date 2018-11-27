@@ -54,6 +54,7 @@ class SVGRender(cairosvg.surface.Surface):
 		return instance.nodes_under_pointer, instance.rendered_svg_surface
 
 
+
 class SVGWidget(gtk.DrawingArea):
 	__gsignals__ = { \
 		'clicked': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_PYOBJECT,))
@@ -63,7 +64,7 @@ class SVGWidget(gtk.DrawingArea):
 		<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 1 1" width="1px" height="1px">
 		</svg>
 	'''
-	
+
 	CLICK_TIME = float("inf")
 	CLICK_RANGE = 5
 
@@ -89,10 +90,10 @@ class SVGWidget(gtk.DrawingArea):
 				gtk.render_frame(style_context, context, -canvas_allocation.x, -canvas_allocation.y, parent_allocation.width, parent_allocation.height)
 
 		self.SVGRenderBg = SVGRenderBg
-		
+
 		if __debug__:
 			self.emitted_dom_events = list()
-		
+
 		self.document = cairosvg.parser.Tree(bytestring=self.EMPTY_SVG)
 
 		self.rendered_svg_surface = None
@@ -125,6 +126,12 @@ class SVGWidget(gtk.DrawingArea):
 		   and (event.get_time() - press_event.get_time()) < cls.CLICK_TIME:
 			return True
 		return False
+
+	@classmethod
+	def gen_node_parents(cls, node):
+		if node.parent:
+			yield from cls.gen_node_parents(node.parent)
+		yield node
 
 	@classmethod
 	def get_keys(cls, event):
@@ -172,6 +179,8 @@ class SVGWidget(gtk.DrawingArea):
 		context.paint()
 
 	def handle_motion_notify_event(self, drawingarea, event):
+		if __debug__:
+			assert not self.emitted_dom_events
 		if self.last_mousedown and not self.check_click_hysteresis(self.last_mousedown, event):
 			self.last_mousedown = None
 		self.update_nodes_under_pointer(event)
@@ -245,7 +254,7 @@ class SVGWidget(gtk.DrawingArea):
 						if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
 						self.emit_dom_event("motion_notify_event", ms_ev)
 
-		elif self.previous_nodes_under_pointer:
+		if self.nodes_under_pointer:
 			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 			keys = self.get_keys(event)
 			ms_ev = MouseEvent("mousemove", target=self.nodes_under_pointer[-1], \
@@ -256,11 +265,15 @@ class SVGWidget(gtk.DrawingArea):
 			if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
 			self.emit_dom_event("motion_notify_event", ms_ev)
 		#canvas.queue_draw()
-		
-		if __debug__: self.check_dom_events("motion_notify_event")
+
+		if __debug__:
+			self.check_dom_events("motion_notify_event")
+			assert not self.emitted_dom_events
+
 
 	def handle_button_press_event(self, drawingarea, event):
 		if self.nodes_under_pointer:
+			#~ if __debug__: print("\n".join(str(i) for i in self.gen_node_parents(self.nodes_under_pointer[-1])))
 			self.current_click_count += 1
 			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 			mouse_button = self.get_pressed_mouse_button(event)
@@ -280,7 +293,7 @@ class SVGWidget(gtk.DrawingArea):
 			self.last_mousedown = event.copy()
 		else:
 			self.last_mousedown = None
-		
+
 		if __debug__: self.check_dom_events("button_press_event")
 
 
@@ -301,7 +314,7 @@ class SVGWidget(gtk.DrawingArea):
 			self.emit('clicked', event)
 		else:
 			self.last_mousedown = None
-		
+
 		if __debug__: self.check_dom_events("button_release_event")
 
 
@@ -319,35 +332,81 @@ class SVGWidget(gtk.DrawingArea):
 			self.emit_dom_event("clicked", ms_ev)
 		if __debug__:
 			print("clicked")
-		
+
 		if __debug__: self.check_dom_events("clicked")
 
+
 	def emit_dom_event(self, handler, ms_ev):
-		print(handler, ms_ev)
+		#~ print(handler, ms_ev)
 		if __debug__:
 			self.emitted_dom_events.append(ms_ev)
-	
-	if __debug__:
-		def check_dom_events(self, handler):
-			
-			if handler == "motion_notify_event":
-				assert if_(self.nodes_under_pointer, then=any(_ms_ev.type_ == "mousemove" for _ms_ev in self.emitted_dom_events)), "For a `motion_notify_event`, when `nodes_under_pointer` are not empty, a DOM event `mousemove` should be emitted."
-				assert if_(not self.nodes_under_pointer, then=all(_ms_ev.type_ != "mousemove" for _ms_ev in self.emitted_dom_events)), "For a `motion_notify_event`, when `nodes_under_pointer` are empty, a DOM event `mousemove` should not be emitted."
-			
+
+
+	def reset_after_exception(self):
+		if __debug__:
 			self.emitted_dom_events.clear()
 
+	if __debug__:
+		@classmethod
+		def ancestors(cls, node):
+			return frozenset(id(anc) for anc in cls.gen_node_parents(node))
 
-if __debug__:
-	def if_(condition, then):
-		if condition:
-			return then
-		else:
-			return True
+		def check_dom_events(self, handler):
+			nup = self.nodes_under_pointer
+			pnup = self.previous_nodes_under_pointer
+			if handler == "motion_notify_event":
+				#~ print()
+				#~ print("\n".join(mev.type_ for mev in self.emitted_dom_events))
+				#~ print()
+				#~ if nup and pnup:
+					#~ print("nup", self.ancestor(nup[-1]))
+					#~ print("pnup", self.ancestor(pnup[-1]))
+					#~ print("nup - pnup", self.ancestor(nup[-1]) - self.ancestor(pnup[-1]))
+					#~ print("pnup - nup", self.ancestor(pnup[-1]) - self.ancestor(nup[-1]))
+				#~ elif nup:
+					#~ print("nup", self.ancestor(nup[-1]))
+				#~ elif pnup:
+					#~ print("nup", self.ancestor(pnup[-1]))
 
+				#~ Mousemove
+				assert any(_ms_ev.type_ == "mousemove" for _ms_ev in self.emitted_dom_events) if nup else True, "For a `motion_notify_event`, when `nodes_under_pointer` are not empty, a DOM event `mousemove` should be emitted."
+				assert all(_ms_ev.type_ != "mousemove" for _ms_ev in self.emitted_dom_events) if not nup else True, "For a `motion_notify_event`, when `nodes_under_pointer` are empty, a DOM event `mousemove` should not be emitted."
 
+				#~ Mouseleave
+				assert all(_ms_ev.type_ != "mouseleave" for _ms_ev in self.emitted_dom_events) if (not nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` are empty, a DOM event 'mouseleave` shouldn't be emitted"
+				assert all(_ms_ev.type_ != "mouseleave" for _ms_ev in self.emitted_dom_events) if (nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` are empty and `nodes_under_pointer` aren't empty, a DOM event 'mouseleave` shouldn't be emitted"
+				assert any(_ms_ev.type_ == "mouseleave" for _ms_ev in self.emitted_dom_events) if (not nup and pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` aren't empty and `nodes_under_pointer` are empty, a DOM event 'mouseleave` should be emitted"
+				assert all(_ms_ev.type_ != "mouseleave" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] == pnup[-1]) else True, "For a `motion_notify_event`, when top `previous_nodes_under_pointer` and top `nodes_under_pointer` are equal, a DOM event 'mouseleave` shouldn't be emitted"
+				assert any(_ms_ev.type_ == "mouseleave" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1] and self.ancestors(pnup[-1]) - self.ancestors(nup[-1])) else True, "`mouseleave` DOM event, should be emitted when not all ancestors of previous element are in set of new element ancestors."
+				assert all(_ms_ev.type_ != "mouseleave" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1] and not (self.ancestors(pnup[-1]) - self.ancestors(nup[-1]))) else True, "'mouseleave' DOM event, shoudn't be emiited when all ancestors of previous element are in set of new element ancestors."
+
+				#~ Mouseout
+				assert all(_ms_ev.type_ != "mouseout" for _ms_ev in self.emitted_dom_events) if (not nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` are empty, a DOM event 'mouseout` shouldn't be emitted"
+				assert all(_ms_ev.type_ != "mouseout" for _ms_ev in self.emitted_dom_events) if (nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` are empty and `nodes_under_pointer` aren't empty, a DOM event 'mouseout` shouldn't be emitted"
+				assert any(_ms_ev.type_ == "mouseout" for _ms_ev in self.emitted_dom_events) if (not nup and pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` aren't empty and `nodes_under_pointer` are empty, a DOM event 'mouseout` should be emitted"
+				assert all(_ms_ev.type_ != "mouseout" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] == pnup[-1]) else True, "For a `motion_notify_event`, when top `previous_nodes_under_pointer` and top `nodes_under_pointer` are equal, a DOM event 'mouseout` shouldn't be emitted"
+				assert any(_ms_ev.type_ == "mouseout" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1]) else True, "For a `motion_notify_event`, when top `previous_nodes_under_pointer` and top `nodes_under_pointer` are different, a DOM event 'mouseout` should be emitted"
+
+				#~ Mouseenter
+				assert all(_ms_ev.type_ != "mouseenter" for _ms_ev in self.emitted_dom_events) if (not nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` are empty, a DOM event 'mouseleave` shouldn't be emitted"
+				assert any(_ms_ev.type_ == "mouseenter" for _ms_ev in self.emitted_dom_events) if (nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` are empty and `nodes_under_pointer` aren't empty, a DOM event 'mouseenter` should be emitted"
+				assert all(_ms_ev.type_ != "mouseenter" for _ms_ev in self.emitted_dom_events) if (not nup and pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` aren't empty and `nodes_under_pointer` are empty, a DOM event 'mouseenter` should be emitted"
+				assert all(_ms_ev.type_ != "mouseenter" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] == pnup[-1]) else True, "For a `motion_notify_event`, when top `previous_nodes_under_pointer` and top `nodes_under_pointer` are equal, a DOM event 'mouseenter` shouldn't be emitted"
+				assert any(_ms_ev.type_ == "mouseenter" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1] and self.ancestors(nup[-1]) - self.ancestors(pnup[-1])) else True, "`mouseenter` DOM event, should be emitted when not all ancestors of new element are in set of previous element ancestors."
+				assert all(_ms_ev.type_ != "mouseenter" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1] and not (self.ancestors(nup[-1]) - self.ancestors(pnup[-1]))) else True, "'mouseenter' DOM event, shoudn't be emiited when all ancestors of new element are in set of previous element ancestors."
+
+				#~Mouseover
+				assert all(_ms_ev.type_ != "mouseover" for _ms_ev in self.emitted_dom_events) if (not nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` are empty, a DOM event 'mouseover` shouldn't be emitted"
+				assert any(_ms_ev.type_ == "mouseover" for _ms_ev in self.emitted_dom_events) if (nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` are empty and `nodes_under_pointer` aren't empty, a DOM event 'mouseover` should be emitted"
+				assert all(_ms_ev.type_ != "mouseover" for _ms_ev in self.emitted_dom_events) if (not nup and pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` aren't empty and `nodes_under_pointer` are empty, a DOM event 'mouseover` should be emitted"
+				assert all(_ms_ev.type_ != "mouseover" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] == pnup[-1]) else True, "For a `motion_notify_event`, when top `previous_nodes_under_pointer` and top `nodes_under_pointer` are equal, a DOM event 'mouseover` shouldn't be emitted"
+				assert any(_ms_ev.type_ == "mouseover" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1]) else True, "For a `motion_notify_event`, when top `previous_nodes_under_pointer` and top `nodes_under_pointer` are different, a DOM event 'mouseover` should be emitted"
+
+			self.emitted_dom_events.clear()
 
 if __name__ == '__main__':
 	import signal
+	import sys
 
 	from gi.repository import GLib as glib
 
@@ -368,6 +427,7 @@ if __name__ == '__main__':
 
 	mainloop = gobject.MainLoop()
 	signal.signal(signal.SIGTERM, lambda signum, frame: mainloop.quit())
+	sys.excepthook = lambda x, y, z: (sys.__excepthook__(x, y, z), svgwidget.reset_after_exception())
 	window.connect('destroy', lambda window: mainloop.quit())
 
 	try:
