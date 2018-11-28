@@ -356,8 +356,9 @@ class SVGWidget(gtk.DrawingArea):
 
 		def check_dom_events(self, handler):
 			cnt = Counter((_ms_ev.type_, id(_ms_ev.target)) for _ms_ev in self.emitted_dom_events)
-			common, common_num = cnt.most_common(1)[0]
-			assert common_num < 2, "For a DOM Event `"+common[0]+"`, shoudn't be emitted two events with equal target and type."
+			if len(cnt) > 0:
+				common, common_num = cnt.most_common(1)[0]
+				assert common_num < 2, "For a DOM Event `"+common[0]+"`, shoudn't be emitted two events with equal target and type."
 			if handler == "motion_notify_event":
 				nup = self.nodes_under_pointer
 				pnup = self.previous_nodes_under_pointer
