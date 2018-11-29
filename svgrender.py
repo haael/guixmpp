@@ -356,33 +356,23 @@ class SVGWidget(gtk.DrawingArea):
 	if __debug__:
 
 		def check_dom_events(self, handler):
+			nup = self.nodes_under_pointer
+			pnup = self.previous_nodes_under_pointer
+
 			cnt = Counter((_ms_ev.type_, id(_ms_ev.target)) for _ms_ev in self.emitted_dom_events)
-			if len(cnt) > 0:
+			if cnt:
 				common, common_num = cnt.most_common(1)[0]
-				assert common_num < 2, "For a DOM Event `"+common[0]+"`, shoudn't be emitted two events with equal target and type."
+				assert common_num < 2, "For a DOM Event `{}`, shoudn't be emitted two events with equal target and type.".format(common[0])
 
 			#~Target
-			assert all(_ms_ev.target != None for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseover" or _ms_ev.type_ == "mouseout"),"For `motion_notify_event` of type `mouseover` or `mouseout`, event target can't be None."
-			assert all(nup and _ms_ev.target == nup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseover"), "For `motion_notify_event` of type `mouseover`, event target should be top `nodes_under_pointer` element"
-			assert all(pnup and _ms_ev.target == pnup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseout"), "For `motion_notify_event` of type `mouseout`, event target should be top `previous_nodes_under_pointer` element"
+			assert all(_ms_ev.target != None for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mouseover", "mouseout", "mouseenter","mouseleave", "mousedown", "click", "dblclick")), "For events of types `mouseover`, `mouseout`, `mouseenter`,`mouseleave`, `mousedown`, `click` and `dblclick` event target can't be None."
 
-			assert all(nup and _ms_ev.target == nup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mousedown", "mouseup", "click", "dblclick")), "For types `mousedown`, `mouseup`, `click` and `dblclick, event target should be top `nodes_under_pointer` element"
+			assert all(nup and _ms_ev.target == nup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseover"), "For events of type `mouseover`, event target should be top `nodes_under_pointer` element"
+			assert all(pnup and _ms_ev.target == pnup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseout"), "For events of type `mouseout`, event target should be top `previous_nodes_under_pointer` element"
+			assert all(nup and _ms_ev.target == nup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mousedown", "click", "dblclick")), "For event of types `mousedown`, `mouseup`, `click` and `dblclick, event target should be top `nodes_under_pointer` element"
+			assert all(not nup and _ms_ev.target == None for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseup"), "For event of type `mouseup` event target should be None if fired out of window border."
+
 			if handler == "motion_notify_event":
-				nup = self.nodes_under_pointer
-				pnup = self.previous_nodes_under_pointer
-				#~ print()
-				#~ print("\n".join(mev.type_ for mev in self.emitted_dom_events))
-				#~ print()
-				#~ if nup and pnup:
-					#~ print("nup", self.ancestor(nup[-1]))
-					#~ print("pnup", self.ancestor(pnup[-1]))
-					#~ print("nup - pnup", self.ancestor(nup[-1]) - self.ancestor(pnup[-1]))
-					#~ print("pnup - nup", self.ancestor(pnup[-1]) - self.ancestor(nup[-1]))
-				#~ elif nup:
-					#~ print("nup", self.ancestor(nup[-1]))
-				#~ elif pnup:
-					#~ print("nup", self.ancestor(pnup[-1]))
-
 				#~ Mousemove
 				assert any(_ms_ev.type_ == "mousemove" for _ms_ev in self.emitted_dom_events) if nup else True, "For a `motion_notify_event`, when `nodes_under_pointer` are not empty, a DOM event `mousemove` should be emitted."
 				assert all(_ms_ev.type_ != "mousemove" for _ms_ev in self.emitted_dom_events) if not nup else True, "For a `motion_notify_event`, when `nodes_under_pointer` are empty, a DOM event `mousemove` should not be emitted."
