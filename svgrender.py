@@ -7,6 +7,7 @@ gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk as gtk
 from gi.repository import Gdk as gdk
 from gi.repository import GObject as gobject
+from gi.repository import GLib as glib
 
 from domevents import *
 import cairo
@@ -317,8 +318,9 @@ class SVGWidget(gtk.DrawingArea):
 								button=mouse_button, buttons=mouse_buttons)
 			self.emit_dom_event("button_release_event", ms_ev)
 		if self.last_mousedown and self.check_click_hysteresis(self.last_mousedown, event):
+			event_copy = event.copy()
+			glib.idle_add(lambda: self.emit('clicked', event_copy) and False)
 			self.last_mousedown = None
-			self.emit('clicked', event)
 		else:
 			self.last_mousedown = None
 
@@ -412,8 +414,6 @@ class SVGWidget(gtk.DrawingArea):
 if __name__ == '__main__':
 	import signal
 	import sys
-
-	from gi.repository import GLib as glib
 
 	glib.threads_init()
 
