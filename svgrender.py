@@ -363,8 +363,8 @@ class SVGWidget(gtk.DrawingArea):
 
 			#~Target
 			assert all(_ms_ev.target != None for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseover" or _ms_ev.type_ == "mouseout"),"For `motion_notify_event` of type `mouseover` or `mouseout`, event target can't be None."
-			assert all(nup and _ms_ev.target == nup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseover"), "For `motion_notify_event` of type `mouseover` or `mouseenter`, event target should be top `nodes_under_pointer` element"
-			assert all(pnup and _ms_ev.target == pnup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseout"), "For `motion_notify_event` of type `mouseout` or `mouseleave`, event target should be top `previous_nodes_under_pointer` element"
+			assert all(nup and _ms_ev.target == nup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseover"), "For `motion_notify_event` of type `mouseover`, event target should be top `nodes_under_pointer` element"
+			assert all(pnup and _ms_ev.target == pnup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseout"), "For `motion_notify_event` of type `mouseout`, event target should be top `previous_nodes_under_pointer` element"
 
 			assert all(nup and _ms_ev.target == nup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mousedown", "mouseup", "click", "dblclick")), "For types `mousedown`, `mouseup`, `click` and `dblclick, event target should be top `nodes_under_pointer` element"
 			if handler == "motion_notify_event":
