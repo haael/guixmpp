@@ -366,7 +366,6 @@ class SVGWidget(gtk.DrawingArea):
 
 			#~Target
 			assert all(_ms_ev.target != None for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mouseover", "mouseout", "mouseenter","mouseleave", "mousedown", "click", "dblclick")), "For events of types `mouseover`, `mouseout`, `mouseenter`,`mouseleave`, `mousedown`, `click` and `dblclick` event target can't be None."
-
 			assert all(nup and _ms_ev.target == nup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseover"), "For events of type `mouseover`, event target should be top `nodes_under_pointer` element"
 			assert all(pnup and _ms_ev.target == pnup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseout"), "For events of type `mouseout`, event target should be top `previous_nodes_under_pointer` element"
 			assert all(nup and _ms_ev.target == nup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mousedown", "click", "dblclick")), "For event of types `mousedown`, `mouseup`, `click` and `dblclick, event target should be top `nodes_under_pointer` element"
