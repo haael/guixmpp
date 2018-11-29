@@ -368,10 +368,10 @@ class SVGWidget(gtk.DrawingArea):
 
 			#~Target
 			assert all(_ms_ev.target != None for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mouseover", "mouseout", "mouseenter","mouseleave", "mousedown", "click", "dblclick")), "For events of types `mouseover`, `mouseout`, `mouseenter`,`mouseleave`, `mousedown`, `click` and `dblclick` event target can't be None."
-			assert all(nup and _ms_ev.target == nup[-1] for _ms_ev in self.emitted_dom_events if (_ms_ev.type_ == "mouseover")), "For events of type `mouseover`, event target should be top `nodes_under_pointer` element"
-			assert all(nup and _ms_ev.target in nup for _ms_ev in self.emitted_dom_events if (_ms_ev.type_ == "mouseenter")), "For events of type `mouseenter`, event target should be in `nodes_under_pointer` elements"
-			assert all(pnup and _ms_ev.target == pnup[-1] for _ms_ev in self.emitted_dom_events if (_ms_ev.type_ == "mouseout")), "For events of type `mouseout`, event target should be top `previous_nodes_under_pointer` element"
-			assert all(pnup and _ms_ev.target in pnup for _ms_ev in self.emitted_dom_events if (_ms_ev.type_ == "mouseleave")), "For events of type `mouseleave`, event target should be in `previous_nodes_under_pointer` elements"
+			assert all(nup and _ms_ev.target == nup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseover"), "For events of type `mouseover`, event target should be top `nodes_under_pointer` element"
+			assert all(nup and _ms_ev.target in nup for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseenter"), "For events of type `mouseenter`, event target should be in `nodes_under_pointer` elements"
+			assert all(pnup and _ms_ev.target == pnup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseout"), "For events of type `mouseout`, event target should be top `previous_nodes_under_pointer` element"
+			assert all(pnup and _ms_ev.target in pnup for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseleave"), "For events of type `mouseleave`, event target should be in `previous_nodes_under_pointer` elements"
 			assert all(nup and _ms_ev.target == nup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mousedown", "click", "dblclick")), "For event of types `mousedown`, `mouseup`, `click` and `dblclick, event target should be top `nodes_under_pointer` element"
 			assert all(_ms_ev.target == nup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseup") if nup else all(_ms_ev.target == None for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseup"), "For event of type `mouseup` event target should be None if fired out of window border, otherwise target should be top `nodes_under_pointer` if it is over element."
 
