@@ -193,6 +193,7 @@ class SVGWidget(gtk.DrawingArea):
 			assert not self.emitted_dom_events
 		if self.last_mousedown and not self.check_click_hysteresis(self.last_mousedown, event):
 			self.last_mousedown = None
+			self.current_click_count = 0
 		self.update_nodes_under_pointer(event)
 		if self.previous_nodes_under_pointer != self.nodes_under_pointer:
 			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
@@ -329,6 +330,7 @@ class SVGWidget(gtk.DrawingArea):
 			glib.idle_add(lambda: self.emit('clicked', event_copy) and False)
 		else:
 			self.last_mousedown = None
+			self.current_click_count = 0
 
 		if __debug__: self.check_dom_events("button_release_event")
 
