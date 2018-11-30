@@ -421,6 +421,7 @@ class SVGWidget(gtk.DrawingArea):
 
 			elif handler == "clicked":
 				assert all(_ms_ev.type_ == "click" for _ms_ev in self.emitted_dom_events), "For `clicked`, only event of type `click` should be emitted."
+				assert any(_ms_ev.type_ == "click" for _ms_ev in self.emitted_dom_events) if nup else True, "For `clicked`, any event of type `click` should be emitted."
 
 			self.emitted_dom_events.clear()
 
