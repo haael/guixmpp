@@ -414,10 +414,10 @@ class SVGWidget(gtk.DrawingArea):
 				assert any(_ms_ev.type_ == "mouseover" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1]) else True, "For a `motion_notify_event`, when top `previous_nodes_under_pointer` and top `nodes_under_pointer` are different, a DOM event 'mouseover` should be emitted"
 
 			elif handler == "button_press_event":
-				assert all(_ms_ev.type_ == "mousedown" for _ms_ev in self.emitted_dom_events) if (not nup) else True, "For `button_press_event`, only event of type `mousedown` should be emitted."
+				assert all(_ms_ev.type_ == "mousedown" for _ms_ev in self.emitted_dom_events), "For `button_press_event`, only event of type `mousedown` should be emitted."
 
 			elif handler == "button_release_event":
-				pass
+				assert all(_ms_ev.type_ == "mouseup" for _ms_ev in self.emitted_dom_events), "For `button_release_event`, only event of type `mouseup` should be emitted."
 
 			elif handler == "clicked":
 				assert all(_ms_ev.type_ == "click" for _ms_ev in self.emitted_dom_events), "For `clicked`, only event of type `click` should be emitted."
