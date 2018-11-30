@@ -292,6 +292,7 @@ class SVGWidget(gtk.DrawingArea):
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								button=mouse_button, buttons=mouse_buttons)
+			if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
 			self.emit_dom_event("button_press_event", ms_ev)
 		if event.button == gdk.BUTTON_PRIMARY and event.state & (gdk.ModifierType.BUTTON1_MASK | \
 																 gdk.ModifierType.BUTTON2_MASK | \
@@ -316,6 +317,7 @@ class SVGWidget(gtk.DrawingArea):
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								button=mouse_button, buttons=mouse_buttons)
+			if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
 			self.emit_dom_event("button_release_event", ms_ev)
 		if self.last_mousedown and self.check_click_hysteresis(self.last_mousedown, event):
 			event_copy = event.copy()
@@ -338,6 +340,7 @@ class SVGWidget(gtk.DrawingArea):
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								button=mouse_button, buttons=mouse_buttons)
+			if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
 			self.emit_dom_event("clicked", ms_ev)
 		if __debug__:
 			print("clicked")
@@ -414,13 +417,10 @@ class SVGWidget(gtk.DrawingArea):
 				assert all(_ms_ev.type_ != "mousedown" for _ms_ev in self.emitted_dom_events) if (not nup) else True, "For `button_press_event`, when `nodes_under_pointer` are empty, shouldn't be emitted."
 
 			elif handler == "button_release_event":
-				print(self.emitted_dom_events)
-				assert any(_ms_ev.type_ == "mouseup" for _ms_ev in self.emitted_dom_events), "For `button_release_event` mouseup always should be emitted."
+				pass
 
 			elif handler == "clicked":
-				print(self.emitted_dom_events)
-				assert any(_ms_ev.type_ == "click" for _ms_ev in self.emitted_dom_events) if (nup and self.last_mousedown) else True, "For `clicked`, when `last_mousedown` exist and pointer is under any object, event of type `click` should be emitted."
-				assert all(_ms_ev.type_ == "click" for _ms_ev in self.emitted_dom_events) if (not self.last_mousedown) else True, "For `clicked` when `last_mousedown` is None, event of type `click` shouldn't be emitted."
+				assert any(_ms_ev.type_ == "click" for _ms_ev in self.emitted_dom_events), "For `clicked` event of type `click` should be emitted."
 
 			self.emitted_dom_events.clear()
 
