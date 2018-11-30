@@ -307,18 +307,22 @@ class SVGWidget(gtk.DrawingArea):
 
 
 	def handle_button_release_event(self, drawingarea, event):
+		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
+		mouse_button = self.get_pressed_mouse_button(event)
+		keys = self.get_keys(event)
 		if self.nodes_under_pointer:
-			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
-			mouse_button = self.get_pressed_mouse_button(event)
-			keys = self.get_keys(event)
-			ms_ev = MouseEvent(	"mouseup", target=self.nodes_under_pointer[-1], \
-								detail=self.current_click_count, clientX=event.x, clientY=event.y, \
-								screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-								button=mouse_button, buttons=mouse_buttons)
-			if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
-			self.emit_dom_event("button_release_event", ms_ev)
+			mouseup_target = self.nodes_under_pointer[-1]
+		else:
+			mouseup_target = None
+		ms_ev = MouseEvent(	"mouseup", target=mouseup_target, \
+							detail=self.current_click_count, clientX=event.x, clientY=event.y, \
+							screenX=event.x_root, screenY=event.y_root, \
+							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+							button=mouse_button, buttons=mouse_buttons)
+
+		if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill') if ms_ev.target else "None", ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+		self.emit_dom_event("button_release_event", ms_ev)
 		if self.last_mousedown and self.check_click_hysteresis(self.last_mousedown, event):
 			event_copy = event.copy()
 			glib.idle_add(lambda: self.emit('clicked', event_copy) and False)
