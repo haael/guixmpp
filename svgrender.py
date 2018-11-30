@@ -346,12 +346,13 @@ class SVGWidget(gtk.DrawingArea):
 								button=mouse_button, buttons=mouse_buttons)
 			if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
 			self.emit_dom_event("clicked", ms_ev)
-		if self.last_mousedown and self.check_click_hysteresis(self.last_mousedown, event):
+		if self.last_mousedown and self.check_click_hysteresis(self.last_mousedown, event) and self.current_click_count == 2:
 			event_copy = event.copy()
 			glib.idle_add(lambda: self.emit('dblclicked', event_copy) and False)
 			self.last_mousedown = None
 		else:
 			self.last_mousedown = None
+		self.current_click_count = 0
 		if __debug__:
 			print("clicked")
 
