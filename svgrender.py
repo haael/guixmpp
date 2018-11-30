@@ -61,7 +61,8 @@ class SVGRender(cairosvg.surface.Surface):
 
 class SVGWidget(gtk.DrawingArea):
 	__gsignals__ = { \
-		'clicked': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_PYOBJECT,))
+		'clicked': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_PYOBJECT,)),
+		'dblclicked': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_PYOBJECT,))
 	}
 
 	EMPTY_SVG = b'''<?xml version="1.0" encoding="UTF-8"?>
@@ -111,6 +112,7 @@ class SVGWidget(gtk.DrawingArea):
 		self.connect('button-press-event', self.handle_button_press_event)
 		self.connect('button-release-event', self.handle_button_release_event)
 		self.connect('clicked', self.handle_clicked)
+		self.connect('dblclicked', self.handle_dblclicked)
 
 		if __debug__: print("{:10} | {:10} | {:10}".format("Type", "Target", "relatedTarget"));
 		self.add_events(gdk.EventMask.POINTER_MOTION_MASK)
@@ -281,7 +283,6 @@ class SVGWidget(gtk.DrawingArea):
 
 	def handle_button_press_event(self, drawingarea, event):
 		if self.nodes_under_pointer:
-			#~ if __debug__: print("\n".join(str(i) for i in self.gen_node_parents(self.nodes_under_pointer[-1])))
 			self.current_click_count += 1
 			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 			mouse_button = self.get_pressed_mouse_button(event)
@@ -326,7 +327,6 @@ class SVGWidget(gtk.DrawingArea):
 		if self.last_mousedown and self.check_click_hysteresis(self.last_mousedown, event):
 			event_copy = event.copy()
 			glib.idle_add(lambda: self.emit('clicked', event_copy) and False)
-			self.last_mousedown = None
 		else:
 			self.last_mousedown = None
 
@@ -346,10 +346,35 @@ class SVGWidget(gtk.DrawingArea):
 								button=mouse_button, buttons=mouse_buttons)
 			if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
 			self.emit_dom_event("clicked", ms_ev)
+		if self.last_mousedown and self.check_click_hysteresis(self.last_mousedown, event):
+			event_copy = event.copy()
+			glib.idle_add(lambda: self.emit('dblclicked', event_copy) and False)
+			self.last_mousedown = None
+		else:
+			self.last_mousedown = None
 		if __debug__:
 			print("clicked")
 
 		if __debug__: self.check_dom_events("clicked")
+
+	def handle_dblclicked(self, drawingarea, event):
+		if self.nodes_under_pointer:
+			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
+			mouse_button = self.get_pressed_mouse_button(event)
+			keys = self.get_keys(event)
+			ms_ev = MouseEvent(	"dblclick", target=self.nodes_under_pointer[-1], \
+								detail=self.current_click_count, clientX=event.x, clientY=event.y, \
+								screenX=event.x_root, screenY=event.y_root, \
+								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+								button=mouse_button, buttons=mouse_buttons)
+			if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+			self.emit_dom_event("dblclicked", ms_ev)
+		if __debug__:
+			print("dblclicked")
+
+		if __debug__: self.check_dom_events("dblclicked")
+
 
 
 	def emit_dom_event(self, handler, ms_ev):
