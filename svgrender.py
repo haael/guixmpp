@@ -159,11 +159,11 @@ class SVGWidget(gtk.DrawingArea):
 		context.paint()
 
 	def handle_motion_notify_event(self, drawingarea, event):
+		print("Motion")
 		if __debug__:
 			assert not self.emitted_dom_events
 		if self.last_mousedown and not self.check_click_hysteresis(self.last_mousedown, event):
 			self.last_mousedown = None
-			self.last_click = None
 		#canvas.queue_draw()
 
 		if __debug__:
@@ -172,6 +172,7 @@ class SVGWidget(gtk.DrawingArea):
 
 
 	def handle_button_press_event(self, drawingarea, event):
+		print("Press")
 		if event.button == gdk.BUTTON_PRIMARY and event.state & (gdk.ModifierType.BUTTON1_MASK | \
 																 gdk.ModifierType.BUTTON2_MASK | \
 																 gdk.ModifierType.BUTTON3_MASK | \
@@ -185,26 +186,25 @@ class SVGWidget(gtk.DrawingArea):
 
 
 	def handle_button_release_event(self, drawingarea, event):
+		print("Release")
 		if self.last_mousedown and self.check_click_hysteresis(self.last_mousedown, event):
 			event_copy = event.copy()
 			glib.idle_add(lambda: self.emit('clicked', event_copy) and False)
-			self.last_mousedown = None
-		else:
-			self.last_mousedown = None
+		self.last_mousedown = None
 		if __debug__: self.check_dom_events("button_release_event")
 
-
-
 	def handle_clicked(self, drawingarea, event):
+		print("Clicked")
 		if self.last_click and self.check_click_hysteresis(self.last_click, event):
 			event_copy = event.copy()
 			glib.idle_add(lambda: self.emit('dblclicked', event_copy) and False)
 			self.last_click = None
-		elif self.nodes_under_pointer:
+		else:
 			self.last_click = event.copy()
 		if __debug__: self.check_dom_events("clicked")
 
 	def handle_dblclicked(self, drawingarea, event):
+		print("Dblclicked")
 		if __debug__: self.check_dom_events("dblclicked")
 
 
