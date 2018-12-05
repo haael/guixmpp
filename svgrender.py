@@ -9,7 +9,6 @@ from gi.repository import Gdk as gdk
 from gi.repository import GObject as gobject
 from gi.repository import GLib as glib
 
-from domevents import *
 import cairo
 
 import cairosvg.surface
@@ -61,7 +60,8 @@ class SVGRender(cairosvg.surface.Surface):
 
 class SVGWidget(gtk.DrawingArea):
 	__gsignals__ = { \
-		'clicked': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_PYOBJECT,))
+		'clicked': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_PYOBJECT,)),
+		'dblclicked': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_PYOBJECT,))
 	}
 
 	EMPTY_SVG = b'''<?xml version="1.0" encoding="UTF-8"?>
@@ -103,14 +103,15 @@ class SVGWidget(gtk.DrawingArea):
 		self.rendered_svg_surface = None
 		self.nodes_under_pointer = []
 		self.previous_nodes_under_pointer = []
-		self.current_click_count = 0
 		self.last_mousedown = None
+		self.last_click = None
 		self.connect('configure-event', self.handle_configure_event)
 		self.connect('draw', self.handle_draw)
 		self.connect('motion-notify-event', self.handle_motion_notify_event)
 		self.connect('button-press-event', self.handle_button_press_event)
 		self.connect('button-release-event', self.handle_button_release_event)
 		self.connect('clicked', self.handle_clicked)
+		self.connect('dblclicked', self.handle_dblclicked)
 
 		if __debug__: print("{:10} | {:10} | {:10}".format("Type", "Target", "relatedTarget"));
 		self.add_events(gdk.EventMask.POINTER_MOTION_MASK)
@@ -138,37 +139,8 @@ class SVGWidget(gtk.DrawingArea):
 		yield node
 
 	@classmethod
-	def get_keys(cls, event):
-		return {cls.Keys.SHIFT: bool(event.state & gdk.ModifierType.SHIFT_MASK),\
-				cls.Keys.CTRL: bool(event.state & gdk.ModifierType.CONTROL_MASK),\
-				cls.Keys.ALT: bool(event.state & (gdk.ModifierType.MOD1_MASK | gdk.ModifierType.MOD5_MASK)),\
-				cls.Keys.META: bool(event.state & (gdk.ModifierType.META_MASK | gdk.ModifierType.SUPER_MASK | gdk.ModifierType.MOD4_MASK))}
-
-	@classmethod
 	def ancestors(cls, node):
 		return frozenset(id(anc) for anc in cls.gen_node_parents(node))
-
-	@staticmethod
-	def get_pressed_mouse_buttons_mask(event):
-		active_buttons = 0
-		if event.state & gdk.ModifierType.BUTTON1_MASK:
-			active_buttons |= 1
-		if event.state & gdk.ModifierType.BUTTON3_MASK:
-			active_buttons |= 2
-		if event.state & gdk.ModifierType.BUTTON2_MASK:
-			active_buttons |= 4
-		return active_buttons
-
-	@staticmethod
-	def get_pressed_mouse_button(event):
-		active_button = 0
-		if event.button == gdk.BUTTON_PRIMARY:
-			active_button = 0
-		elif event.button == gdk.BUTTON_SECONDARY:
-			active_button = 2
-		elif event.button == gdk.BUTTON_MIDDLE:
-			active_button = 1
-		return active_button
 
 	def update_nodes_under_pointer(self, event):
 		self.previous_nodes_under_pointer = self.nodes_under_pointer
@@ -187,91 +159,11 @@ class SVGWidget(gtk.DrawingArea):
 		context.paint()
 
 	def handle_motion_notify_event(self, drawingarea, event):
+		print("Motion")
 		if __debug__:
 			assert not self.emitted_dom_events
 		if self.last_mousedown and not self.check_click_hysteresis(self.last_mousedown, event):
 			self.last_mousedown = None
-		self.update_nodes_under_pointer(event)
-		if self.previous_nodes_under_pointer != self.nodes_under_pointer:
-			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
-			keys = self.get_keys(event)
-			#~ if __debug__: print(len(self.nodes_under_pointer));
-
-			if self.previous_nodes_under_pointer:
-				if self.nodes_under_pointer:
-					related = self.nodes_under_pointer[-1]
-				else:
-					related = None
-				ms_ev = MouseEvent("mouseout", target=self.previous_nodes_under_pointer[-1], \
-									clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-									shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-									altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-									buttons=mouse_buttons, relatedTarget=related)
-				if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
-				self.emit_dom_event("motion_notify_event", ms_ev)
-				if related:
-					for nodes_target in self.previous_nodes_under_pointer:
-						if nodes_target not in self.nodes_under_pointer:
-							ms_ev = MouseEvent("mouseleave", target=nodes_target, \
-										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-										buttons=mouse_buttons, relatedTarget=related)
-							if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
-							self.emit_dom_event("motion_notify_event", ms_ev)
-				else:
-					for nodes_target in self.previous_nodes_under_pointer:
-						ms_ev = MouseEvent("mouseleave", target=nodes_target, \
-										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-										buttons=mouse_buttons, relatedTarget=related)
-						if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
-						self.emit_dom_event("motion_notify_event", ms_ev)
-
-			if self.nodes_under_pointer:
-				if self.previous_nodes_under_pointer:
-					related = self.previous_nodes_under_pointer[-1]
-				else:
-					related = None
-				ms_ev = MouseEvent("mouseover", target=self.nodes_under_pointer[-1], \
-									clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-									shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-									altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-									buttons=mouse_buttons, relatedTarget=related)
-				if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
-				self.emit_dom_event("motion_notify_event", ms_ev)
-				if related:
-					for nodes_target in reversed(self.nodes_under_pointer):
-						if nodes_target not in self.previous_nodes_under_pointer:
-							ms_ev = MouseEvent("mouseenter", target=nodes_target, \
-											clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-											shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-											altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-											buttons=mouse_buttons, relatedTarget=related)
-							if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
-							self.emit_dom_event("motion_notify_event", ms_ev)
-				else:
-					for nodes_target in reversed(self.nodes_under_pointer):
-						ms_ev = MouseEvent("mouseenter", target=nodes_target, \
-										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-										buttons=mouse_buttons, relatedTarget=related)
-
-						if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
-						self.emit_dom_event("motion_notify_event", ms_ev)
-
-		if self.nodes_under_pointer:
-			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
-			keys = self.get_keys(event)
-			ms_ev = MouseEvent("mousemove", target=self.nodes_under_pointer[-1], \
-							clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-							buttons=mouse_buttons)
-			if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
-			self.emit_dom_event("motion_notify_event", ms_ev)
 		#canvas.queue_draw()
 
 		if __debug__:
@@ -280,20 +172,7 @@ class SVGWidget(gtk.DrawingArea):
 
 
 	def handle_button_press_event(self, drawingarea, event):
-		if self.nodes_under_pointer:
-			#~ if __debug__: print("\n".join(str(i) for i in self.gen_node_parents(self.nodes_under_pointer[-1])))
-			self.current_click_count += 1
-			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
-			mouse_button = self.get_pressed_mouse_button(event)
-			keys = self.get_keys(event)
-			ms_ev = MouseEvent(	"mousedown", target=self.nodes_under_pointer[-1], \
-								detail=self.current_click_count, clientX=event.x, clientY=event.y, \
-								screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-								button=mouse_button, buttons=mouse_buttons)
-			if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
-			self.emit_dom_event("button_press_event", ms_ev)
+		print("Press")
 		if event.button == gdk.BUTTON_PRIMARY and event.state & (gdk.ModifierType.BUTTON1_MASK | \
 																 gdk.ModifierType.BUTTON2_MASK | \
 																 gdk.ModifierType.BUTTON3_MASK | \
@@ -307,49 +186,27 @@ class SVGWidget(gtk.DrawingArea):
 
 
 	def handle_button_release_event(self, drawingarea, event):
-		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
-		mouse_button = self.get_pressed_mouse_button(event)
-		keys = self.get_keys(event)
-		if self.nodes_under_pointer:
-			mouseup_target = self.nodes_under_pointer[-1]
-		else:
-			mouseup_target = None
-		ms_ev = MouseEvent(	"mouseup", target=mouseup_target, \
-							detail=self.current_click_count, clientX=event.x, clientY=event.y, \
-							screenX=event.x_root, screenY=event.y_root, \
-							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-							button=mouse_button, buttons=mouse_buttons)
-
-		if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill') if ms_ev.target else "None", ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
-		self.emit_dom_event("button_release_event", ms_ev)
+		print("Release")
 		if self.last_mousedown and self.check_click_hysteresis(self.last_mousedown, event):
 			event_copy = event.copy()
 			glib.idle_add(lambda: self.emit('clicked', event_copy) and False)
-			self.last_mousedown = None
-		else:
-			self.last_mousedown = None
-
+		self.last_mousedown = None
 		if __debug__: self.check_dom_events("button_release_event")
 
-
 	def handle_clicked(self, drawingarea, event):
-		if self.nodes_under_pointer:
-			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
-			mouse_button = self.get_pressed_mouse_button(event)
-			keys = self.get_keys(event)
-			ms_ev = MouseEvent(	"click", target=self.nodes_under_pointer[-1], \
-								detail=self.current_click_count, clientX=event.x, clientY=event.y, \
-								screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-								button=mouse_button, buttons=mouse_buttons)
-			if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
-			self.emit_dom_event("clicked", ms_ev)
-		if __debug__:
-			print("clicked")
-
+		print("Clicked")
+		if self.last_click and self.check_click_hysteresis(self.last_click, event):
+			event_copy = event.copy()
+			glib.idle_add(lambda: self.emit('dblclicked', event_copy) and False)
+			self.last_click = None
+		else:
+			self.last_click = event.copy()
 		if __debug__: self.check_dom_events("clicked")
+
+	def handle_dblclicked(self, drawingarea, event):
+		print("Dblclicked")
+		if __debug__: self.check_dom_events("dblclicked")
+
 
 
 	def emit_dom_event(self, handler, ms_ev):
@@ -429,7 +286,7 @@ class SVGWidget(gtk.DrawingArea):
 
 			elif handler == "dblclicked":
 				assert all(_ms_ev.type_ == "dblclick" for _ms_ev in self.emitted_dom_events), "For `dblclicked`, only event of type `dblclick` should be emitted."
-				assert any(_ms_ev.type_ == "dblclick" for _ms_ev in self.emitted_dom_events) if num else True, "For `dblclicked`, any event of type `dblclick` should be emitted."
+				assert any(_ms_ev.type_ == "dblclick" for _ms_ev in self.emitted_dom_events) if nup else True, "For `dblclicked`, any event of type `dblclick` should be emitted."
 
 			self.emitted_dom_events.clear()
 
