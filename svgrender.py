@@ -104,8 +104,8 @@ class SVGWidget(gtk.DrawingArea):
 		self.rendered_svg_surface = None
 		self.nodes_under_pointer = []
 		self.previous_nodes_under_pointer = []
-		self.current_click_count = 0
 		self.last_mousedown = None
+		self.last_click = None
 		self.connect('configure-event', self.handle_configure_event)
 		self.connect('draw', self.handle_draw)
 		self.connect('motion-notify-event', self.handle_motion_notify_event)
@@ -193,7 +193,7 @@ class SVGWidget(gtk.DrawingArea):
 			assert not self.emitted_dom_events
 		if self.last_mousedown and not self.check_click_hysteresis(self.last_mousedown, event):
 			self.last_mousedown = None
-			self.current_click_count = 0
+			self.last_click = None
 		self.update_nodes_under_pointer(event)
 		if self.previous_nodes_under_pointer != self.nodes_under_pointer:
 			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
@@ -284,12 +284,12 @@ class SVGWidget(gtk.DrawingArea):
 
 	def handle_button_press_event(self, drawingarea, event):
 		if self.nodes_under_pointer:
-			self.current_click_count += 1
+			#~ if __debug__: print("\n".join(str(i) for i in self.gen_node_parents(self.nodes_under_pointer[-1])))
 			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 			mouse_button = self.get_pressed_mouse_button(event)
 			keys = self.get_keys(event)
 			ms_ev = MouseEvent(	"mousedown", target=self.nodes_under_pointer[-1], \
-								detail=self.current_click_count, clientX=event.x, clientY=event.y, \
+								detail=1, clientX=event.x, clientY=event.y, \
 								screenX=event.x_root, screenY=event.y_root, \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
@@ -303,6 +303,7 @@ class SVGWidget(gtk.DrawingArea):
 																 gdk.ModifierType.BUTTON5_MASK) == 0:
 			self.last_mousedown = event.copy()
 		else:
+			self.last_click = None
 			self.last_mousedown = None
 
 		if __debug__: self.check_dom_events("button_press_event")
@@ -317,7 +318,7 @@ class SVGWidget(gtk.DrawingArea):
 		else:
 			mouseup_target = None
 		ms_ev = MouseEvent(	"mouseup", target=mouseup_target, \
-							detail=self.current_click_count, clientX=event.x, clientY=event.y, \
+							detail=1, clientX=event.x, clientY=event.y, \
 							screenX=event.x_root, screenY=event.y_root, \
 							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
@@ -328,11 +329,13 @@ class SVGWidget(gtk.DrawingArea):
 		if self.last_mousedown and self.check_click_hysteresis(self.last_mousedown, event):
 			event_copy = event.copy()
 			glib.idle_add(lambda: self.emit('clicked', event_copy) and False)
+			self.last_mousedown = None
 		else:
 			self.last_mousedown = None
-			self.current_click_count = 0
+			self.last_click = None
 
 		if __debug__: self.check_dom_events("button_release_event")
+
 
 
 	def handle_clicked(self, drawingarea, event):
@@ -341,23 +344,21 @@ class SVGWidget(gtk.DrawingArea):
 			mouse_button = self.get_pressed_mouse_button(event)
 			keys = self.get_keys(event)
 			ms_ev = MouseEvent(	"click", target=self.nodes_under_pointer[-1], \
-								detail=self.current_click_count, clientX=event.x, clientY=event.y, \
+								detail=1, clientX=event.x, clientY=event.y, \
 								screenX=event.x_root, screenY=event.y_root, \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								button=mouse_button, buttons=mouse_buttons)
 			if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
 			self.emit_dom_event("clicked", ms_ev)
-		if self.last_mousedown and self.check_click_hysteresis(self.last_mousedown, event) and self.current_click_count == 2:
+		if self.last_click and self.check_click_hysteresis(self.last_click, event):
 			event_copy = event.copy()
 			glib.idle_add(lambda: self.emit('dblclicked', event_copy) and False)
 			self.last_mousedown = None
-		else:
+			self.last_click = None
+		elif self.nodes_under_pointer:
+			self.last_click = event.copy()
 			self.last_mousedown = None
-		self.current_click_count = 0
-		if __debug__:
-			print("clicked")
-
 		if __debug__: self.check_dom_events("clicked")
 
 	def handle_dblclicked(self, drawingarea, event):
@@ -366,7 +367,7 @@ class SVGWidget(gtk.DrawingArea):
 			mouse_button = self.get_pressed_mouse_button(event)
 			keys = self.get_keys(event)
 			ms_ev = MouseEvent(	"dblclick", target=self.nodes_under_pointer[-1], \
-								detail=self.current_click_count, clientX=event.x, clientY=event.y, \
+								detail=2, clientX=event.x, clientY=event.y, \
 								screenX=event.x_root, screenY=event.y_root, \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
@@ -453,7 +454,6 @@ class SVGWidget(gtk.DrawingArea):
 
 			elif handler == "clicked":
 				assert all(_ms_ev.type_ == "click" for _ms_ev in self.emitted_dom_events), "For `clicked`, only event of type `click` should be emitted."
-				assert any(_ms_ev.type_ == "click" for _ms_ev in self.emitted_dom_events) if nup else True, "For `clicked`, any event of type `click` should be emitted."
 
 			elif handler == "dblclicked":
 				assert all(_ms_ev.type_ == "dblclick" for _ms_ev in self.emitted_dom_events), "For `dblclicked`, only event of type `dblclick` should be emitted."
