@@ -302,7 +302,6 @@ class SVGWidget(gtk.DrawingArea):
 																 gdk.ModifierType.BUTTON5_MASK) == 0:
 			self.last_mousedown = event.copy()
 		else:
-			self.last_click = None
 			self.last_mousedown = None
 
 		if __debug__: self.check_dom_events("button_press_event")
@@ -331,7 +330,6 @@ class SVGWidget(gtk.DrawingArea):
 			self.last_mousedown = None
 		else:
 			self.last_mousedown = None
-			self.last_click = None
 
 		if __debug__: self.check_dom_events("button_release_event")
 
@@ -353,11 +351,9 @@ class SVGWidget(gtk.DrawingArea):
 		if self.last_click and self.check_click_hysteresis(self.last_click, event):
 			event_copy = event.copy()
 			glib.idle_add(lambda: self.emit('dblclicked', event_copy) and False)
-			self.last_mousedown = None
 			self.last_click = None
 		elif self.nodes_under_pointer:
 			self.last_click = event.copy()
-			self.last_mousedown = None
 		if __debug__: self.check_dom_events("clicked")
 
 	def handle_dblclicked(self, drawingarea, event):
@@ -373,8 +369,6 @@ class SVGWidget(gtk.DrawingArea):
 								button=mouse_button, buttons=mouse_buttons)
 			if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
 			self.emit_dom_event("dblclicked", ms_ev)
-		if __debug__:
-			print("dblclicked")
 
 		if __debug__: self.check_dom_events("dblclicked")
 
