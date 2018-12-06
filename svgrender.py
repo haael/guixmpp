@@ -104,9 +104,9 @@ class SVGWidget(gtk.DrawingArea):
 		self.nodes_under_pointer = []
 		self.previous_nodes_under_pointer = []
 		self.last_mousedown = None
+		self.first_click = None
 		self.last_click = None
 		self.current_click_count = 0
-		self.first_click = []
 		self.connect('configure-event', self.handle_configure_event)
 		self.connect('draw', self.handle_draw)
 		self.connect('motion-notify-event', self.handle_motion_notify_event)
@@ -127,31 +127,26 @@ class SVGWidget(gtk.DrawingArea):
 			self.rendered_svg_surface = self.SVGRenderBg.render(self.document, rect.width, rect.height)
 		self.queue_draw()
 
-	def dblclick_hysteresis(self, event):
-		if self.last_click and hypot(self.last_click.x - event.x, self.last_click.y - event.y) < self.CLICK_RANGE \
-		   and (event.get_time() - self.last_click.get_time()) < self.CLICK_TIME:
-			event_copy = event.copy()
-			glib.idle_add(lambda: self.emit('dblclicked', event_copy) and False)
-			self.last_click = None
-		else:
-			self.last_click = event.copy()
+	@classmethod
+	def check_dblclick_hysteresis(cls, press_event, event):
+		if hypot(press_event.x - event.x, press_event.y - event.y) < cls.CLICK_RANGE \
+		   and (event.get_time() - press_event.get_time()) < cls.CLICK_TIME:
+			return True
+		return False
 
-	def click_hysteresis(self, event):
-		if self.last_mousedown and hypot(self.last_mousedown.x - event.x, self.last_mousedown.y - event.y) < self.CLICK_RANGE \
-		   and (event.get_time() - self.last_mousedown.get_time()) < self.CLICK_TIME:
-			event_copy = event.copy()
-			glib.idle_add(lambda: self.emit('clicked', event_copy) and False)
-		self.last_mousedown = None
+	@classmethod
+	def check_count_hysteresis(cls, press_event, event):
+		if hypot(press_event.x - event.x, press_event.y - event.y) < cls.CLICK_RANGE \
+		   and (event.get_time() - press_event.get_time()) < cls.CLICK_TIME:
+			return True
+		return False
 
-	def count_hysteresis(self, event):
-		event_copy = event.copy()
-		if self.first_click and hypot(self.first_click[-1].x - event.x, self.first_click[-1].y - event.y) < self.CLICK_RANGE \
-		   and (event.get_time() - self.first_click[-1].get_time()) < self.CLICK_TIME:
-			   self.current_click_count +=1
-			   self.first_click.append(event_copy)
-		else:
-			self.first_click = [event_copy]
-			self.current_click_count = 0
+	@classmethod
+	def check_click_hysteresis(cls, press_event, event):
+		if hypot(press_event.x - event.x, press_event.y - event.y) < cls.CLICK_RANGE \
+		   and (event.get_time() - press_event.get_time()) < cls.CLICK_TIME:
+			return True
+		return False
 
 	@classmethod
 	def gen_node_parents(cls, node):
@@ -194,7 +189,7 @@ class SVGWidget(gtk.DrawingArea):
 
 
 	def handle_button_press_event(self, drawingarea, event):
-		print("Press")
+		print("Press", self.current_click_count)
 		if event.button == gdk.BUTTON_PRIMARY and event.state & (gdk.ModifierType.BUTTON1_MASK | \
 																 gdk.ModifierType.BUTTON2_MASK | \
 																 gdk.ModifierType.BUTTON3_MASK | \
@@ -203,23 +198,38 @@ class SVGWidget(gtk.DrawingArea):
 			self.last_mousedown = event.copy()
 		else:
 			self.last_mousedown = None
+			self.current_click_count = 0
 
 		if __debug__: self.check_dom_events("button_press_event")
 
 
 	def handle_button_release_event(self, drawingarea, event):
-		print("Release")
-		self.click_hysteresis(event)
+		print("Release", self.current_click_count)
+		if self.last_mousedown and self.check_click_hysteresis(self.last_mousedown, event):
+			event_copy = event.copy()
+			glib.idle_add(lambda: self.emit('clicked', event_copy) and False)
+		else:
+			self.current_click_count = 0
+		self.last_mousedown = None
 		if __debug__: self.check_dom_events("button_release_event")
 
 	def handle_clicked(self, drawingarea, event):
-		print("Clicked")
-		self.count_hysteresis(event)
-		self.dblclick_hysteresis(event)
+		print("Clicked", self.current_click_count)
+		if self.first_click and self.check_count_hysteresis(self.first_click, event):
+			self.current_click_count += 1
+		else:
+			self.current_click_count = 0
+			self.first_click = event.copy()
+		if self.last_click and self.check_dblclick_hysteresis(self.last_click, event):
+			event_copy = event.copy()
+			glib.idle_add(lambda: self.emit('dblclicked', event_copy) and False)
+			self.last_click = None
+		else:
+			self.last_click = event.copy()
 		if __debug__: self.check_dom_events("clicked")
 
 	def handle_dblclicked(self, drawingarea, event):
-		print("Dblclicked")
+		print("Dblclicked", self.current_click_count)
 		if __debug__: self.check_dom_events("dblclicked")
 
 
@@ -237,7 +247,7 @@ class SVGWidget(gtk.DrawingArea):
 	if __debug__:
 
 		def check_dom_events(self, handler):
-			return None #Temporary to abort debuging DOMEvents.
+			return None
 			nup = self.nodes_under_pointer
 			pnup = self.previous_nodes_under_pointer
 
@@ -309,7 +319,6 @@ class SVGWidget(gtk.DrawingArea):
 				assert any(_ms_ev.type_ == "dblclick" for _ms_ev in self.emitted_dom_events) if nup else True, "For `dblclicked`, any event of type `dblclick` should be emitted."
 
 			self.emitted_dom_events.clear()
-
 
 if __name__ == '__main__':
 	import signal
