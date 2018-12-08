@@ -196,6 +196,7 @@ class SVGWidget(gtk.DrawingArea):
 		print("Press", self.current_click_count)
 		if self.first_click and not self.check_count_hysteresis(self.first_click, event):
 			self.current_click_count = 0
+			self.first_click = None
 		if event.button == gdk.BUTTON_PRIMARY and event.state & (gdk.ModifierType.BUTTON1_MASK | \
 																 gdk.ModifierType.BUTTON2_MASK | \
 																 gdk.ModifierType.BUTTON3_MASK | \
@@ -212,6 +213,7 @@ class SVGWidget(gtk.DrawingArea):
 		print("Release", self.current_click_count)
 		if self.first_click and not self.check_count_hysteresis(self.first_click, event):
 			self.current_click_count = 0
+			self.first_click = None
 		if self.last_mousedown and self.check_click_hysteresis(self.last_mousedown, event):
 			event_copy = event.copy()
 			glib.idle_add(lambda: self.emit('clicked', event_copy) and False)
