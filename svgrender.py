@@ -71,6 +71,10 @@ class SVGWidget(gtk.DrawingArea):
 
 	CLICK_TIME = float("inf")
 	CLICK_RANGE = 5
+	DBLCLICK_TIME = float("inf")
+	DBLCLICK_RANGE = 5
+	COUNT_TIME = float("inf")
+	COUNT_RANGE = 5
 
 	class Keys(Enum):
 		SHIFT = 1
@@ -129,15 +133,15 @@ class SVGWidget(gtk.DrawingArea):
 
 	@classmethod
 	def check_dblclick_hysteresis(cls, press_event, event):
-		if hypot(press_event.x - event.x, press_event.y - event.y) < cls.CLICK_RANGE \
-		   and (event.get_time() - press_event.get_time()) < cls.CLICK_TIME:
+		if hypot(press_event.x - event.x, press_event.y - event.y) < cls.DBLCLICK_RANGE \
+		   and (event.get_time() - press_event.get_time()) < cls.DBLCLICK_TIME:
 			return True
 		return False
 
 	@classmethod
 	def check_count_hysteresis(cls, press_event, event):
-		if hypot(press_event.x - event.x, press_event.y - event.y) < cls.CLICK_RANGE \
-		   and (event.get_time() - press_event.get_time()) < cls.CLICK_TIME:
+		if hypot(press_event.x - event.x, press_event.y - event.y) < cls.COUNT_RANGE \
+		   and (event.get_time() - press_event.get_time()) < cls.COUNT_TIME:
 			return True
 		return False
 
@@ -190,6 +194,8 @@ class SVGWidget(gtk.DrawingArea):
 
 	def handle_button_press_event(self, drawingarea, event):
 		print("Press", self.current_click_count)
+		if self.first_click and not self.check_count_hysteresis(self.first_click, event):
+			self.current_click_count = 0
 		if event.button == gdk.BUTTON_PRIMARY and event.state & (gdk.ModifierType.BUTTON1_MASK | \
 																 gdk.ModifierType.BUTTON2_MASK | \
 																 gdk.ModifierType.BUTTON3_MASK | \
@@ -198,18 +204,17 @@ class SVGWidget(gtk.DrawingArea):
 			self.last_mousedown = event.copy()
 		else:
 			self.last_mousedown = None
-			self.current_click_count = 0
 
 		if __debug__: self.check_dom_events("button_press_event")
 
 
 	def handle_button_release_event(self, drawingarea, event):
 		print("Release", self.current_click_count)
+		if self.first_click and not self.check_count_hysteresis(self.first_click, event):
+			self.current_click_count = 0
 		if self.last_mousedown and self.check_click_hysteresis(self.last_mousedown, event):
 			event_copy = event.copy()
 			glib.idle_add(lambda: self.emit('clicked', event_copy) and False)
-		else:
-			self.current_click_count = 0
 		self.last_mousedown = None
 		if __debug__: self.check_dom_events("button_release_event")
 
