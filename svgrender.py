@@ -71,6 +71,10 @@ class SVGWidget(gtk.DrawingArea):
 
 	CLICK_TIME = float("inf")
 	CLICK_RANGE = 5
+	DBLCLICK_TIME = float("inf")
+	DBLCLICK_RANGE = 5
+	COUNT_TIME = float("inf")
+	COUNT_RANGE = 5
 
 	class Keys(Enum):
 		SHIFT = 1
@@ -104,7 +108,9 @@ class SVGWidget(gtk.DrawingArea):
 		self.nodes_under_pointer = []
 		self.previous_nodes_under_pointer = []
 		self.last_mousedown = None
+		self.first_click = None
 		self.last_click = None
+		self.current_click_count = 0
 		self.connect('configure-event', self.handle_configure_event)
 		self.connect('draw', self.handle_draw)
 		self.connect('motion-notify-event', self.handle_motion_notify_event)
@@ -124,6 +130,20 @@ class SVGWidget(gtk.DrawingArea):
 			rect = self.get_allocation()
 			self.rendered_svg_surface = self.SVGRenderBg.render(self.document, rect.width, rect.height)
 		self.queue_draw()
+
+	@classmethod
+	def check_dblclick_hysteresis(cls, press_event, event):
+		if hypot(press_event.x - event.x, press_event.y - event.y) < cls.DBLCLICK_RANGE \
+		   and (event.get_time() - press_event.get_time()) < cls.DBLCLICK_TIME:
+			return True
+		return False
+
+	@classmethod
+	def check_count_hysteresis(cls, press_event, event):
+		if hypot(press_event.x - event.x, press_event.y - event.y) < cls.COUNT_RANGE \
+		   and (event.get_time() - press_event.get_time()) < cls.COUNT_TIME:
+			return True
+		return False
 
 	@classmethod
 	def check_click_hysteresis(cls, press_event, event):
@@ -173,7 +193,10 @@ class SVGWidget(gtk.DrawingArea):
 
 
 	def handle_button_press_event(self, drawingarea, event):
-		print("Press")
+		print("Press", self.current_click_count)
+		if self.first_click and not self.check_count_hysteresis(self.first_click, event):
+			self.current_click_count = 0
+			self.first_click = None
 		if event.button == gdk.BUTTON_PRIMARY and event.state & (gdk.ModifierType.BUTTON1_MASK | \
 																 gdk.ModifierType.BUTTON2_MASK | \
 																 gdk.ModifierType.BUTTON3_MASK | \
@@ -187,7 +210,10 @@ class SVGWidget(gtk.DrawingArea):
 
 
 	def handle_button_release_event(self, drawingarea, event):
-		print("Release")
+		print("Release", self.current_click_count)
+		if self.first_click and not self.check_count_hysteresis(self.first_click, event):
+			self.current_click_count = 0
+			self.first_click = None
 		if self.last_mousedown and self.check_click_hysteresis(self.last_mousedown, event):
 			event_copy = event.copy()
 			glib.idle_add(lambda: self.emit('clicked', event_copy) and False)
@@ -195,8 +221,13 @@ class SVGWidget(gtk.DrawingArea):
 		if __debug__: self.check_dom_events("button_release_event")
 
 	def handle_clicked(self, drawingarea, event):
-		print("Clicked")
-		if self.last_click and self.check_click_hysteresis(self.last_click, event):
+		print("Clicked", self.current_click_count)
+		if self.first_click and self.check_count_hysteresis(self.first_click, event):
+			self.current_click_count += 1
+		else:
+			self.current_click_count = 0
+			self.first_click = event.copy()
+		if self.last_click and self.check_dblclick_hysteresis(self.last_click, event):
 			event_copy = event.copy()
 			glib.idle_add(lambda: self.emit('dblclicked', event_copy) and False)
 			self.last_click = None
@@ -205,7 +236,7 @@ class SVGWidget(gtk.DrawingArea):
 		if __debug__: self.check_dom_events("clicked")
 
 	def handle_dblclicked(self, drawingarea, event):
-		print("Dblclicked")
+		print("Dblclicked", self.current_click_count)
 		if __debug__: self.check_dom_events("dblclicked")
 
 
@@ -223,6 +254,7 @@ class SVGWidget(gtk.DrawingArea):
 	if __debug__:
 
 		def check_dom_events(self, handler):
+			return None
 			nup = self.nodes_under_pointer
 			pnup = self.previous_nodes_under_pointer
 
