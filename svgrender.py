@@ -19,7 +19,7 @@ from math import hypot
 
 if __debug__:
 	from collections import Counter
-
+	import itertools
 
 class SVGRender(cairosvg.surface.Surface):
 	def create_recording_surface(self, output, width, height):
@@ -254,7 +254,6 @@ class SVGWidget(gtk.DrawingArea):
 	if __debug__:
 
 		def check_dom_events(self, handler):
-			return None
 			nup = self.nodes_under_pointer
 			pnup = self.previous_nodes_under_pointer
 
@@ -277,6 +276,23 @@ class SVGWidget(gtk.DrawingArea):
 			assert all(_ms_ev.detail > 0 for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("click", "dblclick", "mousedown", "mouseup")), "For events of types: `click`, `dblclick`, `mousedown` or `mouseup`. `detail` value should be higher then 0."
 			assert all(_ms_ev.detail == self.current_click_count + 1 for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mousedown", "mouseup")), "For events of types: `mousedown` or `mouseup`. `detail` value should be equal to `current_click_count` + 1."
 			assert all(_ms_ev.detail == self.current_click_count for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("click", "dblclick")), "For events of types: `click` or `dblclick`. `detail` value should be equal to `current_click_count`."
+
+			#~Mouse event order
+			mouseout_events = [_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseout"]
+			mouseleave_events = [_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseleave"]
+			mouseover_events = [_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseover"]
+			mouseenter_events = [_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseenter"]
+			mousemove_events = [_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mousemove"]
+
+			for mouseout, mouseleave in itertools.product(mouseout_events, mouseleave_events):
+				assert self.emitted_dom_events.index(mouseout) < self.emitted_dom_events.index(mouseleave), "For the appropriate Mouse Event order, events of type `mouseout` should happen before events of type `mouseleave`."
+			for mouseleave, mouseover in itertools.product(mouseleave_events, mouseover_events):
+				assert self.emitted_dom_events.index(mouseleave) < self.emitted_dom_events.index(mouseover), "For the appropriate Mouse Event order, events of type `mouseleave` should happen before events of type `mouseover`."
+			for mouseover, mouseenter in itertools.product(mouseover_events, mouseenter_events):
+				assert self.emitted_dom_events.index(mouseover) < self.emitted_dom_events.index(mouseenter), "For the appropriate Mouse Event order, events of type `mouseover` should happen before events of type `mouseenter`."
+			for mouseenter, mousemove in itertools.product(mouseenter_events, mousemove_events):
+				assert self.emitted_dom_events.index(mouseenter) < self.emitted_dom_events.index(mousemove), "For the appropriate Mouse Event order, events of type `mouseenter` should happen before events of type `mousemove`."
+
 
 			if handler == "motion_notify_event":
 				#~ Mousemove
