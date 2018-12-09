@@ -273,8 +273,10 @@ class SVGWidget(gtk.DrawingArea):
 			assert all(_ms_ev.target == nup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseup") if nup else all(_ms_ev.target == None for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseup"), "For event of type `mouseup` event target should be None if fired out of window border, otherwise target should be top `nodes_under_pointer` if it is over element."
 
 			#~Detail
-			assert all(_ms_ev.detail == 0 for _ms_ev in self.emiited_dom_events if _ms_ev.type_ in ("mouseenter", "mouseleave", "mousemove", "mouseout", "mouseover")), "For events of types: `mouseenter`, `mouseleave`, `mousemove`, `mouseout` or `mouseover`. detail value must be equal to 0"
-			assert all(_ms_ev.detail > 0 for _ms_ev in self.emiited_dom_events if _ms_ev.type_ in ("click", "dblclick", "mousedown", "mouseup")), "For events of types: `click`, `dblclick`, `mousedown` or `mouseup`. detail value must be higher then 0"
+			assert all(_ms_ev.detail == 0 for _ms_ev in self.emiited_dom_events if _ms_ev.type_ in ("mouseenter", "mouseleave", "mousemove", "mouseout", "mouseover")), "For events of types: `mouseenter`, `mouseleave`, `mousemove`, `mouseout` or `mouseover`. `detail` value should be equal to 0."
+			assert all(_ms_ev.detail > 0 for _ms_ev in self.emiited_dom_events if _ms_ev.type_ in ("click", "dblclick", "mousedown", "mouseup")), "For events of types: `click`, `dblclick`, `mousedown` or `mouseup`. `detail` value should be higher then 0."
+			assert all(_ms_ev.detail == self.current_click_count + 1 for _ms_ev in self.emiited_dom_events if _ms_ev.type_ in ("mousedown", "mouseup")), "For events of types: `mousedown` or `mouseup`. `detail` value should be equal to `current_click_count` + 1."
+			assert all(_ms_ev.detail == self.current_click_count for _ms_ev in self.emiited_dom_events if _ms_ev.type_ in ("click", "dblclick")), "For events of types: `click` or `dblclick`. `detail` value should be equal to `current_click_count`."
 
 			if handler == "motion_notify_event":
 				#~ Mousemove
