@@ -9,6 +9,7 @@ from gi.repository import Gdk as gdk
 from gi.repository import GObject as gobject
 from gi.repository import GLib as glib
 
+from domevents import *
 import cairo
 
 import cairosvg.surface
@@ -159,9 +160,37 @@ class SVGWidget(gtk.DrawingArea):
 		yield node
 
 	@classmethod
+	def get_keys(cls, event):
+		return {cls.Keys.SHIFT: bool(event.state & gdk.ModifierType.SHIFT_MASK),\
+				cls.Keys.CTRL: bool(event.state & gdk.ModifierType.CONTROL_MASK),\
+				cls.Keys.ALT: bool(event.state & (gdk.ModifierType.MOD1_MASK | gdk.ModifierType.MOD5_MASK)),\
+				cls.Keys.META: bool(event.state & (gdk.ModifierType.META_MASK | gdk.ModifierType.SUPER_MASK | gdk.ModifierType.MOD4_MASK))}
+
+	@classmethod
 	def ancestors(cls, node):
 		return frozenset(id(anc) for anc in cls.gen_node_parents(node))
 
+	@staticmethod
+	def get_pressed_mouse_buttons_mask(event):
+		active_buttons = 0
+		if event.state & gdk.ModifierType.BUTTON1_MASK:
+			active_buttons |= 1
+		if event.state & gdk.ModifierType.BUTTON3_MASK:
+			active_buttons |= 2
+		if event.state & gdk.ModifierType.BUTTON2_MASK:
+			active_buttons |= 4
+		return active_buttons
+
+	@staticmethod
+	def get_pressed_mouse_button(event):
+		active_button = 0
+		if event.button == gdk.BUTTON_PRIMARY:
+			active_button = 0
+		elif event.button == gdk.BUTTON_SECONDARY:
+			active_button = 2
+		elif event.button == gdk.BUTTON_MIDDLE:
+			active_button = 1
+		return active_button
 	def update_nodes_under_pointer(self, event):
 		self.previous_nodes_under_pointer = self.nodes_under_pointer
 		rect = self.get_allocation()
@@ -179,9 +208,19 @@ class SVGWidget(gtk.DrawingArea):
 		context.paint()
 
 	def handle_motion_notify_event(self, drawingarea, event):
-		print("Motion")
 		if __debug__:
 			assert not self.emitted_dom_events
+		self.update_nodes_under_pointer(event)
+		if self.nodes_under_pointer:
+			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
+			keys = self.get_keys(event)
+			ms_ev = MouseEvent("mousemove", target=self.nodes_under_pointer[-1], \
+							clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+							buttons=mouse_buttons)
+			if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+			self.emit_dom_event("motion_notify_event", ms_ev)
 		if self.last_mousedown and not self.check_click_hysteresis(self.last_mousedown, event):
 			self.last_mousedown = None
 		self.update_nodes_under_pointer(event)
@@ -262,7 +301,7 @@ class SVGWidget(gtk.DrawingArea):
 				common, common_num = cnt.most_common(1)[0]
 				assert common_num < 2, "For a DOM Event `{}`, shoudn't be emitted two events with equal target and type.".format(common[0])
 
-			#~Target
+			#~ Target
 			assert all(_ms_ev.target != None for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mouseover", "mouseout", "mouseenter","mouseleave", "mousedown", "click", "dblclick")), "For events of types `mouseover`, `mouseout`, `mouseenter`,`mouseleave`, `mousedown`, `click` and `dblclick` event target can't be None."
 			assert all(nup and (_ms_ev.target == nup[-1]) for _ms_ev in self.emitted_dom_events if (_ms_ev.type_ == "mouseover")), "For events of type `mouseover`, event target should be top `nodes_under_pointer` element"
 			assert all(nup and (_ms_ev.target in nup) for _ms_ev in self.emitted_dom_events if (_ms_ev.type_ == "mouseenter")), "For events of type `mouseenter`, event target should be in `nodes_under_pointer` elements"
@@ -271,13 +310,13 @@ class SVGWidget(gtk.DrawingArea):
 			assert all(nup and (_ms_ev.target == nup[-1]) for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mousedown", "click", "dblclick")), "For event of types `mousedown`, `mouseup`, `click` and `dblclick, event target should be top `nodes_under_pointer` element"
 			assert all(_ms_ev.target == nup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseup") if nup else all(_ms_ev.target == None for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseup"), "For event of type `mouseup` event target should be None if fired out of window border, otherwise target should be top `nodes_under_pointer` if it is over element."
 
-			#~Detail
+			#~ Detail
 			assert all(_ms_ev.detail == 0 for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mouseenter", "mouseleave", "mousemove", "mouseout", "mouseover")), "For events of types: `mouseenter`, `mouseleave`, `mousemove`, `mouseout` or `mouseover`. `detail` value should be equal to 0."
 			assert all(_ms_ev.detail > 0 for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("click", "dblclick", "mousedown", "mouseup")), "For events of types: `click`, `dblclick`, `mousedown` or `mouseup`. `detail` value should be higher then 0."
 			assert all(_ms_ev.detail == self.current_click_count + 1 for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mousedown", "mouseup")), "For events of types: `mousedown` or `mouseup`. `detail` value should be equal to `current_click_count` + 1."
 			assert all(_ms_ev.detail == self.current_click_count for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("click", "dblclick")), "For events of types: `click` or `dblclick`. `detail` value should be equal to `current_click_count`."
 
-			#~Mouse event order
+			#~ Mouse event order
 			mouseout_events = [_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseout"]
 			mouseleave_events = [_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseleave"]
 			mouseover_events = [_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseover"]
