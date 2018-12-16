@@ -228,8 +228,24 @@ class SVGWidget(gtk.DrawingArea):
 											buttons=mouse_buttons, relatedTarget=self.nodes_under_pointer[-1])
 						if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
 						self.emit_dom_event("motion_notify_event", ms_ev)
+						#ToDo, Not `mouseleave` emitted when entering to child
+						ms_ev = MouseEvent("mouseleave", target=self.previous_nodes_under_pointer[-1], \
+											clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+											shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+											altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+											buttons=mouse_buttons, relatedTarget=self.nodes_under_pointer[-1])
+						if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+						self.emit_dom_event("motion_notify_event", ms_ev)
 				else:
 					ms_ev = MouseEvent("mouseout", target=self.previous_nodes_under_pointer[-1], \
+										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+										buttons=mouse_buttons)
+					if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+					self.emit_dom_event("motion_notify_event", ms_ev)
+					#ToDo, Multiple `mouseleave` emitted when leave from more then one family object instantly.
+					ms_ev = MouseEvent("mouseleave", target=self.previous_nodes_under_pointer[-1], \
 										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
 										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
