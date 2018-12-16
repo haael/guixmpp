@@ -17,6 +17,7 @@ import cairosvg.parser
 
 from enum import Enum
 from math import hypot
+from copy import deepcopy
 
 if __debug__:
 	from collections import Counter
@@ -191,8 +192,9 @@ class SVGWidget(gtk.DrawingArea):
 		elif event.button == gdk.BUTTON_MIDDLE:
 			active_button = 1
 		return active_button
+
 	def update_nodes_under_pointer(self, event):
-		self.previous_nodes_under_pointer = self.nodes_under_pointer
+		self.previous_nodes_under_pointer = deepcopy(self.nodes_under_pointer)
 		rect = self.get_allocation()
 		self.nodes_under_pointer, self.rendered_svg_surface = self.SVGRenderBg.pointer(self.document, rect.width, rect.height, event.x, event.y)
 
@@ -211,6 +213,34 @@ class SVGWidget(gtk.DrawingArea):
 		if __debug__:
 			assert not self.emitted_dom_events
 		self.update_nodes_under_pointer(event)
+		#~ print('pnup', ", ".join(item.get('fill') for item in self.previous_nodes_under_pointer))
+		#~ print('nup', ", ".join(item.get('fill') for item in self.nodes_under_pointer))
+		if self.previous_nodes_under_pointer != self.nodes_under_pointer:
+			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
+			keys = self.get_keys(event)
+			if self.previous_nodes_under_pointer:
+				if self.nodes_under_pointer:
+					if self.previous_nodes_under_pointer[-1] != self.nodes_under_pointer[-1]:
+						ms_ev = MouseEvent("mouseout", target=self.previous_nodes_under_pointer[-1], \
+											clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+											shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+											altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+											buttons=mouse_buttons, relatedTarget=self.nodes_under_pointer[-1])
+						if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+						self.emit_dom_event("motion_notify_event", ms_ev)
+				else:
+					ms_ev = MouseEvent("mouseout", target=self.previous_nodes_under_pointer[-1], \
+										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+										buttons=mouse_buttons)
+					if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+					self.emit_dom_event("motion_notify_event", ms_ev)
+
+			if self.nodes_under_pointer:
+				pass
+
+
 		if self.nodes_under_pointer:
 			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 			keys = self.get_keys(event)
@@ -223,7 +253,6 @@ class SVGWidget(gtk.DrawingArea):
 			self.emit_dom_event("motion_notify_event", ms_ev)
 		if self.last_mousedown and not self.check_click_hysteresis(self.last_mousedown, event):
 			self.last_mousedown = None
-		self.update_nodes_under_pointer(event)
 		#canvas.queue_draw()
 
 		if __debug__:
@@ -300,7 +329,6 @@ class SVGWidget(gtk.DrawingArea):
 			if cnt:
 				common, common_num = cnt.most_common(1)[0]
 				assert common_num < 2, "For a DOM Event `{}`, shoudn't be emitted two events with equal target and type.".format(common[0])
-
 			#~ Target
 			assert all(_ms_ev.target != None for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mouseover", "mouseout", "mouseenter","mouseleave", "mousedown", "click", "dblclick")), "For events of types `mouseover`, `mouseout`, `mouseenter`,`mouseleave`, `mousedown`, `click` and `dblclick` event target can't be None."
 			assert all(nup and (_ms_ev.target == nup[-1]) for _ms_ev in self.emitted_dom_events if (_ms_ev.type_ == "mouseover")), "For events of type `mouseover`, event target should be top `nodes_under_pointer` element"
