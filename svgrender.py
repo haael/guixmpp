@@ -214,6 +214,13 @@ class SVGWidget(gtk.DrawingArea):
 		self.update_nodes_under_pointer(event)
 		#~ print('pnup', ", ".join(item.get('fill') for item in self.previous_nodes_under_pointer))
 		#~ print('nup', ", ".join(item.get('fill') for item in self.nodes_under_pointer))
+		#~ if __debug__:
+			#~ pnup = self.ancestors(self.previous_nodes_under_pointer[-1])
+			#~ nup = self.ancestors(self.nodes_under_pointer[-1])
+			#~ print("pnup:", pnup)
+			#~ print("nup:", nup)
+			#~ print("pnup - nup:", pnup - nup)
+			#~ print("nup - pnup:", nup - pnup)
 		if self.previous_nodes_under_pointer != self.nodes_under_pointer:
 			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 			keys = self.get_keys(event)
@@ -235,13 +242,6 @@ class SVGWidget(gtk.DrawingArea):
 											buttons=mouse_buttons, relatedTarget=self.nodes_under_pointer[-1])
 						if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
 						self.emit_dom_event("motion_notify_event", ms_ev)
-						if __debug__:
-							pnup = self.ancestors(self.previous_nodes_under_pointer[-1])
-							nup = self.ancestors(self.nodes_under_pointer[-1])
-							print("pnup:", pnup)
-							print("nup:", nup)
-							print("pnup - nup:", pnup - nup)
-							print("nup - pnup:", nup - pnup)
 				else:
 					ms_ev = MouseEvent("mouseout", target=self.previous_nodes_under_pointer[-1], \
 										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
@@ -261,14 +261,14 @@ class SVGWidget(gtk.DrawingArea):
 
 			if self.nodes_under_pointer:
 				if self.previous_nodes_under_pointer:
-					#ToDo, Not `mouseleave` emitted when entering to child
-					ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
-									clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-									shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-									altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-									buttons=mouse_buttons, relatedTarget=self.previous_nodes_under_pointer[-1])
-					if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
-					self.emit_dom_event("motion_notify_event", ms_ev)
+					if self.previous_nodes_under_pointer[-1] != self.nodes_under_pointer[-1]:
+						ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
+										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+										buttons=mouse_buttons, relatedTarget=self.previous_nodes_under_pointer[-1])
+						if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+						self.emit_dom_event("motion_notify_event", ms_ev)
 				else:
 					#ToDo, Multiple `mouseenter` emitted when enter to more than one family object instantly.
 					ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
@@ -413,6 +413,7 @@ class SVGWidget(gtk.DrawingArea):
 				assert all(_ms_ev.type_ != "mouseleave" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] == pnup[-1]) else True, "For a `motion_notify_event`, when top `previous_nodes_under_pointer` and top `nodes_under_pointer` are equal, a DOM event 'mouseleave` shouldn't be emitted"
 				assert any(_ms_ev.type_ == "mouseleave" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1] and self.ancestors(pnup[-1]) - self.ancestors(nup[-1])) else True, "`mouseleave` DOM event, should be emitted when not all ancestors of previous element are in set of new element ancestors."
 				assert all(_ms_ev.type_ != "mouseleave" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1] and not (self.ancestors(pnup[-1]) - self.ancestors(nup[-1]))) else True, "'mouseleave' DOM event, shoudn't be emiited when all ancestors of previous element are in set of new element ancestors."
+				#~ assert len([_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseleave"]) ==
 
 				#~ Mouseout
 				assert all(_ms_ev.type_ != "mouseout" for _ms_ev in self.emitted_dom_events) if (not nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` are empty, a DOM event 'mouseout` shouldn't be emitted"
