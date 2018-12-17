@@ -17,7 +17,6 @@ import cairosvg.parser
 
 from enum import Enum
 from math import hypot
-from copy import deepcopy
 
 if __debug__:
 	from collections import Counter
@@ -194,7 +193,7 @@ class SVGWidget(gtk.DrawingArea):
 		return active_button
 
 	def update_nodes_under_pointer(self, event):
-		self.previous_nodes_under_pointer = deepcopy(self.nodes_under_pointer)
+		self.previous_nodes_under_pointer = self.nodes_under_pointer[:]
 		rect = self.get_allocation()
 		self.nodes_under_pointer, self.rendered_svg_surface = self.SVGRenderBg.pointer(self.document, rect.width, rect.height, event.x, event.y)
 
@@ -236,6 +235,13 @@ class SVGWidget(gtk.DrawingArea):
 											buttons=mouse_buttons, relatedTarget=self.nodes_under_pointer[-1])
 						if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
 						self.emit_dom_event("motion_notify_event", ms_ev)
+						if __debug__:
+							pnup = self.ancestors(self.previous_nodes_under_pointer[-1])
+							nup = self.ancestors(self.nodes_under_pointer[-1])
+							print("pnup:", pnup)
+							print("nup:", nup)
+							print("pnup - nup:", pnup - nup)
+							print("nup - pnup:", nup - pnup)
 				else:
 					ms_ev = MouseEvent("mouseout", target=self.previous_nodes_under_pointer[-1], \
 										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
@@ -254,7 +260,25 @@ class SVGWidget(gtk.DrawingArea):
 					self.emit_dom_event("motion_notify_event", ms_ev)
 
 			if self.nodes_under_pointer:
-				pass
+				if self.previous_nodes_under_pointer:
+					#ToDo, Not `mouseleave` emitted when entering to child
+					ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
+									clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+									shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+									altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+									buttons=mouse_buttons, relatedTarget=self.previous_nodes_under_pointer[-1])
+					if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+					self.emit_dom_event("motion_notify_event", ms_ev)
+				else:
+					#ToDo, Multiple `mouseenter` emitted when enter to more than one family object instantly.
+					ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
+									clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+									shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+									altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+									buttons=mouse_buttons)
+					if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+					self.emit_dom_event("motion_notify_event", ms_ev)
+
 
 
 		if self.nodes_under_pointer:
