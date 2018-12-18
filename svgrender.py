@@ -319,6 +319,9 @@ class SVGWidget(gtk.DrawingArea):
 
 
 	def handle_button_press_event(self, drawingarea, event):
+		if self.first_click and not self.check_count_hysteresis(self.first_click, event):
+			self.current_click_count = 0
+			self.first_click = None
 		if self.nodes_under_pointer:
 			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 			mouse_button = self.get_pressed_mouse_button(event)
@@ -330,9 +333,6 @@ class SVGWidget(gtk.DrawingArea):
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								button=mouse_button, buttons=mouse_buttons)
 			self.emit_dom_event("button_press_event", ms_ev)
-		if self.first_click and not self.check_count_hysteresis(self.first_click, event):
-			self.current_click_count = 0
-			self.first_click = None
 		if event.button == gdk.BUTTON_PRIMARY and event.state & (gdk.ModifierType.BUTTON1_MASK | \
 																 gdk.ModifierType.BUTTON2_MASK | \
 																 gdk.ModifierType.BUTTON3_MASK | \
