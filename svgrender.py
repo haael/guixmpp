@@ -293,7 +293,6 @@ class SVGWidget(gtk.DrawingArea):
 									buttons=mouse_buttons)
 					self.emit_dom_event("motion_notify_event", ms_ev)
 					for node in self.nodes_under_pointer: #FIX: This should print family of top element
-						print("ENTER")
 						ms_ev = MouseEvent("mouseenter", target=node, \
 										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
 										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
@@ -438,7 +437,7 @@ class SVGWidget(gtk.DrawingArea):
 				assert all(_ms_ev.type_ != "mouseleave" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] == pnup[-1]) else True, "For a `motion_notify_event`, when top `previous_nodes_under_pointer` and top `nodes_under_pointer` are equal, a DOM event 'mouseleave` shouldn't be emitted"
 				#~ assert any(_ms_ev.type_ == "mouseleave" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1] and self.ancestors(pnup[-1]) - self.ancestors(nup[-1])) else True, "`mouseleave` DOM event, should be emitted when not all ancestors of previous element are in set of new element ancestors."
 				assert all(_ms_ev.type_ != "mouseleave" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1] and not (self.ancestors(pnup[-1]) - self.ancestors(nup[-1]))) else True, "'mouseleave' DOM event, shoudn't be emitted when all ancestors of previous element are in set of new element ancestors."
-				assert len([_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseleave"]) == amount_ancestors_pnup_nup -1 if (amount_ancestors_pnup_nup and amount_ancestors_nup_pnup == 1  and nup[-1] != pnup[-1]) else True, "`mouseleave` DOM event, should be emitted {} times when leaving that family.".format(amount_ancestors_pnup_nup-1)
+				assert len([_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseleave"]) == amount_ancestors_pnup_nup -1 if (amount_ancestors_pnup_nup and nup[-1] != pnup[-1]) else True, "`mouseleave` DOM event, should be emitted {} times when leaving that family.".format(amount_ancestors_pnup_nup-1)
 
 				#~ Mouseout
 				assert all(_ms_ev.type_ != "mouseout" for _ms_ev in self.emitted_dom_events) if (not nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` are empty, a DOM event 'mouseout` shouldn't be emitted"
@@ -457,7 +456,7 @@ class SVGWidget(gtk.DrawingArea):
 				if amount_ancestors_nup_pnup and amount_ancestors_pnup_nup:
 					print("nup pnup", amount_ancestors_nup_pnup)
 					print("pnup nup", amount_ancestors_pnup_nup)
-				assert len([_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseenter"]) == amount_ancestors_nup_pnup -1 if (amount_ancestors_nup_pnup and amount_ancestors_pnup_nup == 1 and nup[-1] != pnup[-1]) else True, "`mouseenter` DOM event, should be emitted {} times when entering that family.".format(amount_ancestors_nup_pnup-1)
+				assert len([_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseenter"]) == amount_ancestors_nup_pnup -1 if (amount_ancestors_nup_pnup and nup[-1] != pnup[-1]) else True, "`mouseenter` DOM event, should be emitted {} times when entering that family.".format(amount_ancestors_nup_pnup-1)
 
 				#~Mouseover
 				assert all(_ms_ev.type_ != "mouseover" for _ms_ev in self.emitted_dom_events) if (not nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` are empty, a DOM event 'mouseover` shouldn't be emitted"
