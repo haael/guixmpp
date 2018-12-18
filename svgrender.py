@@ -394,7 +394,17 @@ class SVGWidget(gtk.DrawingArea):
 		if __debug__: self.check_dom_events("clicked")
 
 	def handle_dblclicked(self, drawingarea, event):
-		print("Dblclicked", self.current_click_count)
+		if self.nodes_under_pointer:
+			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
+			mouse_button = self.get_pressed_mouse_button(event)
+			keys = self.get_keys(event)
+			ms_ev = MouseEvent(	"dblclick", target=self.nodes_under_pointer[-1], \
+								detail=self.current_click_count, clientX=event.x, clientY=event.y, \
+								screenX=event.x_root, screenY=event.y_root, \
+								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+								button=mouse_button, buttons=mouse_buttons)
+			self.emit_dom_event("dblclicked", ms_ev)
 		if __debug__: self.check_dom_events("dblclicked")
 
 
@@ -403,7 +413,7 @@ class SVGWidget(gtk.DrawingArea):
 		#~ print(handler, ms_ev)
 		if __debug__:
 			print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
-			print(ms_ev.detail)
+			print(ms_ev.detail, self.current_click_count)
 			self.emitted_dom_events.append(ms_ev)
 
 
