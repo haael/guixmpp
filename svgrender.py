@@ -346,7 +346,20 @@ class SVGWidget(gtk.DrawingArea):
 
 
 	def handle_button_release_event(self, drawingarea, event):
-		print("Release", self.current_click_count)
+		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
+		mouse_button = self.get_pressed_mouse_button(event)
+		keys = self.get_keys(event)
+		if self.nodes_under_pointer:
+			mouseup_target = self.nodes_under_pointer[-1]
+		else:
+			mouseup_target = None
+		ms_ev = MouseEvent(	"mouseup", target=mouseup_target, \
+							detail=1, clientX=event.x, clientY=event.y, \
+							screenX=event.x_root, screenY=event.y_root, \
+							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+							button=mouse_button, buttons=mouse_buttons)
+		self.emit_dom_event("button_release_event", ms_ev)
 		if self.first_click and not self.check_count_hysteresis(self.first_click, event):
 			self.current_click_count = 0
 			self.first_click = None
