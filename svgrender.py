@@ -370,12 +370,21 @@ class SVGWidget(gtk.DrawingArea):
 		if __debug__: self.check_dom_events("button_release_event")
 
 	def handle_clicked(self, drawingarea, event):
-		print("Clicked", self.current_click_count)
 		if self.first_click and self.check_count_hysteresis(self.first_click, event):
 			self.current_click_count += 1
 		else:
-			self.current_click_count = 0
+			self.current_click_count = 1
 			self.first_click = event.copy()
+		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
+		mouse_button = self.get_pressed_mouse_button(event)
+		keys = self.get_keys(event)
+		ms_ev = MouseEvent(	"click", target=self.nodes_under_pointer[-1], \
+							detail=self.current_click_count, clientX=event.x, clientY=event.y, \
+							screenX=event.x_root, screenY=event.y_root, \
+							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+							button=mouse_button, buttons=mouse_buttons)
+		self.emit_dom_event("clicked", ms_ev)
 		if self.last_click and self.check_dblclick_hysteresis(self.last_click, event):
 			event_copy = event.copy()
 			glib.idle_add(lambda: self.emit('dblclicked', event_copy) and False)
@@ -394,6 +403,7 @@ class SVGWidget(gtk.DrawingArea):
 		#~ print(handler, ms_ev)
 		if __debug__:
 			print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+			print(ms_ev.detail)
 			self.emitted_dom_events.append(ms_ev)
 
 
