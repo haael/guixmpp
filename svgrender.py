@@ -155,7 +155,7 @@ class SVGWidget(gtk.DrawingArea):
 
 	@classmethod
 	def gen_node_parents(cls, node):
-		if node.parent:
+		if node.parent: #FIXME
 			yield from cls.gen_node_parents(node.parent)
 		yield node
 
@@ -224,15 +224,17 @@ class SVGWidget(gtk.DrawingArea):
 											shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 											altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 											buttons=mouse_buttons, relatedTarget=self.nodes_under_pointer[-1])
-						if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
 						self.emit_dom_event("motion_notify_event", ms_ev)
-						ms_ev = MouseEvent("mouseleave", target=self.previous_nodes_under_pointer[-1], \
-										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-										buttons=mouse_buttons, relatedTarget=self.nodes_under_pointer[-1])
-						if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
-						self.emit_dom_event("motion_notify_event", ms_ev)
+						amount_nup_pnup = len(self.ancestors(self.nodes_under_pointer[-1]) - self.ancestors(self.previous_nodes_under_pointer[-1]))
+						amount_pnup_nup = len(self.ancestors(self.previous_nodes_under_pointer[-1]) - self.ancestors(self.nodes_under_pointer[-1]))
+						if amount_pnup_nup != 1:
+							for node in self.previous_nodes_under_pointer[-1:-amount_pnup_nup:-1]: #FIXME: this container must have all entered family nodes.
+								ms_ev = MouseEvent("mouseleave", target=node, \
+												clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+												shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+												altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+												buttons=mouse_buttons, relatedTarget=self.nodes_under_pointer[-1])
+								self.emit_dom_event("motion_notify_event", ms_ev)
 						if __debug__:
 							pnup = self.ancestors(self.previous_nodes_under_pointer[-1])
 							nup = self.ancestors(self.nodes_under_pointer[-1])
@@ -246,16 +248,14 @@ class SVGWidget(gtk.DrawingArea):
 										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 										buttons=mouse_buttons)
-					if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
 					self.emit_dom_event("motion_notify_event", ms_ev)
-					#ToDo, Multiple `mouseleave` emitted when leave from more then one family object instantly.
-					ms_ev = MouseEvent("mouseleave", target=self.previous_nodes_under_pointer[-1], \
-										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-										buttons=mouse_buttons)
-					if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
-					self.emit_dom_event("motion_notify_event", ms_ev)
+					for node in self.previous_nodes_under_pointer: #FIXME: this should print family of exited top element.
+						ms_ev = MouseEvent("mouseleave", target=node, \
+											clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+											shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+											altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+											buttons=mouse_buttons)
+						self.emit_dom_event("motion_notify_event", ms_ev)
 
 			if self.nodes_under_pointer:
 				if self.previous_nodes_under_pointer:
@@ -265,31 +265,40 @@ class SVGWidget(gtk.DrawingArea):
 										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 										buttons=mouse_buttons, relatedTarget=self.previous_nodes_under_pointer[-1])
-						if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
 						self.emit_dom_event("motion_notify_event", ms_ev)
-						ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
-										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-										buttons=mouse_buttons, relatedTarget=self.previous_nodes_under_pointer[-1])
-						if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
-						self.emit_dom_event("motion_notify_event", ms_ev)
+						amount_nup_pnup = len(self.ancestors(self.nodes_under_pointer[-1]) - self.ancestors(self.previous_nodes_under_pointer[-1]))
+						amount_pnup_nup = len(self.ancestors(self.previous_nodes_under_pointer[-1]) - self.ancestors(self.nodes_under_pointer[-1]))
+						if amount_nup_pnup != 1:
+							for node in self.nodes_under_pointer[1-amount_nup_pnup:]: #FIXME: this container must have all family nodes.
+								ms_ev = MouseEvent("mouseenter", target=node, \
+												clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+												shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+												altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+												buttons=mouse_buttons, relatedTarget=self.previous_nodes_under_pointer[-1])
+								self.emit_dom_event("motion_notify_event", ms_ev)
+						elif amount_nup_pnup > 1 and amount_pnup_nup > 1:
+							ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
+											clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+											shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+											altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+											buttons=mouse_buttons, relatedTarget=self.previous_nodes_under_pointer[-1])
+							self.emit_dom_event("motion_notify_event", ms_ev)
+
+
 				else:
 					ms_ev = MouseEvent("mouseover", target=self.nodes_under_pointer[-1], \
 									clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
 									shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 									altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 									buttons=mouse_buttons)
-					if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
 					self.emit_dom_event("motion_notify_event", ms_ev)
-					#ToDo, Multiple `mouseenter` emitted when enter to more than one family object instantly.
-					ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
-									clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-									shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-									altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-									buttons=mouse_buttons)
-					if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
-					self.emit_dom_event("motion_notify_event", ms_ev)
+					for node in self.nodes_under_pointer: #FIXME: This should print family of top element
+						ms_ev = MouseEvent("mouseenter", target=node, \
+										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+										buttons=mouse_buttons)
+						self.emit_dom_event("motion_notify_event", ms_ev)
 
 		if self.nodes_under_pointer:
 			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
@@ -299,7 +308,6 @@ class SVGWidget(gtk.DrawingArea):
 							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 							buttons=mouse_buttons)
-			if __debug__: print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
 			self.emit_dom_event("motion_notify_event", ms_ev)
 		if self.last_mousedown and not self.check_click_hysteresis(self.last_mousedown, event):
 			self.last_mousedown = None
@@ -362,6 +370,7 @@ class SVGWidget(gtk.DrawingArea):
 	def emit_dom_event(self, handler, ms_ev):
 		#~ print(handler, ms_ev)
 		if __debug__:
+			print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
 			self.emitted_dom_events.append(ms_ev)
 
 
@@ -483,7 +492,9 @@ if __name__ == '__main__':
 	window.set_name('main_window')
 
 	svgwidget = SVGWidget()
+	#~ svgwidget.load_url('gfx/BYR_color_wheel.svg')
 	svgwidget.load_url('gfx/drawing.svg')
+	#~ svgwidget.load_url('gfx/drawing_no_white_BG.svg')
 	window.add(svgwidget)
 
 	window.show_all()

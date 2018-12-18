@@ -15,7 +15,7 @@
    id="svg2"
    version="1.1"
    inkscape:version="0.91 r13725"
-   sodipodi:docname="drawing.svg">
+   sodipodi:docname="drawing_no_white_BG.svg">
   <defs
      id="defs4" />
   <sodipodi:namedview
@@ -29,7 +29,7 @@
      inkscape:cx="146.94172"
      inkscape:cy="884.60452"
      inkscape:document-units="px"
-     inkscape:current-layer="g14"
+     inkscape:current-layer="layer1"
      showgrid="false"
      inkscape:window-width="1366"
      inkscape:window-height="690"
@@ -51,15 +51,7 @@
   <g
      inkscape:label="Layer 1"
      inkscape:groupmode="layer"
-     id="layer1">
-    <rect
-       style="fill:#ffffff;fill-opacity:1;stroke:#ff0000;stroke-width:7;stroke-linecap:round;stroke-linejoin:bevel;stroke-miterlimit:4;stroke-dasharray:7, 14;stroke-dashoffset:0;stroke-opacity:1"
-       id="rect4146"
-       width="504.06613"
-       height="416.18286"
-       x="-4.0406103"
-       y="-1.2269031" />
-  </g>
+     id="layer1" />
   <g
      id="g4165"
      transform="matrix(0.84368373,0,0,0.68466341,-0.061014,3.9260823)">
