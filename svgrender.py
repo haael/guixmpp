@@ -354,7 +354,7 @@ class SVGWidget(gtk.DrawingArea):
 		else:
 			mouseup_target = None
 		ms_ev = MouseEvent(	"mouseup", target=mouseup_target, \
-							detail=1, clientX=event.x, clientY=event.y, \
+							detail=self.current_click_count+1, clientX=event.x, clientY=event.y, \
 							screenX=event.x_root, screenY=event.y_root, \
 							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
