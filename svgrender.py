@@ -85,6 +85,7 @@ class SVGWidget(gtk.DrawingArea):
 
 	def __init__(self):
 		super().__init__()
+		self.set_can_focus(True)
 
 		class SVGRenderBg(SVGRender):
 			canvas = self
@@ -125,16 +126,16 @@ class SVGWidget(gtk.DrawingArea):
 		self.connect('dblclicked', self.handle_dblclicked)
 		
 		#~Keyboard
-		#~ self.connect('key-press-event', self.handle_key_press_event)
-		#~ self.connect('key-release-event', self.handle_key_release_event)
+		self.connect('key-press-event', self.handle_key_press_event)
+		self.connect('key-release-event', self.handle_key_release_event)
 
 		if __debug__: print("{:10} | {:10} | {:10}".format("Type", "Target", "relatedTarget"));
 		self.add_events(gdk.EventMask.POINTER_MOTION_MASK)
 		self.add_events(gdk.EventMask.BUTTON_RELEASE_MASK)
 		self.add_events(gdk.EventMask.BUTTON_PRESS_MASK)
 		
-		#~ self.add_events(gdk.EventMask.KEY_PRESS_MASK)
-		#~ self.add_events(gdk.EventMask.KEY_RELEASE_MASK)
+		self.add_events(gdk.EventMask.KEY_PRESS_MASK)
+		self.add_events(gdk.EventMask.KEY_RELEASE_MASK)
 
 	def load_url(self, url):
 		self.document = cairosvg.parser.Tree(url=url)
@@ -438,12 +439,12 @@ class SVGWidget(gtk.DrawingArea):
 		if __debug__: self.check_dom_events("dblclicked")
 
 	def handle_key_press_event(self, widget, event):
-		print("Press")
+		print("Press", chr(event.keyval))
 		
 		if __debug__: self.check_dom_events("key_pressed")
 	
 	def handle_key_release_event(self, widget, event):
-		print("Release")
+		print("Release", chr(event.keyval))
 		
 		if __debug__: self.check_dom_events("key_released")
 
