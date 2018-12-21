@@ -126,7 +126,7 @@ class SVGWidget(gtk.DrawingArea):
 		
 		#~Keyboard
 		#~ self.connect('key-press-event', self.handle_key_press_event)
-		self.connect('key-release-event', self.handle_key_press_event)
+		#~ self.connect('key-release-event', self.handle_key_release_event)
 
 		if __debug__: print("{:10} | {:10} | {:10}".format("Type", "Target", "relatedTarget"));
 		self.add_events(gdk.EventMask.POINTER_MOTION_MASK)
@@ -134,6 +134,7 @@ class SVGWidget(gtk.DrawingArea):
 		self.add_events(gdk.EventMask.BUTTON_PRESS_MASK)
 		
 		#~ self.add_events(gdk.EventMask.KEY_PRESS_MASK)
+		#~ self.add_events(gdk.EventMask.KEY_RELEASE_MASK)
 
 	def load_url(self, url):
 		self.document = cairosvg.parser.Tree(url=url)
