@@ -112,18 +112,28 @@ class SVGWidget(gtk.DrawingArea):
 		self.first_click = None
 		self.last_click = None
 		self.current_click_count = 0
+		self.last_keydown = None
+		
 		self.connect('configure-event', self.handle_configure_event)
 		self.connect('draw', self.handle_draw)
+		
+		#~Mouse
 		self.connect('motion-notify-event', self.handle_motion_notify_event)
 		self.connect('button-press-event', self.handle_button_press_event)
 		self.connect('button-release-event', self.handle_button_release_event)
 		self.connect('clicked', self.handle_clicked)
 		self.connect('dblclicked', self.handle_dblclicked)
+		
+		#~Keyboard
+		#~ self.connect('key-press-event', self.handle_key_press_event)
+		self.connect('key-release-event', self.handle_key_press_event)
 
 		if __debug__: print("{:10} | {:10} | {:10}".format("Type", "Target", "relatedTarget"));
 		self.add_events(gdk.EventMask.POINTER_MOTION_MASK)
 		self.add_events(gdk.EventMask.BUTTON_RELEASE_MASK)
 		self.add_events(gdk.EventMask.BUTTON_PRESS_MASK)
+		
+		#~ self.add_events(gdk.EventMask.KEY_PRESS_MASK)
 
 	def load_url(self, url):
 		self.document = cairosvg.parser.Tree(url=url)
@@ -242,13 +252,13 @@ class SVGWidget(gtk.DrawingArea):
 												buttons=mouse_buttons, relatedTarget=self.nodes_under_pointer[-1])
 								self.emit_dom_event("motion_notify_event", ms_ev)
 						
-						if __debug__:
-							pnup = self.ancestors(self.previous_nodes_under_pointer[-1])
-							nup = self.ancestors(self.nodes_under_pointer[-1])
-							print("pnup:", pnup)
-							print("nup:", nup)
-							print("pnup - nup:", pnup - nup)
-							print("nup - pnup:", nup - pnup)
+						#~ if __debug__:
+							#~ pnup = self.ancestors(self.previous_nodes_under_pointer[-1])
+							#~ nup = self.ancestors(self.nodes_under_pointer[-1])
+							#~ print("pnup:", pnup)
+							#~ print("nup:", nup)
+							#~ print("pnup - nup:", pnup - nup)
+							#~ print("nup - pnup:", nup - pnup)
 				else:
 					ms_ev = MouseEvent("mouseout", target=self.previous_nodes_under_pointer[-1], \
 										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
@@ -426,11 +436,21 @@ class SVGWidget(gtk.DrawingArea):
 		
 		if __debug__: self.check_dom_events("dblclicked")
 
+	def handle_key_press_event(self, widget, event):
+		print("Press")
+		
+		if __debug__: self.check_dom_events("key_pressed")
+	
+	def handle_key_release_event(self, widget, event):
+		print("Release")
+		
+		if __debug__: self.check_dom_events("key_released")
+
 	def emit_dom_event(self, handler, ms_ev):
 		#~ print(handler, ms_ev)
 		if __debug__:
-			print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
-			print(ms_ev.detail, self.current_click_count)
+			#~ print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
+			#~ print(ms_ev.detail, self.current_click_count)
 			self.emitted_dom_events.append(ms_ev)
 
 	def reset_after_exception(self):
@@ -461,6 +481,7 @@ class SVGWidget(gtk.DrawingArea):
 			assert all(_ms_ev.detail > 0 for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("click", "dblclick", "mousedown", "mouseup")), "For events of types: `click`, `dblclick`, `mousedown` or `mouseup`. `detail` value should be higher then 0."
 			assert all(_ms_ev.detail == self.current_click_count + 1 for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mousedown", "mouseup")), "For events of types: `mousedown` or `mouseup`. `detail` value should be equal to `current_click_count` + 1."
 			assert all(_ms_ev.detail == self.current_click_count for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("click", "dblclick")), "For events of types: `click` or `dblclick`. `detail` value should be equal to `current_click_count`."
+			assert all(_kb_ev.detail == 0 for _kb_ev in self.emitted_dom_events if _kb_ev.type_ in ("keydown", "keyup")), "For `key_pressed`, all events of type `keydown` or `keyup` should be emitted with default detail."
 
 			#~ Mouse event order
 			mouseout_events = [_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseout"]
@@ -477,6 +498,11 @@ class SVGWidget(gtk.DrawingArea):
 				assert self.emitted_dom_events.index(mouseover) < self.emitted_dom_events.index(mouseenter), "For the appropriate Mouse Event order, events of type `mouseover` should happen before events of type `mouseenter`."
 			for mouseenter, mousemove in itertools.product(mouseenter_events, mousemove_events):
 				assert self.emitted_dom_events.index(mouseenter) < self.emitted_dom_events.index(mousemove), "For the appropriate Mouse Event order, events of type `mouseenter` should happen before events of type `mousemove`."
+
+			#~ Repeat
+			assert all(_kb_ev.repeat == False for _kb_ev in self.emitted_dom_events if _kb_ev.type_ == "keydown") if not self.last_keydown else True, "For event of type `keydown`, repeat attribute should be False if `last_keydown` not exist."
+			assert all(_kb_ev.repeat == True for _kb_ev in self.emitted_dom_events if _kb_ev.type_ == "keydown" and self.last_keydown.keyval == _kb_ev.code) if self.last_keydown else True, "For event of type `keydown`, repeat attribute should be True if `last_keydown` exist and their `keyval` is equal to `KeyboardEvent.code`."
+			assert all(_kb_ev.repeat == False for _kb_ev in self.emitted_dom_events if _kb_ev.type_ == "keyup"), "For event of type `keyup`, repeat attribute should be False."
 
 			if handler == "motion_notify_event":
 				amount_ancestors_pnup_nup = len(self.ancestors(pnup[-1]) - self.ancestors(nup[-1])) if nup and pnup else None
@@ -533,6 +559,14 @@ class SVGWidget(gtk.DrawingArea):
 			elif handler == "dblclicked":
 				assert all(_ms_ev.type_ == "dblclick" for _ms_ev in self.emitted_dom_events), "For `dblclicked`, only event of type `dblclick` should be emitted."
 				assert any(_ms_ev.type_ == "dblclick" for _ms_ev in self.emitted_dom_events) if nup else True, "For `dblclicked`, any event of type `dblclick` should be emitted."
+				
+			elif handler == "key_pressed":
+				assert all(_kb_ev.type_ == "keydown" for _kb_ev in self.emitted_dom_events), "For `key_pressed`, only event of type `keydown` should be emitted."
+				assert any(_kb_ev.type_ == "keydown" for _kb_ev in self.emitted_dom_events), "For `key_pressed`, any event of type `keydown` should be emitted."
+			
+			elif handler == "key_released":
+				assert all(_kb_ev.type_ == "keyup" for _kb_ev in self.emitted_dom_events), "For `key_released`, only event of type `keyup` should be emitted."
+				assert any(_kb_ev.type_ == "keyup" for _kb_ev in self.emitted_dom_events), "For `key_released`, any event of type `keyup` should be emitted."
 
 			self.emitted_dom_events.clear()
 
