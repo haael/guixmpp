@@ -208,15 +208,15 @@ class SVGWidget(gtk.DrawingArea):
 	def get_key_location(keyval_name):
 		if len(keyval_name) > 1:
 			if keyval_name.endswith("R"):
-				located = KeyboardEvent.DOM_KEY_LOCATION_RIGHT
+				return KeyboardEvent.DOM_KEY_LOCATION_RIGHT
 			elif keyval_name.endswith("L"):
-				located = KeyboardEvent.DOM_KEY_LOCATION_LEFT
+				return KeyboardEvent.DOM_KEY_LOCATION_LEFT
 			elif keyval_name.startswith("KP"):
-				located = KeyboardEvent.DOM_KEY_LOCATION_NUMPAD
+				return KeyboardEvent.DOM_KEY_LOCATION_NUMPAD
 			else:
-				located = KeyboardEvent.DOM_KEY_LOCATION_STANDARD
+				return KeyboardEvent.DOM_KEY_LOCATION_STANDARD
 		else:
-			located = KeyboardEvent.DOM_KEY_LOCATION_STANDARD
+			return KeyboardEvent.DOM_KEY_LOCATION_STANDARD
 
 	def update_nodes_under_pointer(self, event):
 		self.previous_nodes_under_pointer = self.nodes_under_pointer[:]
@@ -477,7 +477,6 @@ class SVGWidget(gtk.DrawingArea):
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								location=located, repeat=repeated)
 		self.emit_dom_event("key_pressed", kb_ev)
-		if __debug__: print(str(self.document))
 		
 		if __debug__: self.check_dom_events("key_pressed")
 	
@@ -487,14 +486,15 @@ class SVGWidget(gtk.DrawingArea):
 		if __debug__: self.check_dom_events("key_released")
 
 	def emit_dom_event(self, handler, ev):
-		print(handler, ev)
+		#~ print(handler, ev)
 		if __debug__:
 			#~MouseEvent
 			#~ print("{:10} | {:10} | {:10}".format(ev.type_, ev.target.get('fill'), ev.relatedTarget.get('fill') if ev.relatedTarget else "None"));
 			#~ print(ev.detail, self.current_click_count)
 			#~KeyboardEvent
 			if handler == "key_pressed":
-				print("{:10} | {:10} | {:10} | {:10} | {:10} | {:10}".format(ev.type_, str(ev.target), str(ev.key), str(ev.code), str(ev.location), str(ev.repeat)))
+				print(ev)
+				#~ print("{:10} | {:10} | {:10} | {:10} | {:10} | {:10}".format(ev.type_, str(ev.target), str(ev.key), str(ev.code), str(ev.location), str(ev.repeat)))
 			self.emitted_dom_events.append(ev)
 
 	def reset_after_exception(self):
