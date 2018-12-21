@@ -604,13 +604,13 @@ class SVGWidget(gtk.DrawingArea):
 				assert all(_ms_ev.type_ == "dblclick" for _ms_ev in self.emitted_dom_events), "For `dblclicked`, only event of type `dblclick` should be emitted."
 				assert any(_ms_ev.type_ == "dblclick" for _ms_ev in self.emitted_dom_events) if nup else True, "For `dblclicked`, any event of type `dblclick` should be emitted."
 				
-			#~ elif handler == "key_pressed":
-				#~ assert all(_kb_ev.type_ == "keydown" for _kb_ev in self.emitted_dom_events), "For `key_pressed`, only event of type `keydown` should be emitted."
-				#~ assert any(_kb_ev.type_ == "keydown" for _kb_ev in self.emitted_dom_events), "For `key_pressed`, any event of type `keydown` should be emitted."
+			elif handler == "key_pressed":
+				assert all(_kb_ev.type_ == "keydown" for _kb_ev in self.emitted_dom_events), "For `key_pressed`, only event of type `keydown` should be emitted."
+				assert any(_kb_ev.type_ == "keydown" for _kb_ev in self.emitted_dom_events), "For `key_pressed`, any event of type `keydown` should be emitted."
 			
-			#~ elif handler == "key_released":
-				#~ assert all(_kb_ev.type_ == "keyup" for _kb_ev in self.emitted_dom_events), "For `key_released`, only event of type `keyup` should be emitted."
-				#~ assert any(_kb_ev.type_ == "keyup" for _kb_ev in self.emitted_dom_events), "For `key_released`, any event of type `keyup` should be emitted."
+			elif handler == "key_released":
+				assert all(_kb_ev.type_ == "keyup" for _kb_ev in self.emitted_dom_events), "For `key_released`, only event of type `keyup` should be emitted."
+				assert any(_kb_ev.type_ == "keyup" for _kb_ev in self.emitted_dom_events), "For `key_released`, any event of type `keyup` should be emitted."
 
 			self.emitted_dom_events.clear()
 
