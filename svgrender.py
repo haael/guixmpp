@@ -203,6 +203,20 @@ class SVGWidget(gtk.DrawingArea):
 		elif event.button == gdk.BUTTON_MIDDLE:
 			active_button = 1
 		return active_button
+		
+	@staticmethod
+	def get_key_location(keyval_name):
+		if len(keyval_name) > 1:
+			if keyval_name.endswith("R"):
+				return KeyboardEvent.DOM_KEY_LOCATION_RIGHT
+			elif keyval_name.endswith("L"):
+				return KeyboardEvent.DOM_KEY_LOCATION_LEFT
+			elif keyval_name.startswith("KP"):
+				return KeyboardEvent.DOM_KEY_LOCATION_NUMPAD
+			else:
+				return KeyboardEvent.DOM_KEY_LOCATION_STANDARD
+		else:
+			return KeyboardEvent.DOM_KEY_LOCATION_STANDARD
 
 	def update_nodes_under_pointer(self, event):
 		self.previous_nodes_under_pointer = self.nodes_under_pointer[:]
@@ -439,21 +453,49 @@ class SVGWidget(gtk.DrawingArea):
 		if __debug__: self.check_dom_events("dblclicked")
 
 	def handle_key_press_event(self, widget, event):
-		print("Press", chr(event.keyval))
+		print("Press", gdk.keyval_name(event.keyval))
+		if self.last_keydown and self.last_keydown.keyval == event.keyval:
+			repeated = True
+		else:
+			self.last_keydown = event.copy()
+			repeated = False
+		
+		keyval_name = gdk.keyval_name(event.keyval)
+		keys = self.get_keys(event)
+		located = self.get_key_location(keyval_name)
+		######################
+		#~ ToDo Focused Target
+		if self.nodes_under_pointer:
+			focused = self.nodes_under_pointer[-1]
+		else:
+			focused = self.document
+		#~ ToDo Focused Target
+		######################
+		kb_ev = KeyboardEvent(	"keydown", target=focused, \
+								key=gdk.keyval_name(event.keyval), code=str(event.keyval), \
+								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+								location=located, repeat=repeated)
+		self.emit_dom_event("key_pressed", kb_ev)
 		
 		if __debug__: self.check_dom_events("key_pressed")
 	
 	def handle_key_release_event(self, widget, event):
-		print("Release", chr(event.keyval))
+		print("Release", gdk.keyval_name(event.keyval))
 		
 		if __debug__: self.check_dom_events("key_released")
 
-	def emit_dom_event(self, handler, ms_ev):
-		#~ print(handler, ms_ev)
+	def emit_dom_event(self, handler, ev):
+		#~ print(handler, ev)
 		if __debug__:
-			#~ print("{:10} | {:10} | {:10}".format(ms_ev.type_, ms_ev.target.get('fill'), ms_ev.relatedTarget.get('fill') if ms_ev.relatedTarget else "None"));
-			#~ print(ms_ev.detail, self.current_click_count)
-			self.emitted_dom_events.append(ms_ev)
+			#~MouseEvent
+			#~ print("{:10} | {:10} | {:10}".format(ev.type_, ev.target.get('fill'), ev.relatedTarget.get('fill') if ev.relatedTarget else "None"));
+			#~ print(ev.detail, self.current_click_count)
+			#~KeyboardEvent
+			if handler == "key_pressed":
+				print(ev)
+				#~ print("{:10} | {:10} | {:10} | {:10} | {:10} | {:10}".format(ev.type_, str(ev.target), str(ev.key), str(ev.code), str(ev.location), str(ev.repeat)))
+			self.emitted_dom_events.append(ev)
 
 	def reset_after_exception(self):
 		if __debug__:
