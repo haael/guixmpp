@@ -482,6 +482,25 @@ class SVGWidget(gtk.DrawingArea):
 	
 	def handle_key_release_event(self, widget, event):
 		print("Release", gdk.keyval_name(event.keyval))
+		self.last_keydown = None
+		
+		keyval_name = gdk.keyval_name(event.keyval)
+		keys = self.get_keys(event)
+		located = self.get_key_location(keyval_name)
+		######################
+		#~ ToDo Focused Target
+		if self.nodes_under_pointer:
+			focused = self.nodes_under_pointer[-1]
+		else:
+			focused = self.document
+		#~ ToDo Focused Target
+		######################
+		kb_ev = KeyboardEvent(	"keyup", target=focused, \
+								key=gdk.keyval_name(event.keyval), code=str(event.keyval), \
+								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+								location=located)
+		self.emit_dom_event("key_released", kb_ev)
 		
 		if __debug__: self.check_dom_events("key_released")
 
