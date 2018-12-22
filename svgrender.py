@@ -429,7 +429,7 @@ class SVGWidget(gtk.DrawingArea):
 		if self.nodes_under_pointer:
 			glib.idle_add(lambda: self.set_dom_focus(self.nodes_under_pointer[-1]))
 		else:
-			self.set_dom_focus()
+			glib.idle_add(lambda: self.set_dom_focus())
 
 		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 		mouse_button = self.get_pressed_mouse_button(event)
