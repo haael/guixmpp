@@ -512,6 +512,26 @@ class SVGWidget(gtk.DrawingArea):
 
 	def handle_scroll_event(self, widget, event):
 		print("Scrolled")
+		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
+		mouse_button = self.get_pressed_mouse_button(event)
+		keys = self.get_keys(event)
+		if self.nodes_under_pointer:
+			wheel_target = self.nodes_under_pointer[-1]
+		else:
+			wheel_target = None
+			
+		wh_ev = WheelEvent(	"wheel", target=wheel_target, \
+							clientX=event.x, clientY=event.y, \
+							screenX=event.x_root, screenY=event.y_root, \
+							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+							button=mouse_button, buttons=mouse_buttons, \
+							deltaX=event.delta_x, deltaY=event.delta_y, \
+							deltaMode=WheelEvent.DOM_DELTA_LINE)
+			
+		self.emit_dom_event("scrolled_event", wh_ev)
+
+		if __debug__: self.check_dom_events("scrolled_event")
 
 	def emit_dom_event(self, handler, ev):
 		#~ print(handler, ev)
