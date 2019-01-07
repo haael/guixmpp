@@ -114,6 +114,7 @@ class SVGWidget(gtk.DrawingArea):
 		self.last_click = None
 		self.current_click_count = 0
 		self.last_keydown = None
+		self.element_in_focus = None
 		
 		self.connect('configure-event', self.handle_configure_event)
 		self.connect('draw', self.handle_draw)
@@ -217,6 +218,9 @@ class SVGWidget(gtk.DrawingArea):
 				return KeyboardEvent.DOM_KEY_LOCATION_STANDARD
 		else:
 			return KeyboardEvent.DOM_KEY_LOCATION_STANDARD
+
+	def set_dom_focus(self, element=None):
+		self.element_in_focus = element
 
 	def update_nodes_under_pointer(self, event):
 		self.previous_nodes_under_pointer = self.nodes_under_pointer[:]
@@ -422,6 +426,11 @@ class SVGWidget(gtk.DrawingArea):
 			self.current_click_count = 1
 			self.first_click = event.copy()
 
+		if self.nodes_under_pointer:
+			glib.idle_add(lambda: self.set_dom_focus(self.nodes_under_pointer[-1]))
+		else:
+			glib.idle_add(lambda: self.set_dom_focus())
+
 		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 		mouse_button = self.get_pressed_mouse_button(event)
 		keys = self.get_keys(event)
@@ -463,14 +472,10 @@ class SVGWidget(gtk.DrawingArea):
 		keyval_name = gdk.keyval_name(event.keyval)
 		keys = self.get_keys(event)
 		located = self.get_key_location(keyval_name)
-		######################
-		#~ ToDo Focused Target
-		if self.nodes_under_pointer:
-			focused = self.nodes_under_pointer[-1]
+		if self.element_in_focus:
+			focused = self.element_in_focus
 		else:
 			focused = self.document
-		#~ ToDo Focused Target
-		######################
 		kb_ev = KeyboardEvent(	"keydown", target=focused, \
 								key=gdk.keyval_name(event.keyval), code=str(event.keyval), \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
@@ -487,14 +492,10 @@ class SVGWidget(gtk.DrawingArea):
 		keyval_name = gdk.keyval_name(event.keyval)
 		keys = self.get_keys(event)
 		located = self.get_key_location(keyval_name)
-		######################
-		#~ ToDo Focused Target
-		if self.nodes_under_pointer:
-			focused = self.nodes_under_pointer[-1]
+		if self.element_in_focus:
+			focused = self.element_in_focus
 		else:
 			focused = self.document
-		#~ ToDo Focused Target
-		######################
 		kb_ev = KeyboardEvent(	"keyup", target=focused, \
 								key=gdk.keyval_name(event.keyval), code=str(event.keyval), \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
