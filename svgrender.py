@@ -126,6 +126,9 @@ class SVGWidget(gtk.DrawingArea):
 		self.connect('clicked', self.handle_clicked)
 		self.connect('dblclicked', self.handle_dblclicked)
 		
+		#~Wheel
+		self.connect("scroll-event", self.handle_scroll_event)
+		
 		#~Keyboard
 		self.connect('key-press-event', self.handle_key_press_event)
 		self.connect('key-release-event', self.handle_key_release_event)
@@ -137,6 +140,8 @@ class SVGWidget(gtk.DrawingArea):
 		
 		self.add_events(gdk.EventMask.KEY_PRESS_MASK)
 		self.add_events(gdk.EventMask.KEY_RELEASE_MASK)
+		self.add_events(gdk.EventMask.SMOOTH_SCROLL_MASK)
+		#~ print(dir(gdk.EventMask))
 
 	def load_url(self, url):
 		self.document = cairosvg.parser.Tree(url=url)
@@ -505,6 +510,29 @@ class SVGWidget(gtk.DrawingArea):
 		
 		if __debug__: self.check_dom_events("key_released")
 
+	def handle_scroll_event(self, widget, event):
+		print("Scrolled")
+		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
+		mouse_button = self.get_pressed_mouse_button(event)
+		keys = self.get_keys(event)
+		if self.nodes_under_pointer:
+			wheel_target = self.nodes_under_pointer[-1]
+		else:
+			wheel_target = None
+			
+		wh_ev = WheelEvent(	"wheel", target=wheel_target, \
+							clientX=event.x, clientY=event.y, \
+							screenX=event.x_root, screenY=event.y_root, \
+							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+							button=mouse_button, buttons=mouse_buttons, \
+							deltaX=event.delta_x, deltaY=event.delta_y, \
+							deltaMode=WheelEvent.DOM_DELTA_LINE)
+			
+		self.emit_dom_event("scrolled_event", wh_ev)
+
+		if __debug__: self.check_dom_events("scrolled_event")
+
 	def emit_dom_event(self, handler, ev):
 		#~ print(handler, ev)
 		if __debug__:
@@ -539,7 +567,7 @@ class SVGWidget(gtk.DrawingArea):
 			assert all(pnup and (_ms_ev.target in pnup) for _ms_ev in self.emitted_dom_events if (_ms_ev.type_ == "mouseleave")), "For events of type `mouseleave`, event target should be in `previous_nodes_under_pointer` elements"
 			assert all(nup and (_ms_ev.target == nup[-1]) for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mousedown", "click", "dblclick")), "For event of types `mousedown`, `mouseup`, `click` and `dblclick, event target should be top `nodes_under_pointer` element"
 			assert all(_ms_ev.target == nup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseup") if nup else all(_ms_ev.target == None for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseup"), "For event of type `mouseup` event target should be None if fired out of window border, otherwise target should be top `nodes_under_pointer` if it is over element."
-			assert all(_kb_ev.target == self.document for _kb_ev in self.emitted_dom_events if _kb_ev.type_ in ("keydown", "keyup")) if not self.element_in_focus, "For events of type `keydown` or `keyup`, event target should be self.document if no one element is focused."
+			assert all(_kb_ev.target == self.document for _kb_ev in self.emitted_dom_events if _kb_ev.type_ in ("keydown", "keyup")) if not self.element_in_focus else True, "For events of type `keydown` or `keyup`, event target should be self.document if no one element is focused."
 
 			#~ Detail
 			assert all(_ms_ev.detail == 0 for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mouseenter", "mouseleave", "mousemove", "mouseout", "mouseover")), "For events of types: `mouseenter`, `mouseleave`, `mousemove`, `mouseout` or `mouseover`. `detail` value should be equal to 0."
