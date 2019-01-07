@@ -114,7 +114,7 @@ class SVGWidget(gtk.DrawingArea):
 		self.last_click = None
 		self.current_click_count = 0
 		self.last_keydown = None
-		self.element_in_focus = None
+		self.element_in_focus = self.document
 		
 		self.connect('configure-event', self.handle_configure_event)
 		self.connect('draw', self.handle_draw)
@@ -145,6 +145,7 @@ class SVGWidget(gtk.DrawingArea):
 
 	def load_url(self, url):
 		self.document = cairosvg.parser.Tree(url=url)
+		self.element_in_focus = self.document
 		if self.get_realized():
 			rect = self.get_allocation()
 			self.rendered_svg_surface = self.SVGRenderBg.render(self.document, rect.width, rect.height)
@@ -224,7 +225,7 @@ class SVGWidget(gtk.DrawingArea):
 		else:
 			return KeyboardEvent.DOM_KEY_LOCATION_STANDARD
 
-	def set_dom_focus(self, element=None):
+	def set_dom_focus(self, element):
 		self.element_in_focus = element
 
 	def update_nodes_under_pointer(self, event):
@@ -477,10 +478,7 @@ class SVGWidget(gtk.DrawingArea):
 		keyval_name = gdk.keyval_name(event.keyval)
 		keys = self.get_keys(event)
 		located = self.get_key_location(keyval_name)
-		if self.element_in_focus:
-			focused = self.element_in_focus
-		else:
-			focused = self.document
+		focused = self.element_in_focus
 		kb_ev = KeyboardEvent(	"keydown", target=focused, \
 								key=gdk.keyval_name(event.keyval), code=str(event.keyval), \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
@@ -497,10 +495,7 @@ class SVGWidget(gtk.DrawingArea):
 		keyval_name = gdk.keyval_name(event.keyval)
 		keys = self.get_keys(event)
 		located = self.get_key_location(keyval_name)
-		if self.element_in_focus:
-			focused = self.element_in_focus
-		else:
-			focused = self.document
+		focused = self.element_in_focus
 		kb_ev = KeyboardEvent(	"keyup", target=focused, \
 								key=gdk.keyval_name(event.keyval), code=str(event.keyval), \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
@@ -567,7 +562,7 @@ class SVGWidget(gtk.DrawingArea):
 			assert all(pnup and (_ms_ev.target in pnup) for _ms_ev in self.emitted_dom_events if (_ms_ev.type_ == "mouseleave")), "For events of type `mouseleave`, event target should be in `previous_nodes_under_pointer` elements"
 			assert all(nup and (_ms_ev.target == nup[-1]) for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mousedown", "click", "dblclick")), "For event of types `mousedown`, `mouseup`, `click` and `dblclick, event target should be top `nodes_under_pointer` element"
 			assert all(_ms_ev.target == nup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseup") if nup else all(_ms_ev.target == None for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseup"), "For event of type `mouseup` event target should be None if fired out of window border, otherwise target should be top `nodes_under_pointer` if it is over element."
-			assert all(_kb_ev.target == self.document for _kb_ev in self.emitted_dom_events if _kb_ev.type_ in ("keydown", "keyup")) if not self.element_in_focus else True, "For events of type `keydown` or `keyup`, event target should be self.document if no one element is focused."
+			assert all(_kb_ev.target == self.element_in_focus for _kb_ev in self.emitted_dom_events if _kb_ev.type_ in ("keydown", "keyup")), "For events of type `keydown` or `keyup`, event target should be self.document if no one element is focused."
 
 			#~ Detail
 			assert all(_ms_ev.detail == 0 for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mouseenter", "mouseleave", "mousemove", "mouseout", "mouseover")), "For events of types: `mouseenter`, `mouseleave`, `mousemove`, `mouseout` or `mouseover`. `detail` value should be equal to 0."
