@@ -360,6 +360,11 @@ class SVGWidget(gtk.DrawingArea):
 			assert not self.emitted_dom_events
 
 	def handle_button_press_event(self, drawingarea, event):
+		print("\n"*3)
+		if self.nodes_under_pointer:
+			for i in self.gen_node_parents(self.nodes_under_pointer[-1]):
+				print(i, "\n#\n#")
+		print("\n"*3)
 		if event.button == gdk.BUTTON_PRIMARY and event.state & (gdk.ModifierType.BUTTON1_MASK | \
 																 gdk.ModifierType.BUTTON2_MASK | \
 																 gdk.ModifierType.BUTTON3_MASK | \
