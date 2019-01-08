@@ -404,6 +404,7 @@ class SVGWidget(gtk.DrawingArea):
 							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 							button=self.mouse_button, buttons=mouse_buttons)
 		self.emit_dom_event("button_release_event", ms_ev)
+		self.mouse_button = 0
 
 		if __debug__: self.check_dom_events("button_release_event")
 
@@ -517,14 +518,14 @@ class SVGWidget(gtk.DrawingArea):
 		if __debug__: self.check_dom_events("scrolled_event")
 
 	def emit_dom_event(self, handler, ev):
-		#~ print(handler, ev)
+		print(handler, ev.button, ev.buttons)
 		if __debug__:
 			#~MouseEvent
 			#~ print("{:10} | {:10} | {:10}".format(ev.type_, ev.target.get('fill'), ev.relatedTarget.get('fill') if ev.relatedTarget else "None"));
 			#~ print(ev.detail, self.current_click_count)
 			#~KeyboardEvent
-			if handler == "key_pressed":
-				print(ev)
+			#~ if handler == "key_pressed":
+				#~ print(ev)
 				#~ print("{:10} | {:10} | {:10} | {:10} | {:10} | {:10}".format(ev.type_, str(ev.target), str(ev.key), str(ev.code), str(ev.location), str(ev.repeat)))
 			self.emitted_dom_events.append(ev)
 
