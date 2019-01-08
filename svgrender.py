@@ -115,6 +115,7 @@ class SVGWidget(gtk.DrawingArea):
 		self.current_click_count = 0
 		self.last_keydown = None
 		self.element_in_focus = self.document
+		self.previous_focus = None
 		
 		self.connect('configure-event', self.handle_configure_event)
 		self.connect('draw', self.handle_draw)
@@ -226,7 +227,12 @@ class SVGWidget(gtk.DrawingArea):
 			return KeyboardEvent.DOM_KEY_LOCATION_STANDARD
 
 	def set_dom_focus(self, element):
-		self.element_in_focus = element
+		if element_focusable and self.element_in_focus != self.previous_focus:
+			self.previous_focus = self.element_in_focus
+			self.element_in_focus = element
+
+	def element_focusable(self, element):
+		return True
 
 	def update_nodes_under_pointer(self, event):
 		self.previous_nodes_under_pointer = self.nodes_under_pointer[:]
