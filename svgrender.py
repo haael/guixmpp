@@ -576,8 +576,7 @@ class SVGWidget(gtk.DrawingArea):
 			assert all(_kb_ev.repeat == False for _kb_ev in self.emitted_dom_events if _kb_ev.type_ == "keyup"), "For event of type `keyup`, repeat attribute should be False."
 			
 			#~ Delta
-			assert all((_wh_ev.deltaX or _wh_ev.deltaY) for _wh_ev in self.emitted_dom_events if _wh_ev.type_ == "wheel"), "For event of type `wheel`, one of `deltaY` or `deltaX` should be different from zero."
-			assert all(_wh_ev.deltaMode in (0x00, 0x01, 0x02) for _wh_ev in self.emitted_dom_events if _wh_ev.type_ == "wheel"), "For event of type `wheel`, one of `deltaY` or `deltaX` should be different from zero."
+			assert all(_wh_ev.deltaMode in (WheelEvent.DOM_DELTA_LINE, WheelEvent.DOM_DELTA_PAGE, WheelEvent.DOM_DELTA_PIXEL) for _wh_ev in self.emitted_dom_events if _wh_ev.type_ == "wheel"), "For event of type `wheel`, deltaMode should contain value from constants of WheelEvents."
 			
 
 			if handler == "motion_notify_event":
