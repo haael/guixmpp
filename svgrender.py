@@ -267,16 +267,12 @@ class SVGWidget(gtk.DrawingArea):
 											buttons=mouse_buttons, relatedTarget=self.nodes_under_pointer[-1])
 						self.emit_dom_event("motion_notify_event", ms_ev)
 						
-						amount_nup_pnup = len(self.ancestors(self.nodes_under_pointer[-1]) - self.ancestors(self.previous_nodes_under_pointer[-1]))
-						amount_pnup_nup = len(self.ancestors(self.previous_nodes_under_pointer[-1]) - self.ancestors(self.nodes_under_pointer[-1]))
-						if amount_pnup_nup != 1:
-							for node in self.previous_nodes_under_pointer[-1:-amount_pnup_nup:-1]: #FIXME: this container must have all entered family nodes.
-								ms_ev = MouseEvent("mouseleave", target=node, \
-												clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-												shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-												altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-												buttons=mouse_buttons, relatedTarget=self.nodes_under_pointer[-1])
-								self.emit_dom_event("motion_notify_event", ms_ev)
+						ms_ev = MouseEvent("mouseleave", target=self.previous_nodes_under_pointer[-1], \
+										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+										buttons=mouse_buttons, relatedTarget=self.nodes_under_pointer[-1])
+						self.emit_dom_event("motion_notify_event", ms_ev)
 						
 						#~ if __debug__:
 							#~ pnup = self.ancestors(self.previous_nodes_under_pointer[-1])
@@ -293,13 +289,12 @@ class SVGWidget(gtk.DrawingArea):
 										buttons=mouse_buttons)
 					self.emit_dom_event("motion_notify_event", ms_ev)
 					
-					for node in self.previous_nodes_under_pointer: #FIXME: this should print family of exited top element.
-						ms_ev = MouseEvent("mouseleave", target=node, \
-											clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-											shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-											altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-											buttons=mouse_buttons)
-						self.emit_dom_event("motion_notify_event", ms_ev)
+					ms_ev = MouseEvent("mouseleave", target=self.previous_nodes_under_pointer[-1], \
+										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+										buttons=mouse_buttons)
+					self.emit_dom_event("motion_notify_event", ms_ev)
 
 			if self.nodes_under_pointer:
 				if self.previous_nodes_under_pointer:
@@ -311,24 +306,12 @@ class SVGWidget(gtk.DrawingArea):
 										buttons=mouse_buttons, relatedTarget=self.previous_nodes_under_pointer[-1])
 						self.emit_dom_event("motion_notify_event", ms_ev)
 						
-						amount_nup_pnup = len(self.ancestors(self.nodes_under_pointer[-1]) - self.ancestors(self.previous_nodes_under_pointer[-1]))
-						amount_pnup_nup = len(self.ancestors(self.previous_nodes_under_pointer[-1]) - self.ancestors(self.nodes_under_pointer[-1]))
-						if amount_nup_pnup != 1:
-							for node in self.nodes_under_pointer[1-amount_nup_pnup:]: #FIXME: this container must have all family nodes.
-								ms_ev = MouseEvent("mouseenter", target=node, \
-												clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-												shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-												altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-												buttons=mouse_buttons, relatedTarget=self.previous_nodes_under_pointer[-1])
-								self.emit_dom_event("motion_notify_event", ms_ev)
-						
-						elif amount_nup_pnup > 1 and amount_pnup_nup > 1:
-							ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
-											clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-											shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-											altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-											buttons=mouse_buttons, relatedTarget=self.previous_nodes_under_pointer[-1])
-							self.emit_dom_event("motion_notify_event", ms_ev)
+						ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
+										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+										buttons=mouse_buttons, relatedTarget=self.previous_nodes_under_pointer[-1])
+						self.emit_dom_event("motion_notify_event", ms_ev)
 
 				else:
 					ms_ev = MouseEvent("mouseover", target=self.nodes_under_pointer[-1], \
@@ -338,13 +321,12 @@ class SVGWidget(gtk.DrawingArea):
 									buttons=mouse_buttons)
 					self.emit_dom_event("motion_notify_event", ms_ev)
 					
-					for node in self.nodes_under_pointer: #FIXME: This should print family of top element
-						ms_ev = MouseEvent("mouseenter", target=node, \
-										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-										buttons=mouse_buttons)
-						self.emit_dom_event("motion_notify_event", ms_ev)
+					ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
+									clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
+									shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+									altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+									buttons=mouse_buttons)
+					self.emit_dom_event("motion_notify_event", ms_ev)
 		
 		if self.nodes_under_pointer:
 			ms_ev = MouseEvent("mousemove", target=self.nodes_under_pointer[-1], \
