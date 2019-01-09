@@ -228,7 +228,7 @@ class SVGWidget(gtk.DrawingArea):
 			return KeyboardEvent.DOM_KEY_LOCATION_STANDARD
 
 	def set_dom_focus(self, element):
-		if self.element_focusable and self.element_in_focus != self.previous_focus:
+		if self.element_focusable(element) and self.element_in_focus != self.previous_focus:
 			self.previous_focus = self.element_in_focus
 			self.element_in_focus = element
 
