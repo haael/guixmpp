@@ -110,7 +110,6 @@ class SVGWidget(gtk.DrawingArea):
 		self.nodes_under_pointer = []
 		self.previous_nodes_under_pointer = []
 		self.last_mousedown = None
-		self.mouse_button = 0
 		self.first_click = None
 		self.last_click = None
 		self.current_click_count = 0
@@ -364,7 +363,7 @@ class SVGWidget(gtk.DrawingArea):
 			self.first_click = None
 		
 		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
-		self.mouse_button = self.get_pressed_mouse_button(event)
+		mouse_button = self.get_pressed_mouse_button(event)
 		keys = self.get_keys(event)
 		
 		if self.nodes_under_pointer:
@@ -373,7 +372,7 @@ class SVGWidget(gtk.DrawingArea):
 								screenX=event.x_root, screenY=event.y_root, \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-								button=self.mouse_button, buttons=mouse_buttons)
+								button=mouse_button, buttons=mouse_buttons)
 			self.emit_dom_event("button_press_event", ms_ev)
 
 		if __debug__: self.check_dom_events("button_press_event")
@@ -390,7 +389,7 @@ class SVGWidget(gtk.DrawingArea):
 		self.last_mousedown = None
 
 		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
-		self.mouse_button = self.get_pressed_mouse_button(event)
+		mouse_button = self.get_pressed_mouse_button(event)
 		keys = self.get_keys(event)
 
 		if self.nodes_under_pointer:
@@ -402,9 +401,8 @@ class SVGWidget(gtk.DrawingArea):
 							screenX=event.x_root, screenY=event.y_root, \
 							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-							button=self.mouse_button, buttons=mouse_buttons)
+							button=mouse_button, buttons=mouse_buttons)
 		self.emit_dom_event("button_release_event", ms_ev)
-		self.mouse_button = 0
 
 		if __debug__: self.check_dom_events("button_release_event")
 
@@ -428,7 +426,7 @@ class SVGWidget(gtk.DrawingArea):
 			glib.idle_add(lambda: self.set_dom_focus())
 
 		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
-		self.mouse_button = self.get_pressed_mouse_button(event)
+		mouse_button = self.get_pressed_mouse_button(event)
 		keys = self.get_keys(event)
 	
 		ms_ev = MouseEvent(	"click", target=self.nodes_under_pointer[-1], \
@@ -436,14 +434,15 @@ class SVGWidget(gtk.DrawingArea):
 							screenX=event.x_root, screenY=event.y_root, \
 							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-							button=self.mouse_button, buttons=mouse_buttons)
+							button=mouse_button, buttons=mouse_buttons)
 		self.emit_dom_event("clicked", ms_ev)
+		
 
 		if __debug__: self.check_dom_events("clicked")
 
 	def handle_dblclicked(self, drawingarea, event):
 		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
-		self.mouse_button = self.get_pressed_mouse_button(event)
+		mouse_button = self.get_pressed_mouse_button(event)
 		keys = self.get_keys(event)
 
 		if self.nodes_under_pointer:
@@ -452,7 +451,7 @@ class SVGWidget(gtk.DrawingArea):
 								screenX=event.x_root, screenY=event.y_root, \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-								button=self.mouse_button, buttons=mouse_buttons)
+								button=mouse_button, buttons=mouse_buttons)
 			self.emit_dom_event("dblclicked", ms_ev)
 		
 		if __debug__: self.check_dom_events("dblclicked")
@@ -497,7 +496,6 @@ class SVGWidget(gtk.DrawingArea):
 
 	def handle_scroll_event(self, widget, event):
 		print("Scrolled")
-		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 		keys = self.get_keys(event)
 		if self.nodes_under_pointer:
 			wheel_target = self.nodes_under_pointer[-1]
@@ -509,7 +507,6 @@ class SVGWidget(gtk.DrawingArea):
 							screenX=event.x_root, screenY=event.y_root, \
 							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-							button=self.mouse_button, buttons=mouse_buttons, \
 							deltaX=event.delta_x, deltaY=event.delta_y, \
 							deltaMode=WheelEvent.DOM_DELTA_LINE)
 			
