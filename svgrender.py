@@ -227,7 +227,7 @@ class SVGWidget(gtk.DrawingArea):
 			return KeyboardEvent.DOM_KEY_LOCATION_STANDARD
 
 	def set_dom_focus(self, element):
-		if element_focusable and self.element_in_focus != self.previous_focus:
+		if self.element_focusable(element) and self.element_in_focus != self.previous_focus:
 			self.previous_focus = self.element_in_focus
 			self.element_in_focus = element
 
@@ -436,6 +436,7 @@ class SVGWidget(gtk.DrawingArea):
 							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 							button=mouse_button, buttons=mouse_buttons)
 		self.emit_dom_event("clicked", ms_ev)
+		
 
 		if __debug__: self.check_dom_events("clicked")
 
@@ -495,8 +496,6 @@ class SVGWidget(gtk.DrawingArea):
 
 	def handle_scroll_event(self, widget, event):
 		print("Scrolled")
-		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
-		mouse_button = self.get_pressed_mouse_button(event)
 		keys = self.get_keys(event)
 		if self.nodes_under_pointer:
 			wheel_target = self.nodes_under_pointer[-1]
@@ -508,7 +507,6 @@ class SVGWidget(gtk.DrawingArea):
 							screenX=event.x_root, screenY=event.y_root, \
 							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-							button=mouse_button, buttons=mouse_buttons, \
 							deltaX=event.delta_x, deltaY=event.delta_y, \
 							deltaMode=WheelEvent.DOM_DELTA_LINE)
 			
@@ -517,14 +515,14 @@ class SVGWidget(gtk.DrawingArea):
 		if __debug__: self.check_dom_events("scrolled_event")
 
 	def emit_dom_event(self, handler, ev):
-		#~ print(handler, ev)
+		print(handler, ev.button, ev.buttons)
 		if __debug__:
 			#~MouseEvent
 			#~ print("{:10} | {:10} | {:10}".format(ev.type_, ev.target.get('fill'), ev.relatedTarget.get('fill') if ev.relatedTarget else "None"));
 			#~ print(ev.detail, self.current_click_count)
 			#~KeyboardEvent
-			if handler == "key_pressed":
-				print(ev)
+			#~ if handler == "key_pressed":
+				#~ print(ev)
 				#~ print("{:10} | {:10} | {:10} | {:10} | {:10} | {:10}".format(ev.type_, str(ev.target), str(ev.key), str(ev.code), str(ev.location), str(ev.repeat)))
 			self.emitted_dom_events.append(ev)
 
