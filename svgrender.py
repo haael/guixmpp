@@ -451,20 +451,20 @@ class SVGWidget(gtk.DrawingArea):
 		if self.nodes_under_pointer and self.is_element_focusable(self.nodes_under_pointer[-1]):
 			glib.idle_add(lambda: self.set_dom_focus(self.nodes_under_pointer[-1]))
 
-		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
-		mouse_button = self.get_pressed_mouse_button(event)
-		keys = self.get_keys(event)
-	
-		ms_ev = MouseEvent(	"click", target=self.nodes_under_pointer[-1], \
-							detail=self.current_click_count, clientX=event.x, clientY=event.y, \
-							screenX=event.x_root, screenY=event.y_root, \
-							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-							button=mouse_button, buttons=mouse_buttons)
-		self.emit_dom_event("clicked", ms_ev)
+		if self.nodes_under_pointer:
+			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
+			mouse_button = self.get_pressed_mouse_button(event)
+			keys = self.get_keys(event)
+			ms_ev = MouseEvent(	"click", target=self.nodes_under_pointer[-1], \
+								detail=self.current_click_count, clientX=event.x, clientY=event.y, \
+								screenX=event.x_root, screenY=event.y_root, \
+								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+								button=mouse_button, buttons=mouse_buttons)
+			self.emit_dom_event("clicked", ms_ev)
 		
 
-		if __debug__: self.check_dom_events("clicked")
+			if __debug__: self.check_dom_events("clicked")
 
 	def handle_dblclicked(self, drawingarea, event):
 		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
