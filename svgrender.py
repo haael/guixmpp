@@ -114,7 +114,7 @@ class SVGWidget(gtk.DrawingArea):
 		self.last_click = None
 		self.current_click_count = 0
 		self.last_keydown = None
-		self.element_in_focus = None
+		self.element_in_focus = self.document
 		self.previous_focus = None
 		
 		self.connect('configure-event', self.handle_configure_event)
@@ -146,7 +146,7 @@ class SVGWidget(gtk.DrawingArea):
 
 	def load_url(self, url):
 		self.document = cairosvg.parser.Tree(url=url)
-		self.element_in_focus = None
+		self.element_in_focus = self.document
 		if self.get_realized():
 			rect = self.get_allocation()
 			self.rendered_svg_surface = self.SVGRenderBg.render(self.document, rect.width, rect.height)
@@ -227,7 +227,7 @@ class SVGWidget(gtk.DrawingArea):
 			return KeyboardEvent.DOM_KEY_LOCATION_STANDARD
 
 	def set_dom_focus(self, element):
-		if self.element_in_focus is None:
+		if self.element_in_focus is self.document:
 			
 			fc_ev = FocusEvent(	"focusin", target=element)
 			self.emit_dom_event("focus_changed_event", fc_ev)
@@ -716,8 +716,8 @@ if __name__ == '__main__':
 
 	svgwidget = SVGWidget()
 	#~ svgwidget.load_url('gfx/BYR_color_wheel.svg')
-	svgwidget.load_url('gfx/drawing.svg')
-	#~ svgwidget.load_url('gfx/drawing_no_white_BG.svg')
+	#~ svgwidget.load_url('gfx/drawing.svg')
+	svgwidget.load_url('gfx/drawing_no_white_BG.svg')
 	window.add(svgwidget)
 
 	window.show_all()
