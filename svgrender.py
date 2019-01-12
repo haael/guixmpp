@@ -114,7 +114,7 @@ class SVGWidget(gtk.DrawingArea):
 		self.last_click = None
 		self.current_click_count = 0
 		self.last_keydown = None
-		self.element_in_focus = self.document
+		self.element_in_focus = None
 		self.previous_focus = None
 		
 		self.connect('configure-event', self.handle_configure_event)
@@ -227,14 +227,36 @@ class SVGWidget(gtk.DrawingArea):
 			return KeyboardEvent.DOM_KEY_LOCATION_STANDARD
 
 	def set_dom_focus(self, element):
-		if self.element_focusable(element) and self.element_in_focus != self.previous_focus:
+		if self.element_in_focus is None:
+			self.element_in_focus = element
+			#Placeholder for focusin
+			#~ self.emit_dom_event("focus_changed_event", fc_ev)
+			
+			#Placeholder for focus
+			#~ self.emit_dom_event("focus_changed_event", fc_ev)
+			
+		elif element != self.element_in_focus:
 			self.previous_focus = self.element_in_focus
 			self.element_in_focus = element
+			
+			#Placeholder for focusout
+			#~ self.emit_dom_event("focus_changed_event", fc_ev)
+			
+			#Placeholder for focusin
+			#~ self.emit_dom_event("focus_changed_event", fc_ev)
+			
+			#Placeholder for blur
+			#~ self.emit_dom_event("focus_changed_event", fc_ev)
+			
+			#Placeholder for focus
+			#~ self.emit_dom_event("focus_changed_event", fc_ev)
+		
+		else:
+			return None # Is that same like func without return. But ends func earlier, before checking focus asserts
 
-			#self.emit_dom_event("focus_changed_event", fc_ev)
-			#if __debug__: self.check_dom_events("focus_changed_event")
+		if __debug__: self.check_dom_events("focus_changed_event")
 
-	def element_focusable(self, element):
+	def is_element_focusable(self, element):
 		return True
 
 	def update_nodes_under_pointer(self, event):
@@ -423,10 +445,8 @@ class SVGWidget(gtk.DrawingArea):
 			self.current_click_count = 1
 			self.first_click = event.copy()
 
-		if self.nodes_under_pointer:
+		if self.nodes_under_pointer and self.is_element_focusable(self.nodes_under_pointer[-1]):
 			glib.idle_add(lambda: self.set_dom_focus(self.nodes_under_pointer[-1]))
-		else:
-			glib.idle_add(lambda: self.set_dom_focus())
 
 		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 		mouse_button = self.get_pressed_mouse_button(event)
@@ -518,7 +538,7 @@ class SVGWidget(gtk.DrawingArea):
 		if __debug__: self.check_dom_events("scrolled_event")
 
 	def emit_dom_event(self, handler, ev):
-		print(handler, ev.button, ev.buttons)
+		print(handler, ev.target.get('fill'))
 		if __debug__:
 			#~MouseEvent
 			#~ print("{:10} | {:10} | {:10}".format(ev.type_, ev.target.get('fill'), ev.relatedTarget.get('fill') if ev.relatedTarget else "None"));
@@ -672,9 +692,9 @@ class SVGWidget(gtk.DrawingArea):
 
 			elif handler == "focus_changed_event":
 				assert any(_fc_ev.type_ == "focusin" for _fc_ev in self.emitted_dom_events) if self.element_focusable(nup[-1]) else True, "For `focus_change_event`, any event of type `focusin` should be emitted. When top `nodes_under_pointer` is focusable."
-				assert any(_fc_ev.type_ == "focusout" for _fc_ev in self.emitted_dom_events) if self.element_focusable(nup[-1]) else True, "For `focus_change_event`, any event of type `focusout` should be emitted. When top `nodes_under_pointer` is focusable."
+				assert any(_fc_ev.type_ == "focusout" for _fc_ev in self.emitted_dom_events) if self.element_focusable(nup[-1]) and self.previous_focus else True, "For `focus_change_event`, any event of type `focusout` should be emitted. When top `nodes_under_pointer` is focusable."
 				assert any(_fc_ev.type_ == "focus" for _fc_ev in self.emitted_dom_events) if self.element_focusable(nup[-1]) else True, "For `focus_change_event`, any event of type `focus` should be emitted. When top `nodes_under_pointer` is focusable."
-				assert any(_fc_ev.type_ == "blur" for _fc_ev in self.emitted_dom_events) if self.element_focusable(nup[-1]) else True, "For `focus_change_event`, any event of type `blur` should be emitted. When top `nodes_under_pointer` is focusable."
+				assert any(_fc_ev.type_ == "blur" for _fc_ev in self.emitted_dom_events) if self.element_focusable(nup[-1]) and self.previous_focus else True, "For `focus_change_event`, any event of type `blur` should be emitted. When top `nodes_under_pointer` is focusable."
 				
 			self.emitted_dom_events.clear()
 
