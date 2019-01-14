@@ -254,13 +254,13 @@ class SVGWidget(gtk.DrawingArea):
 			fc_ev = FocusEvent(	"focus", target=self.element_in_focus, relatedTarget=self.previous_focus)
 			self.emit_dom_event("focus_changed_event", fc_ev)
 
-		else:
-			return None # Is that same like func without return. But ends func earlier, before checking focus asserts
-
 		if __debug__: self.check_dom_events("focus_changed_event")
 
 	def is_element_focusable(self, element):
 		return True
+
+	def is_focused(self, element):
+		return self.element_in_focus == element
 
 	def update_nodes_under_pointer(self, event):
 		self.previous_nodes_under_pointer = self.nodes_under_pointer[:]
@@ -448,7 +448,7 @@ class SVGWidget(gtk.DrawingArea):
 			self.current_click_count = 1
 			self.first_click = event.copy()
 
-		if self.nodes_under_pointer and self.is_element_focusable(self.nodes_under_pointer[-1]):
+		if self.nodes_under_pointer and self.is_element_focusable(self.nodes_under_pointer[-1]) and not (self.is_focused(self.nodes_under_pointer[-1])):
 			glib.idle_add(lambda: self.set_dom_focus(self.nodes_under_pointer[-1]))
 
 		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
