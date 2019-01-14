@@ -114,7 +114,7 @@ class SVGWidget(gtk.DrawingArea):
 		self.last_click = None
 		self.current_click_count = 0
 		self.last_keydown = None
-		self.element_in_focus = None
+		self.element_in_focus = self.document
 		self.previous_focus = None
 		
 		self.connect('configure-event', self.handle_configure_event)
@@ -227,29 +227,37 @@ class SVGWidget(gtk.DrawingArea):
 			return KeyboardEvent.DOM_KEY_LOCATION_STANDARD
 
 	def set_dom_focus(self, element):
-		if self.element_in_focus is None:
+		if self.element_in_focus is self.document:
+			
+			fc_ev = FocusEvent(	"focusin", target=element)
+			self.emit_dom_event("focus_changed_event", fc_ev)
+			
 			self.element_in_focus = element
-			#Placeholder for focusin
-			#~ self.emit_dom_event("focus_changed_event", fc_ev)
 			
-			#Placeholder for focus
-			#~ self.emit_dom_event("focus_changed_event", fc_ev)
-			
+			fc_ev = FocusEvent( "focus", target=element)
+			self.emit_dom_event("focus_changed_event", fc_ev)
+
 		elif element != self.element_in_focus:
+			
+			fc_ev = FocusEvent(	"focusout", target=self.element_in_focus, relatedTarget=element)
+			self.emit_dom_event("focus_changed_event", fc_ev)
+			
+			fc_ev = FocusEvent(	"focusin", target=element, relatedTarget=self.element_in_focus)
+			self.emit_dom_event("focus_changed_event", fc_ev)
+			
+<<<<<<< HEAD
 			self.previous_focus = self.element_in_focus
 			self.element_in_focus = element
 			
-			#Placeholder for focusout
-			#~ self.emit_dom_event("focus_changed_event", fc_ev)
+			fc_ev = FocusEvent(	"blur", target=self.previous_focus, relatedTarget=self.element_in_focus)
+			self.emit_dom_event("focus_changed_event", fc_ev)
 			
-			#Placeholder for focusin
-			#~ self.emit_dom_event("focus_changed_event", fc_ev)
-			
-			#Placeholder for blur
-			#~ self.emit_dom_event("focus_changed_event", fc_ev)
-			
+			fc_ev = FocusEvent(	"focus", target=self.element_in_focus, relatedTarget=self.previous_focus)
+			self.emit_dom_event("focus_changed_event", fc_ev)
+=======
 			#Placeholder for focus
 			#~ self.emit_dom_event("focus_changed_event", fc_ev)
+>>>>>>> 0c9770e28d8450f43cb5e6f8c6fa60d728441772
 
 		if __debug__: self.check_dom_events("focus_changed_event")
 
@@ -538,7 +546,7 @@ class SVGWidget(gtk.DrawingArea):
 		if __debug__: self.check_dom_events("scrolled_event")
 
 	def emit_dom_event(self, handler, ev):
-		print(handler, ev.target.get('fill'))
+		print(handler, ev.target.get('fill'), ev.type_)
 		if __debug__:
 			#~MouseEvent
 			#~ print("{:10} | {:10} | {:10}".format(ev.type_, ev.target.get('fill'), ev.relatedTarget.get('fill') if ev.relatedTarget else "None"));
@@ -573,10 +581,10 @@ class SVGWidget(gtk.DrawingArea):
 			assert all(_ms_ev.target == nup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseup") if nup else all(_ms_ev.target == None for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseup"), "For event of type `mouseup` event target should be None if fired out of window border, otherwise target should be top `nodes_under_pointer` if it is over element."
 			assert all(_kb_ev.target == self.element_in_focus for _kb_ev in self.emitted_dom_events if _kb_ev.type_ in ("keydown", "keyup")), "For events of type `keydown` or `keyup`, event target should be self.document if no one element is focused."
 			assert all(_wh_ev.target == nup[-1] for _wh_ev in self.emitted_dom_events if _wh_ev.type_ == "wheel") if nup else True, "For events of type `wheel`, event target should be top node under pointer."
-			assert all(self.element_focusable(_fc_ev.target) for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focusin"), "Focus Event target of type `focusin` should be focusable"
-			assert all(self.element_focusable(_fc_ev.target) for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focusout"), "Focus Event target of type `focusout` should be focusable"
-			assert all(self.element_focusable(_fc_ev.target) for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focus"), "Focus Event target of type `focus` should be focusable"
-			assert all(self.element_focusable(_fc_ev.target) for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "blur"), "Focus Event target of type `blur` should be focusable"
+			assert all(self.is_element_focusable(_fc_ev.target) for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focusin"), "Focus Event target of type `focusin` should be focusable"
+			assert all(self.is_element_focusable(_fc_ev.target) for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focusout"), "Focus Event target of type `focusout` should be focusable"
+			assert all(self.is_element_focusable(_fc_ev.target) for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focus"), "Focus Event target of type `focus` should be focusable"
+			assert all(self.is_element_focusable(_fc_ev.target) for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "blur"), "Focus Event target of type `blur` should be focusable"
 
 			#~ Detail
 			assert all(_ms_ev.detail == 0 for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mouseenter", "mouseleave", "mousemove", "mouseout", "mouseover")), "For events of types: `mouseenter`, `mouseleave`, `mousemove`, `mouseout` or `mouseover`. `detail` value should be equal to 0."
@@ -691,10 +699,10 @@ class SVGWidget(gtk.DrawingArea):
 				assert any(_wh_ev.type_ == "wheel" for _wh_ev in self.emitted_dom_events), "For `scrolled_event`, any event of type `wheel` should be emitted."
 
 			elif handler == "focus_changed_event":
-				assert any(_fc_ev.type_ == "focusin" for _fc_ev in self.emitted_dom_events) if self.element_focusable(nup[-1]) else True, "For `focus_change_event`, any event of type `focusin` should be emitted. When top `nodes_under_pointer` is focusable."
-				assert any(_fc_ev.type_ == "focusout" for _fc_ev in self.emitted_dom_events) if self.element_focusable(nup[-1]) and self.previous_focus else True, "For `focus_change_event`, any event of type `focusout` should be emitted. When top `nodes_under_pointer` is focusable."
-				assert any(_fc_ev.type_ == "focus" for _fc_ev in self.emitted_dom_events) if self.element_focusable(nup[-1]) else True, "For `focus_change_event`, any event of type `focus` should be emitted. When top `nodes_under_pointer` is focusable."
-				assert any(_fc_ev.type_ == "blur" for _fc_ev in self.emitted_dom_events) if self.element_focusable(nup[-1]) and self.previous_focus else True, "For `focus_change_event`, any event of type `blur` should be emitted. When top `nodes_under_pointer` is focusable."
+				assert any(_fc_ev.type_ == "focusin" for _fc_ev in self.emitted_dom_events) if self.is_element_focusable(nup[-1]) else True, "For `focus_change_event`, any event of type `focusin` should be emitted. When top `nodes_under_pointer` is focusable."
+				assert any(_fc_ev.type_ == "focusout" for _fc_ev in self.emitted_dom_events) if self.is_element_focusable(nup[-1]) and self.previous_focus else True, "For `focus_change_event`, any event of type `focusout` should be emitted. When top `nodes_under_pointer` is focusable."
+				assert any(_fc_ev.type_ == "focus" for _fc_ev in self.emitted_dom_events) if self.is_element_focusable(nup[-1]) else True, "For `focus_change_event`, any event of type `focus` should be emitted. When top `nodes_under_pointer` is focusable."
+				assert any(_fc_ev.type_ == "blur" for _fc_ev in self.emitted_dom_events) if self.is_element_focusable(nup[-1]) and self.previous_focus else True, "For `focus_change_event`, any event of type `blur` should be emitted. When top `nodes_under_pointer` is focusable."
 				
 			self.emitted_dom_events.clear()
 
@@ -713,8 +721,8 @@ if __name__ == '__main__':
 
 	svgwidget = SVGWidget()
 	#~ svgwidget.load_url('gfx/BYR_color_wheel.svg')
-	svgwidget.load_url('gfx/drawing.svg')
-	#~ svgwidget.load_url('gfx/drawing_no_white_BG.svg')
+	#~ svgwidget.load_url('gfx/drawing.svg')
+	svgwidget.load_url('gfx/drawing_no_white_BG.svg')
 	window.add(svgwidget)
 
 	window.show_all()
