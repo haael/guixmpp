@@ -245,6 +245,7 @@ class SVGWidget(gtk.DrawingArea):
 			fc_ev = FocusEvent(	"focusin", target=element, relatedTarget=self.element_in_focus)
 			self.emit_dom_event("focus_changed_event", fc_ev)
 			
+<<<<<<< HEAD
 			self.previous_focus = self.element_in_focus
 			self.element_in_focus = element
 			
@@ -253,6 +254,10 @@ class SVGWidget(gtk.DrawingArea):
 			
 			fc_ev = FocusEvent(	"focus", target=self.element_in_focus, relatedTarget=self.previous_focus)
 			self.emit_dom_event("focus_changed_event", fc_ev)
+=======
+			#Placeholder for focus
+			#~ self.emit_dom_event("focus_changed_event", fc_ev)
+>>>>>>> 0c9770e28d8450f43cb5e6f8c6fa60d728441772
 
 		if __debug__: self.check_dom_events("focus_changed_event")
 
