@@ -115,6 +115,7 @@ class SVGWidget(gtk.DrawingArea):
 		self.current_click_count = 0
 		self.last_keydown = None
 		self.element_in_focus = self.document
+		self.previous_focus = None
 		
 		self.connect('configure-event', self.handle_configure_event)
 		self.connect('draw', self.handle_draw)
@@ -226,7 +227,45 @@ class SVGWidget(gtk.DrawingArea):
 			return KeyboardEvent.DOM_KEY_LOCATION_STANDARD
 
 	def set_dom_focus(self, element):
-		self.element_in_focus = element
+		if self.element_in_focus is self.document:
+			
+			fc_ev = FocusEvent(	"focusin", target=element)
+			self.emit_dom_event("focus_changed_event", fc_ev)
+			
+			self.element_in_focus = element
+			
+			fc_ev = FocusEvent( "focus", target=element)
+			self.emit_dom_event("focus_changed_event", fc_ev)
+
+		elif element != self.element_in_focus:
+			
+			fc_ev = FocusEvent(	"focusout", target=self.element_in_focus, relatedTarget=element)
+			self.emit_dom_event("focus_changed_event", fc_ev)
+			
+			fc_ev = FocusEvent(	"focusin", target=element, relatedTarget=self.element_in_focus)
+			self.emit_dom_event("focus_changed_event", fc_ev)
+			
+<<<<<<< HEAD
+			self.previous_focus = self.element_in_focus
+			self.element_in_focus = element
+			
+			fc_ev = FocusEvent(	"blur", target=self.previous_focus, relatedTarget=self.element_in_focus)
+			self.emit_dom_event("focus_changed_event", fc_ev)
+			
+			fc_ev = FocusEvent(	"focus", target=self.element_in_focus, relatedTarget=self.previous_focus)
+			self.emit_dom_event("focus_changed_event", fc_ev)
+=======
+			#Placeholder for focus
+			#~ self.emit_dom_event("focus_changed_event", fc_ev)
+>>>>>>> 0c9770e28d8450f43cb5e6f8c6fa60d728441772
+
+		if __debug__: self.check_dom_events("focus_changed_event")
+
+	def is_element_focusable(self, element):
+		return True
+
+	def is_focused(self, element):
+		return self.element_in_focus == element
 
 	def update_nodes_under_pointer(self, event):
 		self.previous_nodes_under_pointer = self.nodes_under_pointer[:]
@@ -414,10 +453,8 @@ class SVGWidget(gtk.DrawingArea):
 			self.current_click_count = 1
 			self.first_click = event.copy()
 
-		if self.nodes_under_pointer:
+		if self.nodes_under_pointer and self.is_element_focusable(self.nodes_under_pointer[-1]) and not (self.is_focused(self.nodes_under_pointer[-1])):
 			glib.idle_add(lambda: self.set_dom_focus(self.nodes_under_pointer[-1]))
-		else:
-			glib.idle_add(lambda: self.set_dom_focus())
 
 		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 		mouse_button = self.get_pressed_mouse_button(event)
@@ -430,6 +467,7 @@ class SVGWidget(gtk.DrawingArea):
 							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 							button=mouse_button, buttons=mouse_buttons)
 		self.emit_dom_event("clicked", ms_ev)
+		
 
 		if __debug__: self.check_dom_events("clicked")
 
@@ -489,8 +527,6 @@ class SVGWidget(gtk.DrawingArea):
 
 	def handle_scroll_event(self, widget, event):
 		print("Scrolled")
-		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
-		mouse_button = self.get_pressed_mouse_button(event)
 		keys = self.get_keys(event)
 		if self.nodes_under_pointer:
 			wheel_target = self.nodes_under_pointer[-1]
@@ -502,7 +538,6 @@ class SVGWidget(gtk.DrawingArea):
 							screenX=event.x_root, screenY=event.y_root, \
 							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-							button=mouse_button, buttons=mouse_buttons, \
 							deltaX=event.delta_x, deltaY=event.delta_y, \
 							deltaMode=WheelEvent.DOM_DELTA_LINE)
 			
@@ -511,14 +546,14 @@ class SVGWidget(gtk.DrawingArea):
 		if __debug__: self.check_dom_events("scrolled_event")
 
 	def emit_dom_event(self, handler, ev):
-		#~ print(handler, ev)
+		print(handler, ev.target.get('fill'), ev.type_)
 		if __debug__:
 			#~MouseEvent
 			#~ print("{:10} | {:10} | {:10}".format(ev.type_, ev.target.get('fill'), ev.relatedTarget.get('fill') if ev.relatedTarget else "None"));
 			#~ print(ev.detail, self.current_click_count)
 			#~KeyboardEvent
-			if handler == "key_pressed":
-				print(ev)
+			#~ if handler == "key_pressed":
+				#~ print(ev)
 				#~ print("{:10} | {:10} | {:10} | {:10} | {:10} | {:10}".format(ev.type_, str(ev.target), str(ev.key), str(ev.code), str(ev.location), str(ev.repeat)))
 			self.emitted_dom_events.append(ev)
 
@@ -546,6 +581,10 @@ class SVGWidget(gtk.DrawingArea):
 			assert all(_ms_ev.target == nup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseup") if nup else all(_ms_ev.target == None for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseup"), "For event of type `mouseup` event target should be None if fired out of window border, otherwise target should be top `nodes_under_pointer` if it is over element."
 			assert all(_kb_ev.target == self.element_in_focus for _kb_ev in self.emitted_dom_events if _kb_ev.type_ in ("keydown", "keyup")), "For events of type `keydown` or `keyup`, event target should be self.document if no one element is focused."
 			assert all(_wh_ev.target == nup[-1] for _wh_ev in self.emitted_dom_events if _wh_ev.type_ == "wheel") if nup else True, "For events of type `wheel`, event target should be top node under pointer."
+			assert all(self.is_element_focusable(_fc_ev.target) for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focusin"), "Focus Event target of type `focusin` should be focusable"
+			assert all(self.is_element_focusable(_fc_ev.target) for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focusout"), "Focus Event target of type `focusout` should be focusable"
+			assert all(self.is_element_focusable(_fc_ev.target) for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focus"), "Focus Event target of type `focus` should be focusable"
+			assert all(self.is_element_focusable(_fc_ev.target) for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "blur"), "Focus Event target of type `blur` should be focusable"
 
 			#~ Detail
 			assert all(_ms_ev.detail == 0 for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mouseenter", "mouseleave", "mousemove", "mouseout", "mouseover")), "For events of types: `mouseenter`, `mouseleave`, `mousemove`, `mouseout` or `mouseover`. `detail` value should be equal to 0."
@@ -570,6 +609,21 @@ class SVGWidget(gtk.DrawingArea):
 			for mouseenter, mousemove in itertools.product(mouseenter_events, mousemove_events):
 				assert self.emitted_dom_events.index(mouseenter) < self.emitted_dom_events.index(mousemove), "For the appropriate Mouse Event order, events of type `mouseenter` should happen before events of type `mousemove`."
 
+			# Focus event order
+			focusin_event = [_fc_ev for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focusin"]
+			focusout_event = [_fc_ev for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focusout"]
+			focus_event = [_fc_ev for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focus"]
+			blur_event = [_fc_ev for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "blur"]
+			
+			for focusin, focus in zip(focusin_event, focus_event):
+				assert self.emitted_dom_events.index(focusin) < self.emitted_dom_events.index(focus), "For the appropriate Focus Event order, events of type `focusin` should happen before events of type `focus`."
+			for focusout, blur in zip(focusout_event, blur_event):
+				assert self.emitted_dom_events.index(focusout) < self.emitted_dom_events.index(blur), "For the appropriate Focus Event order, events of type `focusout` should happen before events of type `blur`."
+			for focusin, focus in zip(focusin_event, blur_event):
+				assert self.emitted_dom_events.index(focusin) < self.emitted_dom_events.index(blur), "For the appropriate Focus Event order, events of type `focusin` should happen before events of type `blur`."
+			for focusout, blur in zip(focusout_event, focus_event):
+				assert self.emitted_dom_events.index(focusout) < self.emitted_dom_events.index(focus), "For the appropriate Focus Event order, events of type `focusout` should happen before events of type `focus`."
+				
 			#~ Repeat
 			assert all(_kb_ev.repeat == False for _kb_ev in self.emitted_dom_events if _kb_ev.type_ == "keydown") if not self.last_keydown else True, "For event of type `keydown`, repeat attribute should be False if `last_keydown` not exist."
 			assert all(_kb_ev.repeat == True for _kb_ev in self.emitted_dom_events if _kb_ev.type_ == "keydown" and self.last_keydown.keyval == _kb_ev.code) if self.last_keydown else True, "For event of type `keydown`, repeat attribute should be True if `last_keydown` exist and their `keyval` is equal to `KeyboardEvent.code`."
@@ -644,6 +698,12 @@ class SVGWidget(gtk.DrawingArea):
 				assert all(_wh_ev.type_ == "wheel" for _wh_ev in self.emitted_dom_events), "For `scrolled_event`, only event of type `wheel` should be emitted."
 				assert any(_wh_ev.type_ == "wheel" for _wh_ev in self.emitted_dom_events), "For `scrolled_event`, any event of type `wheel` should be emitted."
 
+			elif handler == "focus_changed_event":
+				assert any(_fc_ev.type_ == "focusin" for _fc_ev in self.emitted_dom_events) if self.is_element_focusable(nup[-1]) else True, "For `focus_change_event`, any event of type `focusin` should be emitted. When top `nodes_under_pointer` is focusable."
+				assert any(_fc_ev.type_ == "focusout" for _fc_ev in self.emitted_dom_events) if self.is_element_focusable(nup[-1]) and self.previous_focus else True, "For `focus_change_event`, any event of type `focusout` should be emitted. When top `nodes_under_pointer` is focusable."
+				assert any(_fc_ev.type_ == "focus" for _fc_ev in self.emitted_dom_events) if self.is_element_focusable(nup[-1]) else True, "For `focus_change_event`, any event of type `focus` should be emitted. When top `nodes_under_pointer` is focusable."
+				assert any(_fc_ev.type_ == "blur" for _fc_ev in self.emitted_dom_events) if self.is_element_focusable(nup[-1]) and self.previous_focus else True, "For `focus_change_event`, any event of type `blur` should be emitted. When top `nodes_under_pointer` is focusable."
+				
 			self.emitted_dom_events.clear()
 
 if __name__ == '__main__':
@@ -661,8 +721,8 @@ if __name__ == '__main__':
 
 	svgwidget = SVGWidget()
 	#~ svgwidget.load_url('gfx/BYR_color_wheel.svg')
-	svgwidget.load_url('gfx/drawing.svg')
-	#~ svgwidget.load_url('gfx/drawing_no_white_BG.svg')
+	#~ svgwidget.load_url('gfx/drawing.svg')
+	svgwidget.load_url('gfx/drawing_no_white_BG.svg')
 	window.add(svgwidget)
 
 	window.show_all()
