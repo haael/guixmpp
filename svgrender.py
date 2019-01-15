@@ -134,7 +134,7 @@ class SVGWidget(gtk.DrawingArea):
 		self.connect('key-press-event', self.handle_key_press_event)
 		self.connect('key-release-event', self.handle_key_release_event)
 
-		if __debug__: print("{:10} | {:10} | {:10}".format("Type", "Target", "relatedTarget"));
+		#if __debug__: print("{:10} | {:10} | {:10}".format("Type", "Target", "relatedTarget"));
 		self.add_events(gdk.EventMask.POINTER_MOTION_MASK)
 		self.add_events(gdk.EventMask.BUTTON_RELEASE_MASK)
 		self.add_events(gdk.EventMask.BUTTON_PRESS_MASK)
@@ -146,6 +146,7 @@ class SVGWidget(gtk.DrawingArea):
 
 	def load_url(self, url):
 		self.document = cairosvg.parser.Tree(url=url)
+		self.child_parent_cache = {c:p for p in self.document.xml_tree.iter( ) for c in p}
 		self.element_in_focus = self.document
 		if self.get_realized():
 			rect = self.get_allocation()
@@ -173,10 +174,9 @@ class SVGWidget(gtk.DrawingArea):
 			return True
 		return False
 
-	@classmethod
-	def gen_node_parents(cls, node):
-		if node.parent: #FIXME
-			yield from cls.gen_node_parents(node.parent)
+	def gen_node_parents(self, node):
+		if node in self.child_parent_cache:
+			yield from self.gen_node_parents(self.child_parent_cache[node])
 		yield node
 
 	@classmethod
@@ -186,9 +186,8 @@ class SVGWidget(gtk.DrawingArea):
 				cls.Keys.ALT: bool(event.state & (gdk.ModifierType.MOD1_MASK | gdk.ModifierType.MOD5_MASK)),\
 				cls.Keys.META: bool(event.state & (gdk.ModifierType.META_MASK | gdk.ModifierType.SUPER_MASK | gdk.ModifierType.MOD4_MASK))}
 
-	@classmethod
-	def ancestors(cls, node):
-		return frozenset(id(anc) for anc in cls.gen_node_parents(node))
+	def ancestors(self, node):
+		return frozenset(id(anc) for anc in self.gen_node_parents(node))
 
 	@staticmethod
 	def get_pressed_mouse_buttons_mask(event):
@@ -245,7 +244,6 @@ class SVGWidget(gtk.DrawingArea):
 			fc_ev = FocusEvent(	"focusin", target=element, relatedTarget=self.element_in_focus)
 			self.emit_dom_event("focus_changed_event", fc_ev)
 			
-<<<<<<< HEAD
 			self.previous_focus = self.element_in_focus
 			self.element_in_focus = element
 			
@@ -254,11 +252,7 @@ class SVGWidget(gtk.DrawingArea):
 			
 			fc_ev = FocusEvent(	"focus", target=self.element_in_focus, relatedTarget=self.previous_focus)
 			self.emit_dom_event("focus_changed_event", fc_ev)
-=======
-			#Placeholder for focus
-			#~ self.emit_dom_event("focus_changed_event", fc_ev)
->>>>>>> 0c9770e28d8450f43cb5e6f8c6fa60d728441772
-
+		
 		if __debug__: self.check_dom_events("focus_changed_event")
 
 	def is_element_focusable(self, element):
@@ -488,7 +482,7 @@ class SVGWidget(gtk.DrawingArea):
 		if __debug__: self.check_dom_events("dblclicked")
 
 	def handle_key_press_event(self, widget, event):
-		print("Press", gdk.keyval_name(event.keyval))
+		#print("Press", gdk.keyval_name(event.keyval))
 		if self.last_keydown and self.last_keydown.keyval == event.keyval:
 			repeated = True
 		else:
@@ -509,7 +503,7 @@ class SVGWidget(gtk.DrawingArea):
 		if __debug__: self.check_dom_events("key_pressed")
 	
 	def handle_key_release_event(self, widget, event):
-		print("Release", gdk.keyval_name(event.keyval))
+		#print("Release", gdk.keyval_name(event.keyval))
 		self.last_keydown = None
 		
 		keyval_name = gdk.keyval_name(event.keyval)
@@ -526,7 +520,7 @@ class SVGWidget(gtk.DrawingArea):
 		if __debug__: self.check_dom_events("key_released")
 
 	def handle_scroll_event(self, widget, event):
-		print("Scrolled")
+		#print("Scrolled")
 		keys = self.get_keys(event)
 		if self.nodes_under_pointer:
 			wheel_target = self.nodes_under_pointer[-1]
@@ -546,7 +540,8 @@ class SVGWidget(gtk.DrawingArea):
 		if __debug__: self.check_dom_events("scrolled_event")
 
 	def emit_dom_event(self, handler, ev):
-		print(handler, ev.target.get('fill'), ev.type_)
+		#print(ev.type_, ev.target['id'] if hasattr(ev, 'target') and ('id' in ev.target) else "")
+		print(ev.type_, '#'.join((ev.target.tag, ev.target.get('id'))) if hasattr(ev, 'target') else None)
 		if __debug__:
 			#~MouseEvent
 			#~ print("{:10} | {:10} | {:10}".format(ev.type_, ev.target.get('fill'), ev.relatedTarget.get('fill') if ev.relatedTarget else "None"));
@@ -724,12 +719,20 @@ if __name__ == '__main__':
 	#~ svgwidget.load_url('gfx/drawing.svg')
 	svgwidget.load_url('gfx/drawing_no_white_BG.svg')
 	window.add(svgwidget)
-
+	
 	window.show_all()
-
+	
 	mainloop = gobject.MainLoop()
 	signal.signal(signal.SIGTERM, lambda signum, frame: mainloop.quit())
-	sys.excepthook = lambda x, y, z: (sys.__excepthook__(x, y, z), svgwidget.reset_after_exception())
+	
+	def exception_hook(exception, y, z):
+		sys.__excepthook__(exception, y, z)
+		#errorbox = gtk.MessageDialog(window, gtk.DialogFlags.MODAL, gtk.MessageType.ERROR, gtk.ButtonsType.CLOSE, str(exception))
+		#errorbox.run()
+		#errorbox.destroy()
+		svgwidget.reset_after_exception()
+	
+	sys.excepthook = lambda *args: exception_hook(*args)
 	window.connect('destroy', lambda window: mainloop.quit())
 
 	try:
