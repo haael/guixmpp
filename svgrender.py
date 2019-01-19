@@ -153,6 +153,11 @@ class SVGWidget(gtk.DrawingArea):
 			self.rendered_svg_surface = self.SVGRenderBg.render(self.document, rect.width, rect.height)
 		self.queue_draw()
 
+	def gen_document_nodes(self, document):
+		for child in document:
+			yield from self.gen_document_nodes(child)
+		yield document
+
 	@classmethod
 	def check_dblclick_hysteresis(cls, press_event, event):
 		if hypot(press_event.x - event.x, press_event.y - event.y) < cls.DBLCLICK_RANGE \
@@ -541,15 +546,11 @@ class SVGWidget(gtk.DrawingArea):
 
 	def emit_dom_event(self, handler, ev):
 		#print(ev.type_, ev.target['id'] if hasattr(ev, 'target') and ('id' in ev.target) else "")
-		print(ev.type_, '#'.join((ev.target.tag, ev.target.get('id'))) if hasattr(ev, 'target') else None)
+		if ev.target != None:
+			print(ev.type_, '#'.join((ev.target.tag, ev.target.get('id'))) if hasattr(ev, 'target') else None)
+		else:
+			print(ev.type_, 'None#None')
 		if __debug__:
-			#~MouseEvent
-			#~ print("{:10} | {:10} | {:10}".format(ev.type_, ev.target.get('fill'), ev.relatedTarget.get('fill') if ev.relatedTarget else "None"));
-			#~ print(ev.detail, self.current_click_count)
-			#~KeyboardEvent
-			#~ if handler == "key_pressed":
-				#~ print(ev)
-				#~ print("{:10} | {:10} | {:10} | {:10} | {:10} | {:10}".format(ev.type_, str(ev.target), str(ev.key), str(ev.code), str(ev.location), str(ev.repeat)))
 			self.emitted_dom_events.append(ev)
 
 	def reset_after_exception(self):
