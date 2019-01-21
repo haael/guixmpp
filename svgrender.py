@@ -272,7 +272,20 @@ class SVGWidget(gtk.DrawingArea):
 				previous_id = id(item)
 		else:
 			glib.idle_add(lambda: self.set_dom_focus(next(i for i in self.gen_document_nodes(self.document.xml_tree) if self.is_element_focusable(i))))
-
+			
+	def change_dom_focus_prev(self):
+		iterator = (i for i in self.gen_document_nodes(self.document.xml_tree) if self.is_element_focusable(i))
+		previous_element = next(iterator)
+		focused_id = id(self.element_in_focus)
+		for item in iterator:
+			actual_id = id(item)
+			if actual_id == focused_id:
+				glib.idle_add(lambda: self.set_dom_focus(previous_element))
+				break
+			else:
+				previous_element = item
+		else:
+			glib.idle_add(lambda: self.set_dom_focus(previous_element))
 	def is_element_focusable(self, element):
 		return True
 
@@ -508,7 +521,10 @@ class SVGWidget(gtk.DrawingArea):
 			repeated = False
 		
 		if gdk.keyval_name(event.keyval).endswith("Tab"):
-			glib.idle_add(lambda: self.change_dom_focus_next())
+			if event.state & gdk.ModifierType.SHIFT_MASK:
+				glib.idle_add(lambda: self.change_dom_focus_prev())
+			else:
+				glib.idle_add(lambda: self.change_dom_focus_next())
 		
 		keyval_name = gdk.keyval_name(event.keyval)
 		keys = self.get_keys(event)
