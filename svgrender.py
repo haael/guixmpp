@@ -260,6 +260,19 @@ class SVGWidget(gtk.DrawingArea):
 		
 		if __debug__: self.check_dom_events("focus_changed_event")
 
+	def change_dom_focus_next(self):
+		iterator = self.gen_document_nodes(self.document.xml_tree)
+		previous_id = id(next(iterator))
+		focused_id = id(self.element_in_focus)
+		for item in iterator:
+			if previous_id == focused_id:
+				glib.idle_add(lambda: self.set_dom_focus(item))
+				break
+			else:
+				previous_id = id(item)
+		else:
+			glib.idle_add(lambda: self.set_dom_focus(next(self.gen_document_nodes(self.document.xml_tree))))
+
 	def is_element_focusable(self, element):
 		return True
 
@@ -494,6 +507,9 @@ class SVGWidget(gtk.DrawingArea):
 			self.last_keydown = event.copy()
 			repeated = False
 		
+		if gdk.keyval_name(event.keyval) == "Tab":
+			glib.idle_add(lambda: self.change_dom_focus_next())
+		
 		keyval_name = gdk.keyval_name(event.keyval)
 		keys = self.get_keys(event)
 		located = self.get_key_location(keyval_name)
@@ -695,6 +711,7 @@ class SVGWidget(gtk.DrawingArea):
 				assert any(_wh_ev.type_ == "wheel" for _wh_ev in self.emitted_dom_events), "For `scrolled_event`, any event of type `wheel` should be emitted."
 
 			elif handler == "focus_changed_event":
+				#FIXME: self.event_in_focus should be focusable for asserts instead nup. 
 				assert any(_fc_ev.type_ == "focusin" for _fc_ev in self.emitted_dom_events) if self.is_element_focusable(nup[-1]) else True, "For `focus_change_event`, any event of type `focusin` should be emitted. When top `nodes_under_pointer` is focusable."
 				assert any(_fc_ev.type_ == "focusout" for _fc_ev in self.emitted_dom_events) if self.is_element_focusable(nup[-1]) and self.previous_focus else True, "For `focus_change_event`, any event of type `focusout` should be emitted. When top `nodes_under_pointer` is focusable."
 				assert any(_fc_ev.type_ == "focus" for _fc_ev in self.emitted_dom_events) if self.is_element_focusable(nup[-1]) else True, "For `focus_change_event`, any event of type `focus` should be emitted. When top `nodes_under_pointer` is focusable."
