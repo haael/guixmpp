@@ -261,7 +261,7 @@ class SVGWidget(gtk.DrawingArea):
 		if __debug__: self.check_dom_events("focus_changed_event")
 
 	def change_dom_focus_next(self):
-		iterator = self.gen_document_nodes(self.document.xml_tree)
+		iterator = (i for i in self.gen_document_nodes(self.document.xml_tree) if self.is_element_focusable(i))
 		previous_id = id(next(iterator))
 		focused_id = id(self.element_in_focus)
 		for item in iterator:
@@ -271,7 +271,7 @@ class SVGWidget(gtk.DrawingArea):
 			else:
 				previous_id = id(item)
 		else:
-			glib.idle_add(lambda: self.set_dom_focus(next(self.gen_document_nodes(self.document.xml_tree))))
+			glib.idle_add(lambda: self.set_dom_focus(next(i for i in self.gen_document_nodes(self.document.xml_tree) if self.is_element_focusable(i))))
 
 	def is_element_focusable(self, element):
 		return True
@@ -507,7 +507,7 @@ class SVGWidget(gtk.DrawingArea):
 			self.last_keydown = event.copy()
 			repeated = False
 		
-		if gdk.keyval_name(event.keyval) == "Tab":
+		if gdk.keyval_name(event.keyval).endswith("Tab"):
 			glib.idle_add(lambda: self.change_dom_focus_next())
 		
 		keyval_name = gdk.keyval_name(event.keyval)
@@ -562,10 +562,10 @@ class SVGWidget(gtk.DrawingArea):
 
 	def emit_dom_event(self, handler, ev):
 		#print(ev.type_, ev.target['id'] if hasattr(ev, 'target') and ('id' in ev.target) else "")
-		if ev.target != None:
+		try:
 			print(ev.type_, '#'.join((ev.target.tag, ev.target.get('id'))) if hasattr(ev, 'target') else None)
-		else:
-			print(ev.type_, 'None#None')
+		except TypeError:
+			print(ev.type_, ev.target, '#None')
 		if __debug__:
 			self.emitted_dom_events.append(ev)
 
