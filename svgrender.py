@@ -153,6 +153,11 @@ class SVGWidget(gtk.DrawingArea):
 			self.rendered_svg_surface = self.SVGRenderBg.render(self.document, rect.width, rect.height)
 		self.queue_draw()
 
+	def gen_document_nodes(self, document):
+		for child in document:
+			yield from self.gen_document_nodes(child)
+		yield document
+
 	@classmethod
 	def check_dblclick_hysteresis(cls, press_event, event):
 		if hypot(press_event.x - event.x, press_event.y - event.y) < cls.DBLCLICK_RANGE \
@@ -450,20 +455,20 @@ class SVGWidget(gtk.DrawingArea):
 		if self.nodes_under_pointer and self.is_element_focusable(self.nodes_under_pointer[-1]) and not (self.is_focused(self.nodes_under_pointer[-1])):
 			glib.idle_add(lambda: self.set_dom_focus(self.nodes_under_pointer[-1]))
 
-		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
-		mouse_button = self.get_pressed_mouse_button(event)
-		keys = self.get_keys(event)
-	
-		ms_ev = MouseEvent(	"click", target=self.nodes_under_pointer[-1], \
-							detail=self.current_click_count, clientX=event.x, clientY=event.y, \
-							screenX=event.x_root, screenY=event.y_root, \
-							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-							button=mouse_button, buttons=mouse_buttons)
-		self.emit_dom_event("clicked", ms_ev)
+		if self.nodes_under_pointer:
+			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
+			mouse_button = self.get_pressed_mouse_button(event)
+			keys = self.get_keys(event)
+			ms_ev = MouseEvent(	"click", target=self.nodes_under_pointer[-1], \
+								detail=self.current_click_count, clientX=event.x, clientY=event.y, \
+								screenX=event.x_root, screenY=event.y_root, \
+								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+								button=mouse_button, buttons=mouse_buttons)
+			self.emit_dom_event("clicked", ms_ev)
 		
 
-		if __debug__: self.check_dom_events("clicked")
+			if __debug__: self.check_dom_events("clicked")
 
 	def handle_dblclicked(self, drawingarea, event):
 		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
@@ -541,15 +546,11 @@ class SVGWidget(gtk.DrawingArea):
 
 	def emit_dom_event(self, handler, ev):
 		#print(ev.type_, ev.target['id'] if hasattr(ev, 'target') and ('id' in ev.target) else "")
-		print(ev.type_, '#'.join((ev.target.tag, ev.target.get('id'))) if hasattr(ev, 'target') else None)
+		if ev.target != None:
+			print(ev.type_, '#'.join((ev.target.tag, ev.target.get('id'))) if hasattr(ev, 'target') else None)
+		else:
+			print(ev.type_, 'None#None')
 		if __debug__:
-			#~MouseEvent
-			#~ print("{:10} | {:10} | {:10}".format(ev.type_, ev.target.get('fill'), ev.relatedTarget.get('fill') if ev.relatedTarget else "None"));
-			#~ print(ev.detail, self.current_click_count)
-			#~KeyboardEvent
-			#~ if handler == "key_pressed":
-				#~ print(ev)
-				#~ print("{:10} | {:10} | {:10} | {:10} | {:10} | {:10}".format(ev.type_, str(ev.target), str(ev.key), str(ev.code), str(ev.location), str(ev.repeat)))
 			self.emitted_dom_events.append(ev)
 
 	def reset_after_exception(self):
