@@ -1,777 +1,1005 @@
 #!/usr/bin/python3
-#-*- coding: utf-8 -*-
+#-*- coding:utf-8 -*-
 
 
-import gi
-gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk as gtk
-from gi.repository import Gdk as gdk
-from gi.repository import GObject as gobject
-from gi.repository import GLib as glib
 
-from domevents import *
-import cairo
+__all__ = 'render_svg', 'parse_svg_defs', 'parse_svg_links'
 
-import cairosvg.surface
-import cairosvg.parser
 
+import re
+import math
+from math import pi
 from enum import Enum
-from math import hypot
-
-if __debug__:
-	from collections import Counter
-	import itertools
-
-class SVGRender(cairosvg.surface.Surface):
-	def create_recording_surface(self, output, width, height):
-		surface = cairo.RecordingSurface(cairo.CONTENT_COLOR, (0, 0, width, height))
-		self.rendered_svg_surface = surface
-		context = cairo.Context(surface)
-		self.background(context)
-		return surface
-
-	surface_class = create_recording_surface
-
-	def finish(self):
-		if self.rendered_svg_surface is not self.cairo:
-			self.rendered_svg_surface = self.cairo
-
-		try:
-			self.nodes_under_pointer = self.hover_nodes
-		except AttributeError:
-			self.nodes_under_pointer = []
-
-	def background(self, context):
-		context.set_source_rgb(1, 1, 1)
-		context.paint()
-
-	@classmethod
-	def render(cls, tree, width, height):
-		instance = cls(tree=tree, output=None, dpi=72, parent_width=width, parent_height=height)
-		instance.finish()
-		return instance.rendered_svg_surface
-
-	@classmethod
-	def pointer(cls, tree, width, height, pointer_x, pointer_y):
-		instance = cls(tree=tree, output=None, dpi=72, parent_width=width, parent_height=height, mouse=(pointer_x, pointer_y))
-		instance.finish()
-		return instance.nodes_under_pointer, instance.rendered_svg_surface
+import cairo
+from tinycss2 import parse_declaration_list
 
 
 
-class SVGWidget(gtk.DrawingArea):
-	__gsignals__ = { \
-		'clicked': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_PYOBJECT,)),
-		'dblclicked': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_PYOBJECT,))
-	}
+xmlns_svg = 'http://www.w3.org/2000/svg'
 
-	EMPTY_SVG = b'''<?xml version="1.0" encoding="UTF-8"?>
-		<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 1 1" width="1px" height="1px">
-		</svg>
-	'''
+xmlns_xlink = 'http://www.w3.org/1999/xlink'
 
-	CLICK_TIME = float("inf")
-	CLICK_RANGE = 5
-	DBLCLICK_TIME = float("inf")
-	DBLCLICK_RANGE = 5
-	COUNT_TIME = float("inf")
-	COUNT_RANGE = 5
 
-	class Keys(Enum):
-		SHIFT = 1
-		ALT = 2
-		CTRL = 4
-		META = 8
 
-	def __init__(self):
-		super().__init__()
-		self.set_can_focus(True)
+class ParseError(Exception):
+	pass
 
-		class SVGRenderBg(SVGRender):
-			canvas = self
 
-			def background(self, context):
-				canvas = self.canvas
-				canvas_allocation = canvas.get_allocation()
-				parent = canvas.get_parent()
-				parent_allocation = parent.get_allocation()
-				style_context = parent.get_style_context()
-				gtk.render_background(style_context, context, -canvas_allocation.x, -canvas_allocation.y, parent_allocation.width, parent_allocation.height)
-				gtk.render_frame(style_context, context, -canvas_allocation.x, -canvas_allocation.y, parent_allocation.width, parent_allocation.height)
-
-		self.SVGRenderBg = SVGRenderBg
-
-		if __debug__:
-			self.emitted_dom_events = list()
-
-		self.document = cairosvg.parser.Tree(bytestring=self.EMPTY_SVG)
-
-		self.rendered_svg_surface = None
-		self.nodes_under_pointer = []
-		self.previous_nodes_under_pointer = []
-		self.last_mousedown = None
-		self.first_click = None
-		self.last_click = None
-		self.current_click_count = 0
-		self.last_keydown = None
-		self.element_in_focus = self.document
-		self.previous_focus = None
-		
-		self.connect('configure-event', self.handle_configure_event)
-		self.connect('draw', self.handle_draw)
-		
-		#~Mouse
-		self.connect('motion-notify-event', self.handle_motion_notify_event)
-		self.connect('button-press-event', self.handle_button_press_event)
-		self.connect('button-release-event', self.handle_button_release_event)
-		self.connect('clicked', self.handle_clicked)
-		self.connect('dblclicked', self.handle_dblclicked)
-		
-		#~Wheel
-		self.connect("scroll-event", self.handle_scroll_event)
-		
-		#~Keyboard
-		self.connect('key-press-event', self.handle_key_press_event)
-		self.connect('key-release-event', self.handle_key_release_event)
-
-		#if __debug__: print("{:10} | {:10} | {:10}".format("Type", "Target", "relatedTarget"));
-		self.add_events(gdk.EventMask.POINTER_MOTION_MASK)
-		self.add_events(gdk.EventMask.BUTTON_RELEASE_MASK)
-		self.add_events(gdk.EventMask.BUTTON_PRESS_MASK)
-		
-		self.add_events(gdk.EventMask.KEY_PRESS_MASK)
-		self.add_events(gdk.EventMask.KEY_RELEASE_MASK)
-		self.add_events(gdk.EventMask.SMOOTH_SCROLL_MASK)
-		#~ print(dir(gdk.EventMask))
-
-	def load_url(self, url):
-		self.document = cairosvg.parser.Tree(url=url)
-		self.child_parent_cache = {c:p for p in self.document.xml_tree.iter( ) for c in p}
-		self.element_in_focus = self.document
-		if self.get_realized():
-			rect = self.get_allocation()
-			self.rendered_svg_surface = self.SVGRenderBg.render(self.document, rect.width, rect.height)
-		self.queue_draw()
-
-	def gen_document_nodes(self, document):
-		for child in document:
-			yield from self.gen_document_nodes(child)
-		yield document
-
-	@classmethod
-	def check_dblclick_hysteresis(cls, press_event, event):
-		if hypot(press_event.x - event.x, press_event.y - event.y) < cls.DBLCLICK_RANGE \
-		   and (event.get_time() - press_event.get_time()) < cls.DBLCLICK_TIME:
-			return True
-		return False
-
-	@classmethod
-	def check_count_hysteresis(cls, press_event, event):
-		if hypot(press_event.x - event.x, press_event.y - event.y) < cls.COUNT_RANGE \
-		   and (event.get_time() - press_event.get_time()) < cls.COUNT_TIME:
-			return True
-		return False
-
-	@classmethod
-	def check_click_hysteresis(cls, press_event, event):
-		if hypot(press_event.x - event.x, press_event.y - event.y) < cls.CLICK_RANGE \
-		   and (event.get_time() - press_event.get_time()) < cls.CLICK_TIME:
-			return True
-		return False
-
-	def gen_node_parents(self, node):
-		if node in self.child_parent_cache:
-			yield from self.gen_node_parents(self.child_parent_cache[node])
-		yield node
-
-	@classmethod
-	def get_keys(cls, event):
-		return {cls.Keys.SHIFT: bool(event.state & gdk.ModifierType.SHIFT_MASK),\
-				cls.Keys.CTRL: bool(event.state & gdk.ModifierType.CONTROL_MASK),\
-				cls.Keys.ALT: bool(event.state & (gdk.ModifierType.MOD1_MASK | gdk.ModifierType.MOD5_MASK)),\
-				cls.Keys.META: bool(event.state & (gdk.ModifierType.META_MASK | gdk.ModifierType.SUPER_MASK | gdk.ModifierType.MOD4_MASK))}
-
-	def ancestors(self, node):
-		return frozenset(id(anc) for anc in self.gen_node_parents(node))
-
-	@staticmethod
-	def get_pressed_mouse_buttons_mask(event):
-		active_buttons = 0
-		if event.state & gdk.ModifierType.BUTTON1_MASK:
-			active_buttons |= 1
-		if event.state & gdk.ModifierType.BUTTON3_MASK:
-			active_buttons |= 2
-		if event.state & gdk.ModifierType.BUTTON2_MASK:
-			active_buttons |= 4
-		return active_buttons
-
-	@staticmethod
-	def get_pressed_mouse_button(event):
-		active_button = 0
-		if event.button == gdk.BUTTON_PRIMARY:
-			active_button = 0
-		elif event.button == gdk.BUTTON_SECONDARY:
-			active_button = 2
-		elif event.button == gdk.BUTTON_MIDDLE:
-			active_button = 1
-		return active_button
-		
-	@staticmethod
-	def get_key_location(keyval_name):
-		if len(keyval_name) > 1:
-			if keyval_name.endswith("R"):
-				return KeyboardEvent.DOM_KEY_LOCATION_RIGHT
-			elif keyval_name.endswith("L"):
-				return KeyboardEvent.DOM_KEY_LOCATION_LEFT
-			elif keyval_name.startswith("KP"):
-				return KeyboardEvent.DOM_KEY_LOCATION_NUMPAD
-			else:
-				return KeyboardEvent.DOM_KEY_LOCATION_STANDARD
-		else:
-			return KeyboardEvent.DOM_KEY_LOCATION_STANDARD
-
-	def set_dom_focus(self, element):
-		if self.element_in_focus is self.document:
-			
-			fc_ev = FocusEvent(	"focusin", target=element)
-			self.emit_dom_event("focus_changed_event", fc_ev)
-			
-			self.element_in_focus = element
-			
-			fc_ev = FocusEvent( "focus", target=element)
-			self.emit_dom_event("focus_changed_event", fc_ev)
-
-		elif element != self.element_in_focus:
-			
-			fc_ev = FocusEvent(	"focusout", target=self.element_in_focus, relatedTarget=element)
-			self.emit_dom_event("focus_changed_event", fc_ev)
-			
-			fc_ev = FocusEvent(	"focusin", target=element, relatedTarget=self.element_in_focus)
-			self.emit_dom_event("focus_changed_event", fc_ev)
-			
-			self.previous_focus = self.element_in_focus
-			self.element_in_focus = element
-			
-			fc_ev = FocusEvent(	"blur", target=self.previous_focus, relatedTarget=self.element_in_focus)
-			self.emit_dom_event("focus_changed_event", fc_ev)
-			
-			fc_ev = FocusEvent(	"focus", target=self.element_in_focus, relatedTarget=self.previous_focus)
-			self.emit_dom_event("focus_changed_event", fc_ev)
-		
-		if __debug__: self.check_dom_events("focus_changed_event")
-
-	def change_dom_focus_next(self):
-		iterator = (i for i in self.gen_document_nodes(self.document.xml_tree) if self.is_element_focusable(i))
-		previous_id = id(next(iterator))
-		focused_id = id(self.element_in_focus)
-		for item in iterator:
-			if previous_id == focused_id:
-				glib.idle_add(lambda: self.set_dom_focus(item))
-				break
-			else:
-				previous_id = id(item)
-		else:
-			glib.idle_add(lambda: self.set_dom_focus(next(i for i in self.gen_document_nodes(self.document.xml_tree) if self.is_element_focusable(i))))
-			
-	def change_dom_focus_prev(self):
-		iterator = (i for i in self.gen_document_nodes(self.document.xml_tree) if self.is_element_focusable(i))
-		previous_element = next(iterator)
-		focused_id = id(self.element_in_focus)
-		for item in iterator:
-			actual_id = id(item)
-			if actual_id == focused_id:
-				glib.idle_add(lambda: self.set_dom_focus(previous_element))
-				break
-			else:
-				previous_element = item
-		else:
-			glib.idle_add(lambda: self.set_dom_focus(previous_element))
-	def is_element_focusable(self, element):
-		return True
-
-	def is_focused(self, element):
-		return self.element_in_focus == element
-
-	def update_nodes_under_pointer(self, event):
-		self.previous_nodes_under_pointer = self.nodes_under_pointer[:]
-		rect = self.get_allocation()
-		self.nodes_under_pointer, self.rendered_svg_surface = self.SVGRenderBg.pointer(self.document, rect.width, rect.height, event.x, event.y)
-
-	def handle_configure_event(self, drawingarea, event):
-		rect = self.get_allocation()
-		self.rendered_svg_surface = self.SVGRenderBg.render(self.document, rect.width, rect.height)
-
-	def handle_draw(self, drawingarea, context):
-		if self.rendered_svg_surface:
-			context.set_source_surface(self.rendered_svg_surface)
-		else:
-			context.set_source_rgba(1, 1, 1)
-		context.paint()
-
-	def handle_motion_notify_event(self, drawingarea, event):
-		if __debug__:
-			assert not self.emitted_dom_events
-		
-		if self.last_mousedown and not self.check_click_hysteresis(self.last_mousedown, event):
-			self.last_mousedown = None
-		
-		self.update_nodes_under_pointer(event)
-		
-		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
-		keys = self.get_keys(event)
-
-		if self.previous_nodes_under_pointer != self.nodes_under_pointer:
-			if self.previous_nodes_under_pointer:
-				if self.nodes_under_pointer:
-					if self.previous_nodes_under_pointer[-1] != self.nodes_under_pointer[-1]:
-						ms_ev = MouseEvent("mouseout", target=self.previous_nodes_under_pointer[-1], \
-											clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-											shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-											altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-											buttons=mouse_buttons, relatedTarget=self.nodes_under_pointer[-1])
-						self.emit_dom_event("motion_notify_event", ms_ev)
-						
-						ms_ev = MouseEvent("mouseleave", target=self.previous_nodes_under_pointer[-1], \
-										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-										buttons=mouse_buttons, relatedTarget=self.nodes_under_pointer[-1])
-						self.emit_dom_event("motion_notify_event", ms_ev)
-						
-						#~ if __debug__:
-							#~ pnup = self.ancestors(self.previous_nodes_under_pointer[-1])
-							#~ nup = self.ancestors(self.nodes_under_pointer[-1])
-							#~ print("pnup:", pnup)
-							#~ print("nup:", nup)
-							#~ print("pnup - nup:", pnup - nup)
-							#~ print("nup - pnup:", nup - pnup)
-				else:
-					ms_ev = MouseEvent("mouseout", target=self.previous_nodes_under_pointer[-1], \
-										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-										buttons=mouse_buttons)
-					self.emit_dom_event("motion_notify_event", ms_ev)
-					
-					ms_ev = MouseEvent("mouseleave", target=self.previous_nodes_under_pointer[-1], \
-										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-										buttons=mouse_buttons)
-					self.emit_dom_event("motion_notify_event", ms_ev)
-
-			if self.nodes_under_pointer:
-				if self.previous_nodes_under_pointer:
-					if self.previous_nodes_under_pointer[-1] != self.nodes_under_pointer[-1]:
-						ms_ev = MouseEvent("mouseover", target=self.nodes_under_pointer[-1], \
-										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-										buttons=mouse_buttons, relatedTarget=self.previous_nodes_under_pointer[-1])
-						self.emit_dom_event("motion_notify_event", ms_ev)
-						
-						ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
-										clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-										shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-										buttons=mouse_buttons, relatedTarget=self.previous_nodes_under_pointer[-1])
-						self.emit_dom_event("motion_notify_event", ms_ev)
-
-				else:
-					ms_ev = MouseEvent("mouseover", target=self.nodes_under_pointer[-1], \
-									clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-									shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-									altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-									buttons=mouse_buttons)
-					self.emit_dom_event("motion_notify_event", ms_ev)
-					
-					ms_ev = MouseEvent("mouseenter", target=self.nodes_under_pointer[-1], \
-									clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-									shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-									altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-									buttons=mouse_buttons)
-					self.emit_dom_event("motion_notify_event", ms_ev)
-		
-		if self.nodes_under_pointer:
-			ms_ev = MouseEvent("mousemove", target=self.nodes_under_pointer[-1], \
-							clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
-							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-							buttons=mouse_buttons)
-			self.emit_dom_event("motion_notify_event", ms_ev)
-
-		#canvas.queue_draw()
-
-		if __debug__:
-			self.check_dom_events("motion_notify_event")
-			assert not self.emitted_dom_events
-
-	def handle_button_press_event(self, drawingarea, event):
-		if event.button == gdk.BUTTON_PRIMARY and event.state & (gdk.ModifierType.BUTTON1_MASK | \
-																 gdk.ModifierType.BUTTON2_MASK | \
-																 gdk.ModifierType.BUTTON3_MASK | \
-																 gdk.ModifierType.BUTTON4_MASK | \
-																 gdk.ModifierType.BUTTON5_MASK) == 0:
-			self.last_mousedown = event.copy()
-		else:
-			self.last_mousedown = None
-		
-		if self.first_click and not self.check_count_hysteresis(self.first_click, event):
-			self.current_click_count = 0
-			self.first_click = None
-		
-		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
-		mouse_button = self.get_pressed_mouse_button(event)
-		keys = self.get_keys(event)
-		
-		if self.nodes_under_pointer:
-			ms_ev = MouseEvent(	"mousedown", target=self.nodes_under_pointer[-1], \
-								detail=self.current_click_count+1, clientX=event.x, clientY=event.y, \
-								screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-								button=mouse_button, buttons=mouse_buttons)
-			self.emit_dom_event("button_press_event", ms_ev)
-
-		if __debug__: self.check_dom_events("button_press_event")
-
-	def handle_button_release_event(self, drawingarea, event):
-		if self.last_mousedown and self.check_click_hysteresis(self.last_mousedown, event):
-			event_copy = event.copy()
-			glib.idle_add(lambda: self.emit('clicked', event_copy) and False)
-
-		if self.first_click and not self.check_count_hysteresis(self.first_click, event):
-			self.current_click_count = 0
-			self.first_click = None
-
-		self.last_mousedown = None
-
-		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
-		mouse_button = self.get_pressed_mouse_button(event)
-		keys = self.get_keys(event)
-
-		if self.nodes_under_pointer:
-			mouseup_target = self.nodes_under_pointer[-1]
-		else:
-			mouseup_target = None
-		ms_ev = MouseEvent(	"mouseup", target=mouseup_target, \
-							detail=self.current_click_count+1, clientX=event.x, clientY=event.y, \
-							screenX=event.x_root, screenY=event.y_root, \
-							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-							button=mouse_button, buttons=mouse_buttons)
-		self.emit_dom_event("button_release_event", ms_ev)
-
-		if __debug__: self.check_dom_events("button_release_event")
-
-	def handle_clicked(self, drawingarea, event):
-		if self.last_click and self.check_dblclick_hysteresis(self.last_click, event):
-			event_copy = event.copy()
-			glib.idle_add(lambda: self.emit('dblclicked', event_copy) and False)
-			self.last_click = None
-		else:
-			self.last_click = event.copy()
-		
-		if self.first_click and self.check_count_hysteresis(self.first_click, event):
-			self.current_click_count += 1
-		else:
-			self.current_click_count = 1
-			self.first_click = event.copy()
-
-		if self.nodes_under_pointer and self.is_element_focusable(self.nodes_under_pointer[-1]) and not (self.is_focused(self.nodes_under_pointer[-1])):
-			glib.idle_add(lambda: self.set_dom_focus(self.nodes_under_pointer[-1]))
-
-		if self.nodes_under_pointer:
-			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
-			mouse_button = self.get_pressed_mouse_button(event)
-			keys = self.get_keys(event)
-			ms_ev = MouseEvent(	"click", target=self.nodes_under_pointer[-1], \
-								detail=self.current_click_count, clientX=event.x, clientY=event.y, \
-								screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-								button=mouse_button, buttons=mouse_buttons)
-			self.emit_dom_event("clicked", ms_ev)
-		
-
-			if __debug__: self.check_dom_events("clicked")
-
-	def handle_dblclicked(self, drawingarea, event):
-		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
-		mouse_button = self.get_pressed_mouse_button(event)
-		keys = self.get_keys(event)
-
-		if self.nodes_under_pointer:
-			ms_ev = MouseEvent(	"dblclick", target=self.nodes_under_pointer[-1], \
-								detail=self.current_click_count, clientX=event.x, clientY=event.y, \
-								screenX=event.x_root, screenY=event.y_root, \
-								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-								button=mouse_button, buttons=mouse_buttons)
-			self.emit_dom_event("dblclicked", ms_ev)
-		
-		if __debug__: self.check_dom_events("dblclicked")
-
-	def handle_key_press_event(self, widget, event):
-		#print("Press", gdk.keyval_name(event.keyval))
-		if self.last_keydown and self.last_keydown.keyval == event.keyval:
-			repeated = True
-		else:
-			self.last_keydown = event.copy()
-			repeated = False
-		
-		if gdk.keyval_name(event.keyval).endswith("Tab"):
-			if event.state & gdk.ModifierType.SHIFT_MASK:
-				glib.idle_add(lambda: self.change_dom_focus_prev())
-			else:
-				glib.idle_add(lambda: self.change_dom_focus_next())
-		
-		keyval_name = gdk.keyval_name(event.keyval)
-		keys = self.get_keys(event)
-		located = self.get_key_location(keyval_name)
-		focused = self.element_in_focus
-		kb_ev = KeyboardEvent(	"keydown", target=focused, \
-								key=gdk.keyval_name(event.keyval), code=str(event.keyval), \
-								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-								location=located, repeat=repeated)
-		self.emit_dom_event("key_pressed", kb_ev)
-		
-		if __debug__: self.check_dom_events("key_pressed")
+def parse_svg_metadata(node):
+	title = None
+	desc = None
 	
-	def handle_key_release_event(self, widget, event):
-		#print("Release", gdk.keyval_name(event.keyval))
-		self.last_keydown = None
-		
-		keyval_name = gdk.keyval_name(event.keyval)
-		keys = self.get_keys(event)
-		located = self.get_key_location(keyval_name)
-		focused = self.element_in_focus
-		kb_ev = KeyboardEvent(	"keyup", target=focused, \
-								key=gdk.keyval_name(event.keyval), code=str(event.keyval), \
-								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-								location=located)
-		self.emit_dom_event("key_released", kb_ev)
-		
-		if __debug__: self.check_dom_events("key_released")
+	if node.tag != f'{{{xmlns_svg}}}svg':
+		raise ParseError("Root element not 'svg'.")
+	
+	for child in node:
+		if child.tag == f'{{{xmlns_svg}}}title':
+			title = child.text
+		elif child.tag == f'{{{xmlns_svg}}}desc':
+			desc = child.text
+		elif child.tag == f'{{{xmlns_svg}}}style':
+			pass
+	
+	return title, desc
 
-	def handle_scroll_event(self, widget, event):
-		#print("Scrolled")
-		keys = self.get_keys(event)
-		if self.nodes_under_pointer:
-			wheel_target = self.nodes_under_pointer[-1]
-		else:
-			wheel_target = None
-			
-		wh_ev = WheelEvent(	"wheel", target=wheel_target, \
-							clientX=event.x, clientY=event.y, \
-							screenX=event.x_root, screenY=event.y_root, \
-							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-							deltaX=event.delta_x, deltaY=event.delta_y, \
-							deltaMode=WheelEvent.DOM_DELTA_LINE)
-			
-		self.emit_dom_event("scrolled_event", wh_ev)
 
-		if __debug__: self.check_dom_events("scrolled_event")
-
-	def emit_dom_event(self, handler, ev):
-		#print(ev.type_, ev.target['id'] if hasattr(ev, 'target') and ('id' in ev.target) else "")
+def parse_svg_defs(node):
+	defs = {}
+	for child in node:
 		try:
-			print(ev.type_, '#'.join((ev.target.tag, ev.target.get('id'))) if hasattr(ev, 'target') else None)
-		except (TypeError, AttributeError):
-			print(ev.type_, ev.target, '#None')
-		if __debug__:
-			self.emitted_dom_events.append(ev)
+			defs[child.attrib['id']] = child
+		except KeyError:
+			pass
+		defs.update(parse_svg_defs(child))
+	return defs
 
-	def reset_after_exception(self):
-		if __debug__:
-			self.emitted_dom_events.clear()
 
-	if __debug__:
-		def check_dom_events(self, handler):
-			nup = self.nodes_under_pointer
-			pnup = self.previous_nodes_under_pointer
+def parse_svg_links(node):
+	links = set()
+	
+	if node.tag == f'{{{xmlns_svg}}}use':
+		links.add(node.attrib[f'{{{xmlns_xlink}}}href'])
+	
+	for child in node:
+		links.update(parse_svg_links(child))
+	
+	return links
 
-			cnt = Counter((_ms_ev.type_, id(_ms_ev.target)) for _ms_ev in self.emitted_dom_events)
-			if cnt:
-				common, common_num = cnt.most_common(1)[0]
-				assert common_num < 2, "For a DOM Event `{}`, shoudn't be emitted two events with equal target and type.".format(common[0])
 
-			#~ Target
-			assert all(_ms_ev.target != None for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mouseover", "mouseout", "mouseenter","mouseleave", "mousedown", "click", "dblclick")), "For events of types `mouseover`, `mouseout`, `mouseenter`,`mouseleave`, `mousedown`, `click` and `dblclick` event target can't be None."
-			assert all(nup and (_ms_ev.target == nup[-1]) for _ms_ev in self.emitted_dom_events if (_ms_ev.type_ == "mouseover")), "For events of type `mouseover`, event target should be top `nodes_under_pointer` element"
-			assert all(nup and (_ms_ev.target in nup) for _ms_ev in self.emitted_dom_events if (_ms_ev.type_ == "mouseenter")), "For events of type `mouseenter`, event target should be in `nodes_under_pointer` elements"
-			assert all(pnup and (_ms_ev.target == pnup[-1]) for _ms_ev in self.emitted_dom_events if (_ms_ev.type_ == "mouseout")), "For events of type `mouseout`, event target should be top `previous_nodes_under_pointer` element"
-			assert all(pnup and (_ms_ev.target in pnup) for _ms_ev in self.emitted_dom_events if (_ms_ev.type_ == "mouseleave")), "For events of type `mouseleave`, event target should be in `previous_nodes_under_pointer` elements"
-			assert all(nup and (_ms_ev.target == nup[-1]) for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mousedown", "click", "dblclick")), "For event of types `mousedown`, `mouseup`, `click` and `dblclick, event target should be top `nodes_under_pointer` element"
-			assert all(_ms_ev.target == nup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseup") if nup else all(_ms_ev.target == None for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseup"), "For event of type `mouseup` event target should be None if fired out of window border, otherwise target should be top `nodes_under_pointer` if it is over element."
-			assert all(_kb_ev.target == self.element_in_focus for _kb_ev in self.emitted_dom_events if _kb_ev.type_ in ("keydown", "keyup")), "For events of type `keydown` or `keyup`, event target should be self.document if no one element is focused."
-			assert all(_wh_ev.target == nup[-1] for _wh_ev in self.emitted_dom_events if _wh_ev.type_ == "wheel") if nup else True, "For events of type `wheel`, event target should be top node under pointer."
-			assert all(self.is_element_focusable(_fc_ev.target) for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focusin"), "Focus Event target of type `focusin` should be focusable"
-			assert all(self.is_element_focusable(_fc_ev.target) for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focusout"), "Focus Event target of type `focusout` should be focusable"
-			assert all(self.is_element_focusable(_fc_ev.target) for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focus"), "Focus Event target of type `focus` should be focusable"
-			assert all(self.is_element_focusable(_fc_ev.target) for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "blur"), "Focus Event target of type `blur` should be focusable"
 
-			#~ Detail
-			assert all(_ms_ev.detail == 0 for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mouseenter", "mouseleave", "mousemove", "mouseout", "mouseover")), "For events of types: `mouseenter`, `mouseleave`, `mousemove`, `mouseout` or `mouseover`. `detail` value should be equal to 0."
-			assert all(_ms_ev.detail > 0 for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("click", "dblclick", "mousedown", "mouseup")), "For events of types: `click`, `dblclick`, `mousedown` or `mouseup`. `detail` value should be higher then 0."
-			assert all(_ms_ev.detail == self.current_click_count + 1 for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mousedown", "mouseup")), "For events of types: `mousedown` or `mouseup`. `detail` value should be equal to `current_click_count` + 1."
-			assert all(_ms_ev.detail == self.current_click_count for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("click", "dblclick")), "For events of types: `click` or `dblclick`. `detail` value should be equal to `current_click_count`."
-			assert all(_kb_ev.detail == 0 for _kb_ev in self.emitted_dom_events if _kb_ev.type_ in ("keydown", "keyup")), "For `key_pressed`, all events of type `keydown` or `keyup` should be emitted with default detail."
+Mode = Enum('Mode', 'none paint clip')
 
-			#~ Mouse event order
-			mouseout_events = [_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseout"]
-			mouseleave_events = [_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseleave"]
-			mouseover_events = [_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseover"]
-			mouseenter_events = [_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseenter"]
-			mousemove_events = [_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mousemove"]
 
-			for mouseout, mouseleave in itertools.product(mouseout_events, mouseleave_events):
-				assert self.emitted_dom_events.index(mouseout) < self.emitted_dom_events.index(mouseleave), "For the appropriate Mouse Event order, events of type `mouseout` should happen before events of type `mouseleave`."
-			for mouseleave, mouseover in itertools.product(mouseleave_events, mouseover_events):
-				assert self.emitted_dom_events.index(mouseleave) < self.emitted_dom_events.index(mouseover), "For the appropriate Mouse Event order, events of type `mouseleave` should happen before events of type `mouseover`."
-			for mouseover, mouseenter in itertools.product(mouseover_events, mouseenter_events):
-				assert self.emitted_dom_events.index(mouseover) < self.emitted_dom_events.index(mouseenter), "For the appropriate Mouse Event order, events of type `mouseover` should happen before events of type `mouseenter`."
-			for mouseenter, mousemove in itertools.product(mouseenter_events, mousemove_events):
-				assert self.emitted_dom_events.index(mouseenter) < self.emitted_dom_events.index(mousemove), "For the appropriate Mouse Event order, events of type `mouseenter` should happen before events of type `mousemove`."
+def render_svg(node, ctx, refs, mode=Mode.paint):
+	if node.tag != f'{{{xmlns_svg}}}svg':
+		raise ParseError("Root element not 'svg'.")
+	
+	ctx.save()
+	
+	try:
+		vb_x, vb_y, vb_w, vb_h = map(units, node.attrib['viewBox'].split(' '))
+		ctx.translate(-vb_x, -vb_y)
+		ctx.scale(1 / vb_w, 1 / vb_h)
+	except KeyError:
+		pass
+	
+	parse_group(node, ctx, refs, Mode.paint)
+	
+	ctx.restore()
 
-			# Focus event order
-			focusin_event = [_fc_ev for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focusin"]
-			focusout_event = [_fc_ev for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focusout"]
-			focus_event = [_fc_ev for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focus"]
-			blur_event = [_fc_ev for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "blur"]
+
+def parse_group(node, ctx, refs, mode):
+	for child in node:
+		parse_node(child, ctx, refs, mode)
+		
+		
+
+
+def parse_node(node, ctx, refs, mode):
+	if 'transform' in node.attrib:
+		ctx.save()
+		parse_transform(node, ctx)
+	
+	shape = False
+	
+	if node.tag == f'{{{xmlns_svg}}}rect':
+		x, y, w, h = map(units, (node.attrib['x'], node.attrib['y'], node.attrib['width'], node.attrib['height']))
+		
+		try:
+			rx = units(node.attrib['rx'])
+		except KeyError:
+			rx = 0
+		
+		try:
+			ry = units(node.attrib['ry'])
+		except KeyError:
+			ry = 0
+		
+		if rx or ry:
+			ctx.rounded_rectangle(x, y, w, h, rx, ry)
+		else:
+			ctx.rectangle(x, y, w, h)
+		shape = True
+	elif node.tag == f'{{{xmlns_svg}}}circle':
+		cx, cy, r = map(units, (node.attrib['cx'], node.attrib['cy'], node.attrib['r']))
+		ctx.arc(cx, cy, r, r, 0, 2*pi)
+		shape = True
+	elif node.tag == f'{{{xmlns_svg}}}ellipse':
+		cx, cy, rx, ry = map(units, (node.attrib['cx'], node.attrib['cy'], node.attrib['rx'], node.attrib['ry']))
+		ctx.arc(cx, cy, rx, ry, 0, 2*pi)
+		shape = True
+	elif node.tag == f'{{{xmlns_svg}}}g':
+		parse_group(node, ctx, refs, mode)
+	elif node.tag == f'{{{xmlns_svg}}}a':
+		ctx.tag_begin('a', "href='%s'" % node.attrib[f'{{{xmlns_xlink}}}href'])
+		parse_group(node, ctx, refs, mode)
+		ctx.tag_end('a')
+	elif node.tag == f'{{{xmlns_svg}}}image':
+		parse_img(node, ctx)
+	elif node.tag == f'{{{xmlns_svg}}}svg':
+		render_svg(node, ctx, refs, mode)
+	elif node.tag == f'{{{xmlns_svg}}}text':
+		parse_text(node, ctx)
+		shape = True
+	elif node.tag == f'{{{xmlns_svg}}}path':
+		parse_path(node, ctx)
+		shape = True
+	elif node.tag == f'{{{xmlns_svg}}}use':
+		use_node = refs[node.attrib[f'{{{xmlns_xlink}}}href']]
+		parse_node(use_node, ctx, refs, mode)
+	elif node.tag == f'{{{xmlns_svg}}}defs':
+		pass
+	elif node.tag == f'{{{xmlns_svg}}}metadata':
+		pass
+	else:
+		print(" UNSUPPORTED TAG:", node.tag, node.attrib)
+	
+	if shape:
+		if mode == Mode.paint:
 			
-			for focusin, focus in zip(focusin_event, focus_event):
-				assert self.emitted_dom_events.index(focusin) < self.emitted_dom_events.index(focus), "For the appropriate Focus Event order, events of type `focusin` should happen before events of type `focus`."
-			for focusout, blur in zip(focusout_event, blur_event):
-				assert self.emitted_dom_events.index(focusout) < self.emitted_dom_events.index(blur), "For the appropriate Focus Event order, events of type `focusout` should happen before events of type `blur`."
-			for focusin, focus in zip(focusin_event, blur_event):
-				assert self.emitted_dom_events.index(focusin) < self.emitted_dom_events.index(blur), "For the appropriate Focus Event order, events of type `focusin` should happen before events of type `blur`."
-			for focusout, blur in zip(focusout_event, focus_event):
-				assert self.emitted_dom_events.index(focusout) < self.emitted_dom_events.index(focus), "For the appropriate Focus Event order, events of type `focusout` should happen before events of type `focus`."
-				
-			#~ Repeat
-			assert all(_kb_ev.repeat == False for _kb_ev in self.emitted_dom_events if _kb_ev.type_ == "keydown") if not self.last_keydown else True, "For event of type `keydown`, repeat attribute should be False if `last_keydown` not exist."
-			assert all(_kb_ev.repeat == True for _kb_ev in self.emitted_dom_events if _kb_ev.type_ == "keydown" and self.last_keydown.keyval == _kb_ev.code) if self.last_keydown else True, "For event of type `keydown`, repeat attribute should be True if `last_keydown` exist and their `keyval` is equal to `KeyboardEvent.code`."
-			assert all(_kb_ev.repeat == False for _kb_ev in self.emitted_dom_events if _kb_ev.type_ == "keyup"), "For event of type `keyup`, repeat attribute should be False."
+			parse_fill(node, ctx, refs)
+			parse_stroke(node, ctx, refs)
+			ctx.new_path()			
+		
+		elif mode == Mode.clip:
+			ctx.clip()
+	
+	if 'transform' in node.attrib:
+		ctx.restore()
+
+'''
+
+
+
+id, lang, tabindex, xml:base, xml:lang, xml:space
+Style Attributes
+
+class, style
+Conditional Processing Attributes
+
+externalResourcesRequired, requiredExtensions, requiredFeatures, systemLanguage.
+XLink Attributes
+Section
+
+xlink:href, xlink:type, xlink:role, xlink:arcrole, xlink:title, xlink:show, xlink:actuate
+Presentation Attributes
+Section
+Note that all SVG presentation attributes can be used as CSS properties.
+
+alignment-baseline, baseline-shift, clip, clip-path, clip-rule
+color, color-interpolation, color-interpolation-filters, color-profile, color-rendering
+
+cursor, direction, display, dominant-baseline, enable-background
+fill, fill-opacity, fill-rule
+
+filter, flood-color, flood-opacity, font-family, font-size, font-size-adjust, font-stretch, font-style, font-variant, font-weight, glyph-orientation-horizontal, glyph-orientation-vertical, image-rendering, kerning, letter-spacing, lighting-color, marker-end, marker-mid, marker-start, mask, opacity, overflow, pointer-events, shape-rendering, stop-color, stop-opacity, stroke, stroke-dasharray, stroke-dashoffset, stroke-linecap, stroke-linejoin, stroke-miterlimit, stroke-opacity, stroke-width, text-anchor, transform, text-decoration, text-rendering, unicode-bidi, vector-effect, visibility, word-spacing, writing-mode
+Filters Attributes
+Section
+Filter Primitive Attributes
+
+height, result, width, x, y
+Transfer Function Attributes
+
+type, tableValues, slope, intercept, amplitude, exponent, offset
+
+'''
+
+
+
+def parse_fill(node, ctx, refs):
+	fill = None
+	fill_opacity = None
+	
+	try:
+		style = node.attrib['style']
+		decls = parse_declaration_list(style)
+		for decl in decls:
+			if decl.name == 'fill':
+				if decl.value[0].type == 'hash':
+					fill = '#' + decl.value[0].value
+				elif decl.value[0].type == 'string':
+					fill = decl.value[0].value
+				else:
+					raise ParseError("Unsupported paint specification type: %s, '%s'", str(decl.value[0].type), str(decl.value[0].value))
+			elif decl.name == 'fill-opacity':
+				if decl.value[0].type == 'number':
+					fill_opacity = decl.value[0].value
+				else:
+					raise ParseError("Unsupported number specification type:", str(decl.value[0].type))
+	except KeyError:
+		pass
+	
+	try:
+		fill = node.attrib['fill']
+	except KeyError:
+		pass
+	
+	print(fill, fill_opacity)
+	
+	if not fill or fill.lower() in ('none', 'transparent'):
+		return
+	
+	try:
+		fill = colors[fill.lower()]
+	except KeyError:
+		pass
+	
+	if fill[0] == '#':
+		if len(fill) == 7:
+			r = int(fill[1:3], 16) / 255
+			g = int(fill[3:5], 16) / 255
+			b = int(fill[5:7], 16) / 255
+			a = 1
+		elif len(fill) == 4:
+			r = int(fill[1:2], 16) / 15
+			g = int(fill[2:3], 16) / 15
+			b = int(fill[3:4], 16) / 15
+			a = 1
+		else:
+			raise ParseError("Unsupported color specification: %s" % fill)
+	elif fill[:4] == 'url(' and fill[-1] == ')':
+		print("urls not supported yet")
+		return
+	else:
+		raise ParseError("Unsupported paint specification: %s" % fill)
+	
+	try:
+		fill_opacity = float(node.attrib['fill_opacity'])
+	except KeyError:
+		fill_opacity = 1
+	except ValueError as error:
+		raise ParseError("Error in float conversion.")
+	
+	a *= fill_opacity
+	
+	if a == 1:
+		ctx.set_source_rgb(r, g, b)
+		print("fill color:", r, g, b)
+	else:
+		ctx.set_source_rgba(r, g, b, a)
+		print("fill color:", r, g, b, a)
+	
+	if a > 0:
+		ctx.fill_preserve()
+		print("fill")
+
+
+def parse_stroke(node, ctx, refs):
+	try:
+		stroke = node.attrib['stroke']
+	except KeyError:
+		return
+	
+	if stroke.lower() in ('none', 'transparent'):
+		return
+	
+	try:
+		stroke = colors[stroke.lower()]
+	except KeyError:
+		pass
+	
+	if stroke[0] == '#':
+		if len(stroke) == 7:
+			r = int(stroke[1:3], 16) / 255
+			g = int(stroke[3:5], 16) / 255
+			b = int(stroke[5:7], 16) / 255
+			a = 1
+		elif len(stroke) == 4:
+			r = int(stroke[1:2], 16) / 15
+			g = int(stroke[2:3], 16) / 15
+			b = int(stroke[3:4], 16) / 15
+			a = 1
+		else:
+			raise ParseError("Unsupported color specification: %s" % stroke)
+	elif stroke[:4] == 'url(' and stroke[-1] == ')':
+		print("urls not supported yet")
+		return
+	else:
+		raise ParseError("Unsupported paint specification: %s" % stroke)
+		
+	if a == 1:
+		ctx.set_source_rgb(r, g, b)
+	else:
+		ctx.set_source_rgba(r, g, b, a)
+	
+	if a > 0:
+		ctx.stroke_preserve()
+
+
+
+def parse_img(node, ctx):
+	print(" image")
+
+
+def parse_text(node, ctx):
+	x, y = map(units, (node.attrib['x'], node.attrib['y']))
+	ctx.move_to(x, y)
+	
+	if node.text:
+		ctx.text_path(node.text)
+	
+	for child in node:
+		if child.tag == f'{{{xmlns_svg}}}tspan':
+			try:
+				dx = units(child.attrib['dx'])
+			except KeyError:
+				dx = 0
+			try:
+				dy = units(child.attrib['dy'])
+			except KeyError:
+				dy = 0
 			
-			#~ Delta
-			assert all(_wh_ev.deltaMode in (WheelEvent.DOM_DELTA_LINE, WheelEvent.DOM_DELTA_PAGE, WheelEvent.DOM_DELTA_PIXEL) for _wh_ev in self.emitted_dom_events if _wh_ev.type_ == "wheel"), "For event of type `wheel`, deltaMode should contain value from constants of WheelEvents."
+			if dx or dy:
+				ctx.rel_move_to(dx, dy)
 			
+			if child.text:
+				ctx.text_path(child.text)
+		
+		if child.tail:
+			ctx.text_path(child.tail)
 
-			if handler == "motion_notify_event":
-				moved_from_child_to_parent = (nup and pnup and nup[-1] != pnup[-1] and not (self.ancestors(nup[-1]) - self.ancestors(pnup[-1])))
-				moved_from_parent_to_child = (nup and pnup and nup[-1] != pnup[-1] and not (self.ancestors(pnup[-1]) - self.ancestors(nup[-1])))
-				
-				#~ Mousemove
-				assert any(_ms_ev.type_ == "mousemove" for _ms_ev in self.emitted_dom_events) if nup else True, "For a `motion_notify_event`, when `nodes_under_pointer` are not empty, a DOM event `mousemove` should be emitted."
-				assert all(_ms_ev.type_ != "mousemove" for _ms_ev in self.emitted_dom_events) if not nup else True, "For a `motion_notify_event`, when `nodes_under_pointer` are empty, a DOM event `mousemove` should not be emitted."
-				assert all(_ms_ev.type_ == "mousemove" for _ms_ev in self.emitted_dom_events) if (nup and pnup and (nup[-1] == pnup[-1])) else True, "For a `motion_notify_event` when the element under pointer hasn't changed, the only emitted DOM event shoud be `mousemove`."
 
-				#~ Mouseleave
-				assert all(_ms_ev.type_ != "mouseleave" for _ms_ev in self.emitted_dom_events) if (not nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` are empty, a DOM event 'mouseleave` shouldn't be emitted"
-				assert all(_ms_ev.type_ != "mouseleave" for _ms_ev in self.emitted_dom_events) if (nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` are empty and `nodes_under_pointer` aren't empty, a DOM event 'mouseleave` shouldn't be emitted"
-				assert any(_ms_ev.type_ == "mouseleave" for _ms_ev in self.emitted_dom_events) if (not nup and pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` aren't empty and `nodes_under_pointer` are empty, a DOM event 'mouseleave` should be emitted"
-				assert all(_ms_ev.type_ != "mouseleave" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] == pnup[-1]) else True, "For a `motion_notify_event`, when top `previous_nodes_under_pointer` and top `nodes_under_pointer` are equal, a DOM event 'mouseleave` shouldn't be emitted"
-				assert any(_ms_ev.type_ == "mouseleave" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1] and not moved_from_parent_to_child) else True, "For `motion_notify_event`, when the pointer moved somewhere else than from parent to child, DOM event `mouseleave` should be emitted"
-				assert all(_ms_ev.type_ != "mouseleave" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1] and moved_from_parent_to_child) else True, "For `motion_notify_event`, when the pointer moved from parent to child, DOM event `mouseleave` shouldn't be emitted"
-				
-				#~ Mouseout
-				assert all(_ms_ev.type_ != "mouseout" for _ms_ev in self.emitted_dom_events) if (not nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` are empty, a DOM event 'mouseout` shouldn't be emitted"
-				assert all(_ms_ev.type_ != "mouseout" for _ms_ev in self.emitted_dom_events) if (nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` are empty and `nodes_under_pointer` aren't empty, a DOM event 'mouseout` shouldn't be emitted"
-				assert any(_ms_ev.type_ == "mouseout" for _ms_ev in self.emitted_dom_events) if (not nup and pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` aren't empty and `nodes_under_pointer` are empty, a DOM event 'mouseout` should be emitted"
-				assert all(_ms_ev.type_ != "mouseout" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] == pnup[-1]) else True, "For a `motion_notify_event`, when top `previous_nodes_under_pointer` and top `nodes_under_pointer` are equal, a DOM event 'mouseout` shouldn't be emitted"
-				assert any(_ms_ev.type_ == "mouseout" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1]) else True, "For a `motion_notify_event`, when top `previous_nodes_under_pointer` and top `nodes_under_pointer` are different, a DOM event 'mouseout` should be emitted"
+re_matrix = re.compile(r'matrix\s*\(\s*([^,\s]*)[,\s]+([^,\s]*)[,\s]+([^,\s]*)[,\s]+([^,\s]*)[,\s]+([^,\s]*)[,\s]+([^\)\s]*)\s*\)')
 
-				#~ Mouseenter
-				assert all(_ms_ev.type_ != "mouseenter" for _ms_ev in self.emitted_dom_events) if (not nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` are empty, a DOM event 'mouseleave` shouldn't be emitted"
-				assert any(_ms_ev.type_ == "mouseenter" for _ms_ev in self.emitted_dom_events) if (nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` are empty and `nodes_under_pointer` aren't empty, a DOM event 'mouseenter` should be emitted"
-				assert all(_ms_ev.type_ != "mouseenter" for _ms_ev in self.emitted_dom_events) if (not nup and pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` aren't empty and `nodes_under_pointer` are empty, a DOM event 'mouseenter` should be emitted"
-				assert all(_ms_ev.type_ != "mouseenter" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] == pnup[-1]) else True, "For a `motion_notify_event`, when top `previous_nodes_under_pointer` and top `nodes_under_pointer` are equal, a DOM event 'mouseenter` shouldn't be emitted"
-				assert any(_ms_ev.type_ == "mouseenter" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1] and not moved_from_child_to_parent) else True, "For `motion_notify_event`, when the pointer moved somewhere else than from child to parent, DOM event `mouseenter` should be emitted"
-				assert all(_ms_ev.type_ != "mouseenter" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1] and moved_from_child_to_parent) else True, "For `motion_notify_event`, when the pointer moved from child to parent, DOM event `mouseenter` shouldn't be emitted"
+re_translate = re.compile(r'translate\s*\(\s*([^,\s]*)[,\s]+([^\)\s]*)\s*\)')
 
-				#~Mouseover
-				assert all(_ms_ev.type_ != "mouseover" for _ms_ev in self.emitted_dom_events) if (not nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` and `nodes_under_pointer` are empty, a DOM event 'mouseover` shouldn't be emitted"
-				assert any(_ms_ev.type_ == "mouseover" for _ms_ev in self.emitted_dom_events) if (nup and not pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` are empty and `nodes_under_pointer` aren't empty, a DOM event 'mouseover` should be emitted"
-				assert all(_ms_ev.type_ != "mouseover" for _ms_ev in self.emitted_dom_events) if (not nup and pnup) else True, "For a `motion_notify_event`, when `previous_nodes_under_pointer` aren't empty and `nodes_under_pointer` are empty, a DOM event 'mouseover` should be emitted"
-				assert all(_ms_ev.type_ != "mouseover" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] == pnup[-1]) else True, "For a `motion_notify_event`, when top `previous_nodes_under_pointer` and top `nodes_under_pointer` are equal, a DOM event 'mouseover` shouldn't be emitted"
-				assert any(_ms_ev.type_ == "mouseover" for _ms_ev in self.emitted_dom_events) if (nup and pnup and nup[-1] != pnup[-1]) else True, "For a `motion_notify_event`, when top `previous_nodes_under_pointer` and top `nodes_under_pointer` are different, a DOM event 'mouseover` should be emitted"
+re_scale1 = re.compile(r'scale\s*\(\s*([^,\)\s]*)\s*\)')
 
-			elif handler == "button_press_event":
-				assert all(_ms_ev.type_ == "mousedown" for _ms_ev in self.emitted_dom_events), "For `button_press_event`, only event of type `mousedown` should be emitted."
+re_scale2 = re.compile(r'scale\s*\(\s*([^,\s]*)[,\s]+([^\)\s]*)\s*\)')
 
-			elif handler == "button_release_event":
-				assert all(_ms_ev.type_ == "mouseup" for _ms_ev in self.emitted_dom_events), "For `button_release_event`, only event of type `mouseup` should be emitted."
+re_rotate = re.compile(r'rotate\s*\(\s*([^,\s]*)\s*\)')
 
-			elif handler == "clicked":
-				assert all(_ms_ev.type_ == "click" for _ms_ev in self.emitted_dom_events), "For `clicked`, only event of type `click` should be emitted."
-				assert any(_ms_ev.type_ == "click" for _ms_ev in self.emitted_dom_events) if nup else True, "For `clicked`, any event of type `click` should be emitted."
+def parse_transform(node, ctx):
+	text = node.attrib['transform']
+	
+	n = 0
+	while n < len(text):
+		match = re_matrix.search(text, n)
+		if match:
+			m0, m1, m2, m3, m4, m5 = map(float, list(match.groups()))
+			print(m0, m1, m2, m3, m4, m5)
+			transformation = cairo.Matrix(m0, m1, m2, m3, m4, m5)
+			ctx.transform(transformation)
+			n = match.end()
+			continue
+		
+		match = re_translate.search(text, n)
+		if match:
+			x, y = map(units, list(match.groups()))
+			ctx.translate(x, y)
+			n = match.end()
+			continue
+		
+		match = re_scale1.search(text, n)
+		if match:
+			#print(text)
+			s, = map(units, list(match.groups()))
+			ctx.scale(s, s)
+			n = match.end()
+			continue
+		
+		match = re_scale2.search(text, n)
+		if match:
+			#print(text)
+			sx, sy = map(units, list(match.groups()))
+			ctx.scale(sx, sy)
+			n = match.end()
+			continue
+		
+		match = re_rotate.search(text, n)
+		if match:
+			r, = map(units, list(match.groups()))
+			ctx.rotate(r)
+			n = match.end()
+			continue
+		
+		raise ParseError(text)
 
-			elif handler == "dblclicked":
-				assert all(_ms_ev.type_ == "dblclick" for _ms_ev in self.emitted_dom_events), "For `dblclicked`, only event of type `dblclick` should be emitted."
-				assert any(_ms_ev.type_ == "dblclick" for _ms_ev in self.emitted_dom_events) if nup else True, "For `dblclicked`, any event of type `dblclick` should be emitted."
-				
-			elif handler == "key_pressed":
-				assert all(_kb_ev.type_ == "keydown" for _kb_ev in self.emitted_dom_events), "For `key_pressed`, only event of type `keydown` should be emitted."
-				assert any(_kb_ev.type_ == "keydown" for _kb_ev in self.emitted_dom_events), "For `key_pressed`, any event of type `keydown` should be emitted."
+
+class NotANumber(BaseException):
+	def __init__(self, original):
+		self.original = original
+
+re_tokens = re.compile(r'([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[+-]?\.\d+(?:[eE][+-]?\d+)?|\b\s+\b|\w(?=\w))')
+
+def parse_path(node, ctx):
+	text = node.attrib['d']
+	
+	tokens = (_t for _t in (_t.strip() for _t in re_tokens.split(text)) if (_t and _t != ','))
+	
+	token = None
+	
+	def next_token():
+		nonlocal token
+		token = next(tokens)
+		return token
+	
+	def next_coord():
+		try:
+			return units(next_token())
+		except ParseError as error:
+			raise NotANumber(error)
+	
+	next_token()
+	
+	x = y = 0
+	
+	while True:
+		try:
+			command = token
 			
-			elif handler == "key_released":
-				assert all(_kb_ev.type_ == "keyup" for _kb_ev in self.emitted_dom_events), "For `key_released`, only event of type `keyup` should be emitted."
-				assert any(_kb_ev.type_ == "keyup" for _kb_ev in self.emitted_dom_events), "For `key_released`, any event of type `keyup` should be emitted."
-			
-			elif handler == "scrolled_event":
-				assert all(_wh_ev.type_ == "wheel" for _wh_ev in self.emitted_dom_events), "For `scrolled_event`, only event of type `wheel` should be emitted."
-				assert any(_wh_ev.type_ == "wheel" for _wh_ev in self.emitted_dom_events), "For `scrolled_event`, any event of type `wheel` should be emitted."
+			if command in 'M':
+				while True:
+					x = next_coord()
+					y = next_coord()
+					ctx.move_to(x, y)
+			elif command in 'm':
+				while True:
+					x = next_coord()
+					y = next_coord()
+					ctx.rel_move_to(x, y)
+			elif command in 'L':
+				while True:
+					x = next_coord()
+					y = next_coord()
+					ctx.line_to(x, y)
+			elif command in 'l':
+				while True:
+					x = next_coord()
+					y = next_coord()
+					ctx.rel_line_to(x, y)
+			elif command in 'H':
+				while True:
+					x = next_coord()
+					ctx.line_to(x, y)
+			elif command in 'h':
+				while True:
+					x = next_coord()
+					ctx.rel_line_to(x, y)
+			elif command in 'V':
+				while True:
+					y = next_coord()
+					ctx.line_to(x, y)
+			elif command in 'v':
+				while True:
+					y = next_coord()
+					ctx.rel_line_to(x, y)
+			elif command in 'Zz':
+				ctx.close_path()
+			else:
+				raise ParseError('Unsupported command syntax: %s' % text)
 
-			elif handler == "focus_changed_event":
-				assert any(_fc_ev.type_ == "focusin" for _fc_ev in self.emitted_dom_events) if self.is_element_focusable(self.element_in_focus) else True, "For `focus_change_event`, any event of type `focusin` should be emitted. When top `nodes_under_pointer` is focusable."
-				assert any(_fc_ev.type_ == "focusout" for _fc_ev in self.emitted_dom_events) if self.is_element_focusable(self.element_in_focus) and self.previous_focus else True, "For `focus_change_event`, any event of type `focusout` should be emitted. When top `nodes_under_pointer` is focusable."
-				assert any(_fc_ev.type_ == "focus" for _fc_ev in self.emitted_dom_events) if self.is_element_focusable(self.element_in_focus) else True, "For `focus_change_event`, any event of type `focus` should be emitted. When top `nodes_under_pointer` is focusable."
-				assert any(_fc_ev.type_ == "blur" for _fc_ev in self.emitted_dom_events) if self.is_element_focusable(self.element_in_focus) and self.previous_focus else True, "For `focus_change_event`, any event of type `blur` should be emitted. When top `nodes_under_pointer` is focusable."
-				
-			self.emitted_dom_events.clear()
+			'''
+			elif command in 'Qq':
+				while do_while:
+					cp1 = nextXY()
+					cursor = nextXY()
+					delta = cursor - cp1
+					self.quadraticCurveTo(cp1, cursor)
+					do_while = nextIsNumber()
+	
+			elif command in 'Tt':
+				while do_while:
+					cp2 = cursor + delta if delta else cursor
+					cursor = nextXY()
+					delta = cursor - cp2
+					self.quadraticCurveTo(cp2, cursor)
+					do_while = nextIsNumber()
+	
+			elif command in 'Cc':
+				while do_while:
+					cp3 = nextXY()
+					cp4 = nextXY()
+					cursor = nextXY()
+					delta = cursor - cp4
+					self.cubicCurveTo(cp3, cp4, cursor)
+					do_while = nextIsNumber()
+	
+			elif command in 'Ss':
+				while do_while:
+					cp5 = cursor + delta if delta else cursor
+					cp6 = nextXY()
+					cursor = nextXY()
+					delta = cursor - cp6
+					self.cubicCurveTo(cp5, cp6, cursor)
+					do_while = nextIsNumber()
+
+			elif command in 'Aa':
+	
+			'''
+			
+			next_token()
+		
+		except NotANumber:
+			continue
+		except StopIteration:
+			break
+
+
+
+
+
+def units(text):
+	text = text.strip()
+	if not text:
+		return 0
+	
+	if text[-2:] == 'px':
+		scale = 1
+		value = text[:-2]
+	elif text[-2:] == 'ex':
+		scale = 1
+		value = text[:-2]
+	else:
+		scale = 1
+		value = text
+	
+	try:
+		return float(value)
+	except ValueError:
+		raise ParseError("Unsupported dimension specification: %s" % text)
+
+
+
+
+
+
+# From: http://www.w3.org/TR/SVG11/types.html#ColorKeywords
+colors = {
+	'aliceblue': '#F0F8FF',
+	'antiquewhite': '#FAEBD7',
+	'aqua': '#00FFFF',
+	'aquamarine': '#7FFFD4',
+	'azure': '#F0FFFF',
+	'beige': '#F5F5DC',
+	'bisque': '#FFE4C4',
+	'black': '#000000',
+	'blanchedalmond': '#FFEBCD',
+	'blue': '#0000FF',
+	'blueviolet': '#8A2BE2',
+	'brown': '#A52A2A',
+	'burlywood': '#DEB887',
+	'cadetblue': '#5F9EA0',
+	'chartreuse': '#7FFF00',
+	'chocolate': '#D2691E',
+	'coral': '#FF7F50',
+	'cornflowerblue': '#6495ED',
+	'cornsilk': '#FFF8DC',
+	'crimson': '#DC143C',
+	'cyan': '#00FFFF',
+	'darkblue': '#00008B',
+	'darkcyan': '#008B8B',
+	'darkgoldenrod': '#B8860B',
+	'darkgray': '#A9A9A9',
+	'darkgreen': '#006400',
+	'darkgrey': '#A9A9A9',
+	'darkkhaki': '#BDB76B',
+	'darkmagenta': '#8B008B',
+	'darkolivegreen': '#556B2F',
+	'darkorange': '#FF8C00',
+	'darkorchid': '#9932CC',
+	'darkred': '#8B0000',
+	'darksalmon': '#E9967A',
+	'darkseagreen': '#8FBC8F',
+	'darkslateblue': '#483D8B',
+	'darkslategray': '#2F4F4F',
+	'darkslategrey': '#2F4F4F',
+	'darkturquoise': '#00CED1',
+	'darkviolet': '#9400D3',
+	'deeppink': '#FF1493',
+	'deepskyblue': '#00BFFF',
+	'dimgray': '#696969',
+	'dimgrey': '#696969',
+	'dodgerblue': '#1E90FF',
+	'firebrick': '#B22222',
+	'floralwhite': '#FFFAF0',
+	'forestgreen': '#228B22',
+	'fuchsia': '#FF00FF',
+	'gainsboro': '#DCDCDC',
+	'ghostwhite': '#F8F8FF',
+	'gold': '#FFD700',
+	'goldenrod': '#DAA520',
+	'gray': '#808080',
+	'green': '#008000',
+	'greenyellow': '#ADFF2F',
+	'grey': '#808080',
+	'honeydew': '#F0FFF0',
+	'hotpink': '#FF69B4',
+	'indianred': '#CD5C5C',
+	'indigo': '#4B0082',
+	'ivory': '#FFFFF0',
+	'khaki': '#F0E68C',
+	'lavender': '#E6E6FA',
+	'lavenderblush': '#FFF0F5',
+	'lawngreen': '#7CFC00',
+	'lemonchiffon': '#FFFACD',
+	'lightblue': '#ADD8E6',
+	'lightcoral': '#F08080',
+	'lightcyan': '#E0FFFF',
+	'lightgoldenrodyellow': '#FAFAD2',
+	'lightgray': '#D3D3D3',
+	'lightgreen': '#90EE90',
+	'lightgrey': '#D3D3D3',
+	'lightpink': '#FFB6C1',
+	'lightsalmon': '#FFA07A',
+	'lightseagreen': '#20B2AA',
+	'lightskyblue': '#87CEFA',
+	'lightslategray': '#778899',
+	'lightslategrey': '#778899',
+	'lightsteelblue': '#B0C4DE',
+	'lightyellow': '#FFFFE0',
+	'lime': '#00FF00',
+	'limegreen': '#32CD32',
+	'linen': '#FAF0E6',
+	'magenta': '#FF00FF',
+	'maroon': '#800000',
+	'mediumaquamarine': '#66CDAA',
+	'mediumblue': '#0000CD',
+	'mediumorchid': '#BA55D3',
+	'mediumpurple': '#9370DB',
+	'mediumseagreen': '#3CB371',
+	'mediumslateblue': '#7B68EE',
+	'mediumspringgreen': '#00FA9A',
+	'mediumturquoise': '#48D1CC',
+	'mediumvioletred': '#C71585',
+	'midnightblue': '#191970',
+	'mintcream': '#F5FFFA',
+	'mistyrose': '#FFE4E1',
+	'moccasin': '#FFE4B5',
+	'navajowhite': '#FFDEAD',
+	'navy': '#000080',
+	'oldlace': '#FDF5E6',
+	'olive': '#808000',
+	'olivedrab': '#6B8E23',
+	'orange': '#FFA500',
+	'orangered': '#FF4500',
+	'orchid': '#DA70D6',
+	'palegoldenrod': '#EEE8AA',
+	'palegreen': '#98FB98',
+	'paleturquoise': '#AFEEEE',
+	'palevioletred': '#DB7093',
+	'papayawhip': '#FFEFD5',
+	'peachpuff': '#FFDAB9',
+	'peru': '#CD853F',
+	'pink': '#FFC0CB',
+	'plum': '#DDA0DD',
+	'powderblue': '#B0E0E6',
+	'purple': '#800080',
+	'red': '#FF0000',
+	'rosybrown': '#BC8F8F',
+	'royalblue': '#4169E1',
+	'saddlebrown': '#8B4513',
+	'salmon': '#FA8072',
+	'sandybrown': '#F4A460',
+	'seagreen': '#2E8B57',
+	'seashell': '#FFF5EE',
+	'sienna': '#A0522D',
+	'silver': '#C0C0C0',
+	'skyblue': '#87CEEB',
+	'slateblue': '#6A5ACD',
+	'slategray': '#708090',
+	'slategrey': '#708090',
+	'snow': '#FFFAFA',
+	'springgreen': '#00FF7F',
+	'steelblue': '#4682B4',
+	'tan': '#D2B48C',
+	'teal': '#008080',
+	'thistle': '#D8BFD8',
+	'tomato': '#FF6347',
+	'turquoise': '#40E0D0',
+	'violet': '#EE82EE',
+	'wheat': '#F5DEB3',
+	'white': '#FFFFFF',
+	'whitesmoke': '#F5F5F5',
+	'yellow': '#FFFF00',
+	'yellowgreen': '#9ACD32',
+}
+
+
+
 
 if __name__ == '__main__':
-	import signal
-	import sys
-
-	glib.threads_init()
-
-	css = gtk.CssProvider()
-	css.load_from_path('gfx/style.css')
-	gtk.StyleContext.add_provider_for_screen(gdk.Screen.get_default(), css, gtk.STYLE_PROVIDER_PRIORITY_USER)
-
-	window = gtk.Window(gtk.WindowType.TOPLEVEL)
-	window.set_name('main_window')
-
-	svgwidget = SVGWidget()
-	#~ svgwidget.load_url('gfx/BYR_color_wheel.svg')
-	#~ svgwidget.load_url('gfx/drawing.svg')
-	svgwidget.load_url('gfx/drawing_no_white_BG.svg')
-	window.add(svgwidget)
+	from xml.etree.ElementTree import ElementTree
 	
-	window.show_all()
+	document = ElementTree()
+	document.parse('/home/bartek/Projekty/guixmpp/gfx/Comparison of several satellite navigation system orbits.svg')
 	
-	mainloop = gobject.MainLoop()
-	signal.signal(signal.SIGTERM, lambda signum, frame: mainloop.quit())
+	class PseudoContext:
+		def __getattr__(self, name):
+			return lambda *args: print("ctx." + name + str(args))
 	
-	def exception_hook(exception, y, z):
-		sys.__excepthook__(exception, y, z)
-		#errorbox = gtk.MessageDialog(window, gtk.DialogFlags.MODAL, gtk.MessageType.ERROR, gtk.ButtonsType.CLOSE, str(exception))
-		#errorbox.run()
-		#errorbox.destroy()
-		svgwidget.reset_after_exception()
+	ctx = PseudoContext()
+	node = document.getroot()
 	
-	sys.excepthook = lambda *args: exception_hook(*args)
-	window.connect('destroy', lambda window: mainloop.quit())
+	defs = parse_svg_defs(node)
+	links = parse_svg_links(node)
+	
+	print(links)
+	print()
+	
+	refs = {}
+	for link in links:
+		if link[0] == '#':
+			try:
+				refs[link] = defs[link[1:]]
+			except KeyError:
+				pass
+	
+	render_svg(node, ctx, refs=refs)
 
-	try:
-		mainloop.run()
-	except KeyboardInterrupt:
-		print()
+
+'''
 
 
+quit()
+
+_align_table = {
+	'xMinYMin': (0.0, 0.0),
+	'xMidYMin': (0.5, 0.0),
+	'xMaxYMin': (1.0, 0.0),
+	'xMinYMid': (0.0, 0.5),
+	'xMidYMid': (0.5, 0.5),
+	'xMaxYMid': (1.0, 0.5),
+	'xMinYMax': (0.0, 1.0),
+	'xMidYMax': (0.5, 1.0),
+	'xMaxYMax': (1.0, 1.0),
+}
+
+
+
+
+quit()
+
+
+
+class _Parser:
+	def __init__(self, handler):
+		self.matrix = _Matrix()
+		self.handler = handler
+		self.cursor = _Vector(0, 0)
+		self.strokeScale = 1
+		self.opacity = 1
+
+	def moveTo(self, p):
+		self.cursor = p
+		p = self.matrix.transform(p)
+		self.handler.move_to(p.x, p.y)
+
+	def lineTo(self, p):
+		self.cursor = p
+		p = self.matrix.transform(p)
+		self.handler.line_to(p.x, p.y)
+
+	def quadraticCurveTo(self, p1, p2):
+		c1 = self.cursor + (p1 - self.cursor) * (2.0 / 3.0)
+		c2 = p2 + (p1 - p2) * (2.0 / 3.0)
+		self.cursor = p2
+		self.cubicCurveTo(c1, c2, p2)
+
+	def cubicCurveTo(self, p1, p2, p3):
+		self.cursor = p3
+		p1 = self.matrix.transform(p1)
+		p2 = self.matrix.transform(p2)
+		p3 = self.matrix.transform(p3)
+		self.handler.curve_to(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y)
+
+	def outlineEllipse(self, cx, cy, rx, ry):
+		c = self.matrix.transform(_Vector(cx, cy))
+		r = c + self.matrix.transform(_Vector(rx, ry) - _Vector(cx, cy))
+		self.handler.arc(c.x, c.y, r.x, r.y)
+		#crx = rx * _CIRCLE_APPROXIMATION_CONSTANT
+		#cry = ry * _CIRCLE_APPROXIMATION_CONSTANT
+		#self.handler.new_path()
+		#self.moveTo(_Vector(cx - rx, cy))
+		#self.cubicCurveTo(_Vector(cx - rx, cy - cry), _Vector(cx - crx, cy - ry), _Vector(cx, cy - ry))
+		#self.cubicCurveTo(_Vector(cx + crx, cy - ry), _Vector(cx + rx, cy - cry), _Vector(cx + rx, cy))
+		#self.cubicCurveTo(_Vector(cx + rx, cy + cry), _Vector(cx + crx, cy + ry), _Vector(cx, cy + ry))
+		#self.cubicCurveTo(_Vector(cx - crx, cy + ry), _Vector(cx - rx, cy + cry), _Vector(cx - rx, cy))
+		#self.handler.close_path()
+
+	def outlineRect(self, x, y, w, h):
+		#self.handler.beginPath()
+		#self.moveTo(_Vector(x, y))
+		#self.lineTo(_Vector(x + w, y))
+		#self.lineTo(_Vector(x + w, y + h))
+		#self.lineTo(_Vector(x, y + h))
+		#self.handler.closePath()
+		pass
+
+	def outlineRoundedRect(self, x, y, w, h, rx, ry):
+		rx = min(rx, w * 0.5)
+		ry = min(ry, h * 0.5)
+		crx = rx * (1 - _CIRCLE_APPROXIMATION_CONSTANT)
+		cry = ry * (1 - _CIRCLE_APPROXIMATION_CONSTANT)
+		self.handler.beginPath()
+		self.moveTo(_Vector(x + rx, y))
+		self.lineTo(_Vector(x + w - rx, y))
+		self.cubicCurveTo(_Vector(x + w - crx, y), _Vector(x + w, y + cry), _Vector(x + w, y + ry))
+		self.lineTo(_Vector(x + w, y + h - ry))
+		self.cubicCurveTo(_Vector(x + w, y + h - cry), _Vector(x + w - crx, y + h), _Vector(x + w - rx, y + h))
+		self.lineTo(_Vector(x + rx, y + h))
+		self.cubicCurveTo(_Vector(x + crx, y + h), _Vector(x, y + h - cry), _Vector(x, y + h - ry))
+		self.lineTo(_Vector(x, y + ry))
+		self.cubicCurveTo(_Vector(x, y + cry), _Vector(x + crx, y), _Vector(x + rx, y))
+		self.handler.closePath()
+
+	def visitPath(self, node, style):
+		self.handler.beginPath()
+		self._path(_attr(node, 'd'))
+		self.fillAndStroke(node, style)
+
+	def visitRect(self, node, style):
+		x = _units(_attr(node, 'x'))
+		y = _units(_attr(node, 'y'))
+		w = _units(_attr(node, 'width'))
+		h = _units(_attr(node, 'height'))
+		rx = _units(_attr(node, 'rx'))
+		ry = _units(_attr(node, 'ry'))
+		if rx or ry: self.outlineRoundedRect(x, y, w, h, rx, ry)
+		else: self.outlineRect(x, y, w, h)
+		self.fillAndStroke(node, style)
+
+	def visitLine(self, node, style):
+		x1 = _units(_attr(node, 'x1'))
+		y1 = _units(_attr(node, 'y1'))
+		x2 = _units(_attr(node, 'x2'))
+		y2 = _units(_attr(node, 'y2'))
+		self.handler.beginPath()
+		self.moveTo(_Vector(x1, y1))
+		self.lineTo(_Vector(x2, y2))
+		self.fillAndStroke(node, style)
+
+	def visitCircle(self, node, style):
+		x = _units(_attr(node, 'cx'))
+		y = _units(_attr(node, 'cy'))
+		r = _units(_attr(node, 'r'))
+		self.outlineEllipse(x, y, r, r)
+		self.fillAndStroke(node, style)
+
+	def visitEllipse(self, node, style):
+		x = _units(_attr(node, 'cx'))
+		y = _units(_attr(node, 'cy'))
+		rx = _units(_attr(node, 'rx'))
+		ry = _units(_attr(node, 'ry'))
+		self.outlineEllipse(x, y, rx, ry)
+		self.fillAndStroke(node, style)
+
+	def visitPolyline(self, node, style):
+		self.handler.beginPath()
+		for i, point in enumerate(_points(_attr(node, 'points'))):
+			if i: self.lineTo(point)
+			else: self.moveTo(point)
+		self.fillAndStroke(node, style)
+
+	def visitPolygon(self, node, style):
+		self.handler.beginPath()
+		for i, point in enumerate(_points(_attr(node, 'points'))):
+			if i: self.lineTo(point)
+			else: self.moveTo(point)
+		self.handler.closePath()
+		self.fillAndStroke(node, style)
+
+	def fillAndStroke(self, node, style):
+		fill = _attr(node, 'fill') or style.get('fill', 'black')
+		stroke = _attr(node, 'stroke') or style.get('stroke', 'none')
+		strokeWidth = _attr(node, 'stroke-width') or style.get('stroke-width', '1')
+
+		if fill != 'none':
+			c = _color(fill)
+			self.handler.fill(c[0], c[1], c[2], c[3] * self.opacity)
+
+		if stroke != 'none':
+			c = _color(stroke)
+			self.handler.stroke(c[0], c[1], c[2], c[3] * self.opacity, self.strokeScale * _units(strokeWidth))
+
+	def visitViewbox(self, node, data):
+		match = re.match(r'^[\s,]*([^\s,]+)[\s,]+([^\s,]+)[\s,]+([^\s,]+)[\s,]+([^\s,]+)[\s,]*$', _attr(node, 'viewBox'))
+		if match:
+			aspect = _attr(node, 'preserveAspectRatio') or 'xMidYMid'
+			x, y, w, h = map(_units, match.groups())
+			data.setdefault('width', w)
+			data.setdefault('height', h)
+			sx = data['width'] / w
+			sy = data['height'] / h
+			if aspect in _align_table:
+				sx = sy = min(sx, sy)
+				ax, ay = _align_table[aspect]
+				x += (w - data['width'] / sx) * ax
+				y += (h - data['height'] / sy) * ay
+			self.matrix = _Matrix(sx, 0, -x * sx, 0, sy, -y * sy)
+			self.strokeScale = math.sqrt(sx * sy)
+
+	def visitSVG(self, node):
+		data = {}
+		if _attr(node, 'width'): data['width'] = _units(_attr(node, 'width'))
+		if _attr(node, 'height'): data['height'] = _units(_attr(node, 'height'))
+		if _attr(node, 'viewBox'): self.visitViewbox(node, data)
+		if data: self.handler.metadata(data)
+
+	def visit(self, node):
+		old_matrix = self.matrix
+		old_opacity = self.opacity
+
+		style = _attr(node, 'style') or ''
+		style = dict(tuple(y.strip() for y in x.split(':')) for x in style.split(';') if x)
+		self.opacity *= float(_attr(node, 'opacity') or style.get('opacity', '1'))
+
+		if _attr(node, 'transform'):
+			self.matrix = self.matrix.multiply(_matrix(_attr(node, 'transform')))
+
+		if node.nodeType == node.ELEMENT_NODE:
+			if node.tagName == 'path': self.visitPath(node, style)
+			elif node.tagName == 'rect': self.visitRect(node, style)
+			elif node.tagName == 'line': self.visitLine(node, style)
+			elif node.tagName == 'circle': self.visitCircle(node, style)
+			elif node.tagName == 'ellipse': self.visitEllipse(node, style)
+			elif node.tagName == 'polyline': self.visitPolyline(node, style)
+			elif node.tagName == 'polygon': self.visitPolygon(node, style)
+			elif node.tagName == 'svg': self.visitSVG(node)
+
+		for child in node.childNodes:
+			self.visit(child)
+
+		self.matrix = old_matrix
+		self.opacity = old_opacity
+
+
+
+
+
+
+def _color(text):
+	text = text.strip()
+	text = _color_table.get(text, text)
+
+	if re.match(r'^#[A-Fa-f0-9]{6}$', text):
+		value = int(text[1:], 16)
+		return (value >> 16 & 255, value >> 8 & 255, value & 255, 1.0)
+
+	if re.match(r'^#[A-Fa-f0-9]{3}$', text):
+		value = int(text[1:], 16)
+		return ((value >> 8 & 15) * 0x11, (value >> 4 & 15) * 0x11, (value & 15) * 0x11, 1.0)
+
+	match = re.match(r'^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$', text)
+	if match:
+		return (int(match.group(1)), int(match.group(2)), int(match.group(3)), 1.0)
+
+	match = re.match(r'^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+(?:\.\d+)?|\.\d+)\s*\)$', text)
+	if match:
+		return (int(match.group(1)), int(match.group(2)), int(match.group(3)), float(match.group(4)))
+
+	raise Exception('Unsupported color syntax: %s' % repr(text))
+
+def _units(text):
+	return float(text.replace('px', '')) if text else 0.0 # Only handle pixels for now
+
+def _attr(node, name):
+	return node.attributes.get(name).value if node.attributes and node.attributes.get(name) else None
+
+
+def _points(text):
+	tokens = _tokenize(text)
+	return [_Vector(float(p[0]), float(p[1])) for p in zip(tokens[::2], tokens[1::2])]
+
+'''
 

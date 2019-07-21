@@ -1,9 +1,0 @@
-[submodule "submodules/CairoSVG"]
-	path = submodules/CairoSVG
-	url = https://gitlab.com/bartosz.haael.com.pl/CairoSVG.git
-[submodule "submodules/slixmpp"]
-	path = submodules/slixmpp
-	url = git://git.poez.io/slixmpp
-[submodule "submodules/pycairo"]
-	path = submodules/pycairo
-	url = https://github.com/pygobject/pycairo.git
