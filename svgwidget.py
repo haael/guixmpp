@@ -293,7 +293,7 @@ class SVGWidget(gtk.DrawingArea):
 		context.set_source_rgb(1, 1, 1)
 		context.paint() # background
 		
-		nodes_under_pointer = self.svgrender.render(context, (0, 0, rect.width, rect.height)) #pointer=self.pointer
+		nodes_under_pointer = self.svgrender.render(context, (0, 0, rect.width, rect.height), pointer=self.pointer)
 		
 		if self.pointer:
 			self.nodes_under_pointer = nodes_under_pointer
@@ -305,7 +305,20 @@ class SVGWidget(gtk.DrawingArea):
 	
 	def update_nodes_under_pointer(self, event):
 		self.pointer = event.x, event.y
-		self.render()
+
+		if self.pointer:
+			self.previous_nodes_under_pointer = self.nodes_under_pointer[:]
+		
+		rect = self.get_allocation()
+		
+		surface = cairo.RecordingSurface(cairo.Content.COLOR_ALPHA, None)
+		context = cairo.Context(surface)
+		
+		nodes_under_pointer = self.svgrender.hover(context, (0, 0, rect.width, rect.height), pointer=self.pointer)
+		
+		if self.pointer:
+			self.nodes_under_pointer = nodes_under_pointer
+		assert self.nodes_under_pointer != None
 	
 	def handle_configure_event(self, drawingarea, event):
 		self.render()

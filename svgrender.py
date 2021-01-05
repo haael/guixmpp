@@ -527,57 +527,60 @@ class SVGRender:
 		for child in node:
 			self.__scan_links(base_url, child)
 	
-	def render(self, ctx, box):
-		self.render_url(ctx, box, self.main_url, level=0)
-		return []
+	def render(self, ctx, box, pointer=None):
+		return self.render_url(ctx, box, self.main_url, 0, True, pointer)
 	
-	def render_url(self, ctx, box, url, level=0):
+	def hover(self, ctx, box, pointer):
+		return self.render_url(ctx, box, self.main_url, 0, False, pointer)
+	
+	def render_url(self, ctx, box, url, level, draw, pointer):
 		try:
 			document = self.get_svg(url)
 		except KeyError:
 			pass
 		else:
-			self.render_svg(ctx, box, document.getroot(), [], level)
-			return
+			return self.render_svg(ctx, box, document.getroot(), [], level, draw, pointer)
 		
 		try:
 			surface = self.get_img(url)
 		except KeyError:
 			pass
 		else:
-			self.render_image(ctx, box, surface, level=level)
-			return
+			return self.render_image(ctx, box, surface, level, draw, pointer)
 		
 		self.error(f"no content registered for the url {url}", url, None)
+		return []
 	
-	def render_node(self, ctx, box, node, ancestors, level):
+	def render_node(self, ctx, box, node, ancestors, level, draw, pointer):
 		if node.tag in [f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in ('defs', 'title', 'desc', 'metadata', 'style', 'linearGradient', 'radialGradient', 'script', 'symbol')]:
 			pass
 		elif node.tag == f'{{{self.xmlns_sodipodi}}}namedview': # a very common nonstandard tag in svg documents created by inkscape
 			pass
 		elif node.tag == f'{{{self.xmlns_svg}}}use':
-			self.render_use(ctx, box, node, ancestors, level=level)
+			return self.render_use(ctx, box, node, ancestors, level, draw, pointer)
 		elif node.tag == f'{{{self.xmlns_svg}}}svg':
-			self.render_svg(ctx, box, node, ancestors, level=level)
+			return self.render_svg(ctx, box, node, ancestors, level, draw, pointer)
 		elif node.tag == f'{{{self.xmlns_svg}}}g':
-			self.render_group(ctx, box, node, ancestors, level=level)
+			return self.render_group(ctx, box, node, ancestors, level, draw, pointer)
 		elif node.tag == f'{{{self.xmlns_svg}}}switch':
-			self.render_switch(ctx, box, node, ancestors, level=level)
+			return self.render_switch(ctx, box, node, ancestors, level, draw, pointer)
 		elif node.tag == f'{{{self.xmlns_svg}}}a':
-			self.render_anchor(ctx, box, node, ancestors, level=level)
+			return self.render_anchor(ctx, box, node, ancestors, level, draw, pointer)
 		elif node.tag == f'{{{self.xmlns_svg}}}image':
-			self.render_image(ctx, box, node, ancestors, level=level)
+			return self.render_image(ctx, box, node, ancestors, level, draw, pointer)
 		elif node.tag == f'{{{self.xmlns_svg}}}foreignObject':
-			self.render_foreign_object(ctx, box, node, ancestors, level=level)
+			return self.render_foreign_object(ctx, box, node, ancestors, level, draw, pointer)
 		elif node.tag in [f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in ('polygon', 'line', 'ellipse', 'circle', 'rect', 'path', 'text')]:
-			self.render_shape(ctx, box, node, ancestors, level=level)
+			return self.render_shape(ctx, box, node, ancestors, level, draw, pointer)
 		else:
 			self.error(f"unsupported tag: {node.tag}", node.tag, node)
+		
+		return []
 	
 	class OverlayElement(list):
 		pass
 	
-	def render_use(self, ctx, box, node, ancestors, level):
+	def render_use(self, ctx, box, node, ancestors, level, draw, pointer):
 		href = node.attrib[f'{{{self.xmlns_xlink}}}href']
 		if href[0] == '#': href = self.main_url + href
 		
@@ -585,7 +588,7 @@ class SVGRender:
 			original = self.__defs[href]
 		except KeyError:
 			self.error(f"Ref not found: {href}", href, node)
-			return
+			return []
 		
 		target = self.OverlayElement()
 		target.tag = original.tag
@@ -595,41 +598,39 @@ class SVGRender:
 		target.text = original.text
 		target.tail = original.tail
 		
-		#target = deepcopy(original)
-		#for name, value in node.attrib.items():
-		#	if name != f'{{{self.xmlns_xlink}}}href':
-		#		target.attrib[name] = value
-		
-		#self.__parents[ref(target)] = self.__parents[node]
-		#self.__save_parents(target)
-		self.render_node(ctx, box, target, ancestors, level)
+		return self.render_node(ctx, box, target, ancestors, level, draw, pointer)
 	
-	def render_switch(self, ctx, box, node, ancestors, level):
+	def render_switch(self, ctx, box, node, ancestors, level, draw, pointer):
 		self.error(f"element rendering not implemented: {node.tag}", node.tag, node) # TODO
+		return []
 	
-	def render_anchor(self, ctx, box, node, ancestors, level):
+	def render_anchor(self, ctx, box, node, ancestors, level, draw, pointer):
 		try:
 			ctx.tag_begin('a', '')
 		except AttributeError:
 			pass
 		
-		self.render_group(ctx, box, node, ancestors, level)
+		nodes_under_pointer = self.render_group(ctx, box, node, ancestors, level, draw, pointer)
 		
 		try:
 			ctx.tag_end('a')
 		except AttributeError:
 			pass
+		
+		return nodes_under_pointer
 	
-	def render_image(self, ctx, box, node, ancestors, level):
+	def render_image(self, ctx, box, node, ancestors, level, draw, pointer):
 		self.error(f"element rendering not implemented: {node.tag}", node.tag, node) # TODO
+		return []
 	
 	def render_foreign_object(self, ctx, box, node, ancestors, level):
 		self.error(f"element rendering not implemented: {node.tag}", node.tag, node) # TODO
+		return []
 	
-	def render_svg(self, ctx, box, node, ancestors, level):
+	def render_svg(self, ctx, box, node, ancestors, level, draw, pointer):
 		if node.tag != f'{{{self.xmlns_svg}}}svg':
 			self.error("root element not 'svg'", node.tag, node)
-			return
+			return []
 		
 		left, top, width, height = box
 		
@@ -671,11 +672,13 @@ class SVGRender:
 			ctx.scale(x_scale, y_scale)
 			ctx.translate(-viewbox_x, -viewbox_y)
 		
-		self.render_group(ctx, (viewbox_x, viewbox_y, viewbox_w, viewbox_h), node, ancestors, level=level)
+		nodes_under_pointer = self.render_group(ctx, (viewbox_x, viewbox_y, viewbox_w, viewbox_h), node, ancestors, level, draw, pointer)
 		
 		ctx.restore()
+		
+		return nodes_under_pointer
 	
-	def render_group(self, ctx, box, node, ancestors, level):
+	def render_group(self, ctx, box, node, ancestors, level, draw, pointer):
 		left, top, width, height = box
 		
 		if level:
@@ -697,20 +700,24 @@ class SVGRender:
 			ctx.save()
 			self.__apply_transform(ctx, box, node, ancestors)
 		
-		#print("node", node)
+		nodes_under_pointer = []
 		ancestors = ancestors + [node]
 		for child in node:
-			#print("child", child)
-			self.render_node(ctx, box, child, ancestors, level+1)
+			nodes_under_pointer.extend(self.render_node(ctx, box, child, ancestors, level+1, draw, pointer))
 		
 		if 'transform' in node.attrib:
 			ctx.restore()
 		
 		if level and (x or y):
 			ctx.restore()
+		
+		if nodes_under_pointer:
+			nodes_under_pointer.insert(0, node)
+		
+		return nodes_under_pointer
 	
 	@staticmethod
-	def render_rounded_rectangle(ctx, x, y, w, h, rx, ry):
+	def __draw_rounded_rectangle(ctx, x, y, w, h, rx, ry):
 		r = max(rx, ry) # TODO
 		ctx.new_sub_path()
 		ctx.arc(x + r, y + r, r, radians(180), radians(270))
@@ -723,7 +730,7 @@ class SVGRender:
 		ctx.line_to(x, y + r)
 		ctx.close_path()
 	
-	def render_shape(self, ctx, box, node, ancestors, level):
+	def render_shape(self, ctx, box, node, ancestors, level, draw, pointer):
 		left, top, width, height = box
 		
 		if 'transform' in node.attrib:
@@ -738,7 +745,7 @@ class SVGRender:
 			ry = max(ry, 0)
 			
 			if rx or ry:
-				self.render_rounded_rectangle(ctx, x, y, w, h, rx, ry)
+				self.__draw_rounded_rectangle(ctx, x, y, w, h, rx, ry)
 			else:
 				#print("rectangle:", x, y, w, h)
 				ctx.rectangle(x, y, w, h)
@@ -801,10 +808,21 @@ class SVGRender:
 		else:
 			self.error(f"tag {node.tag} not supported by this method", node.tag, node)
 		
-		self.__apply_paint(ctx, box, node, ancestors)
+		nodes_under_pointer = []
+		if pointer:
+			x, y = pointer
+			if ctx.in_stroke(x, y) or ctx.in_fill(x, y):
+				nodes_under_pointer.append(node)
+		
+		if draw:
+			self.__apply_paint(ctx, box, node, ancestors)
+		else:
+			ctx.new_path()
 		
 		if 'transform' in node.attrib:
 			ctx.restore()
+		
+		return nodes_under_pointer
 	
 	def __apply_paint(self, ctx, box, node, ancestors):
 		if self.__apply_fill(ctx, box, node, ancestors):
