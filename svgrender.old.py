@@ -14,10 +14,9 @@ import math
 from math import pi, radians
 from enum import Enum
 import cairo
-#from tinycss2 import parse_declaration_list, parse_stylesheet
+from tinycss2 import parse_declaration_list, parse_stylesheet
 from collections import defaultdict
-#from copy import deepcopy, copy as shallowcopy
-from weakref import ref
+from copy import deepcopy
 
 
 try:
@@ -26,7 +25,7 @@ except AttributeError:
 	def distance(a, b):
 		return math.sqrt(sum((_a - _b)**2 for (_a, _b) in zip(a, b)))
 
-'''
+
 if __debug__:
 	class Epsilon:
 		def __init__(self, value=0, accuracy=0):
@@ -94,8 +93,7 @@ if __debug__:
 	
 	
 	epsilon = Epsilon(accuracy=0.002)
-'''
-
+	
 
 class SVGRender:
 	xmlns_svg = 'http://www.w3.org/2000/svg'
@@ -262,376 +260,127 @@ class SVGRender:
 			self.original = original
 	
 	def __init__(self):
-		self.main_url = None
-		self.__pending = set()
-		self.__svgs = {}
-		self.__imgs = {}
+		self.svg_url = None
+		self.svg_title = ""
+		self.svg_description = ""
+		self.__documents = {}
 		self.__defs = {}
-		#self.__parents = {}
-		self.__errs = {}
+		self.__stylesheets = []
+		self.__parents = {}
 	
-	def open(self, url, base_url=None):
-		"Open an SVG document for display. Supported non-SVG images will also work. `url` is an absolute or relative url, in the latter case resolved relative to `base_url`."
+	def svg_open(self, url):
+		self.svg_url = url
 		
-		self.main_url = self.resolve_url(url, base_url)
-		try:
-			self.get_svg(self.main_url)
-		except KeyError:
-			self.request_url(self.main_url)
-		else:
-			self.update()
+		if url in self.__documents:
+			self.__display(self.__documents[url])
+		elif url:
+			self.svg_request_url(url)
 	
-	@staticmethod
-	def resolve_url(rel_url, base_url):
-		"Provided the relative url and the base url, return an absolute url."
-		if base_url:
-			return base_url + '/' + rel_url
-		else:
-			return rel_url
+	def svg_request_url(self, url):
+		from xml.etree.ElementTree import ElementTree
+		document = ElementTree()
+		document.parse(url)
+		self.svg_register_document(url, document)
 	
-	def enter_pending(self, url):
-		if url in self.__pending:
-			return True
-		self.__pending.add(url)
-		return False
-	
-	def request_url(self, url):
-		"""
-		Called when a resource needs to be downloaded. `url` is always absolute. The implementation should call one of `register_*` methods, possibly asynchronously.
-		To avoid requesting the same resource multiple times, call `self.enter_pending(url)` at the start and exit the function if it returns True.
-		"""
-		
-		if self.enter_pending(url): return
-		
-		exceptions = []
-		
-		try:
-			from xml.etree.ElementTree import ElementTree
-			document = ElementTree()
-			document.parse(url)
-			self.register_svg(url, document)
-		except Exception as error:
-			exceptions.append(error)
-		else:
-			return
-		
-		try:
-			surface = cairo.ImageSurface.create_from_png(url)
-			self.register_img(url, surface)
-		except Exception as error:
-			exceptions.append(error)
-		else:
-			return
-		
-		self.register_err(url, exceptions)
-		self.error(f"Could not open url: {url}", (url, exceptions), None)
-	
-	def __apply_style_tag(self, url, style, node):
-		from tinycss2 import parse_declaration_list, serialize
-		
-		for rule in style:
-			try:
-				target_ref = serialize(rule.prelude).strip()
-				
-				match = False
-				if target_ref[0] == '#' and node.attrib.get('id', None) == target_ref[1:]:
-					match = True
-				elif target_ref[0] == '.' and node.attrib.get('class', None) == target_ref[1:]:
-					match = True
-				
-				if not match: continue
-
-				#print(target_ref[1:], node.attrib.get('id', None), node.attrib.get('class', None), match)
-				
-				for decl in parse_declaration_list(serialize(rule.content)):
-					#print(decl)
-					try:
-						#print(decl.name, serialize(decl.value))
-						if decl.name not in node.attrib:
-							node.attrib[decl.name] = serialize(decl.value)
-					except AttributeError:
-						pass
-			
-			except (AttributeError, KeyError):
-				pass
-		
-		for child in node:
-			self.__apply_style_tag(url, style, child)
-	
-	def __parse_style_tag(self, style_url, node, target_url, root):
-		from tinycss2 import parse_stylesheet, serialize
-		
-		if node.tag == f'{{{self.xmlns_svg}}}style':
-			self.__apply_style_tag(target_url, parse_stylesheet(node.text), root)
-		
-		for child in node:
-			self.__parse_style_tag(style_url, child, target_url, root)
-	
-	def __parse_style_attrib(self, url, node):
-		from tinycss2 import parse_declaration_list, serialize
-		
-		try:
-			for decl in parse_declaration_list(node.attrib['style']):
-				try:
-					#print(decl.name, serialize(decl.value))
-					if decl.name not in node.attrib:
-						node.attrib[decl.name] = serialize(decl.value)
-				except AttributeError:
-					pass
-		except KeyError:
-			pass
-		
-		for child in node:
-			self.__parse_style_attrib(url, child)
-	
-	def parse_css(self, url, document):
-		self.__parse_style_tag(url, document.getroot(), url, document.getroot())
-		self.__parse_style_attrib(url, document.getroot())
-		return document
-	
-	def transform_svg(self, url, document):
-		"Transform the SVG document before registering it. CSS parsing should happen here."
-		self.parse_css(url, document)
-		return document
-	
-	def transform_img(self, url, surface):
-		"Transform the image (provided as cairo surface) before registering it."
-		return surface
-	
-	#def __save_parents(self, parent):
-	#	for child in parent:
-	#		#print(hash(child))
-	#		self.__parents[ref(child)] = ref(parent)
-	#		self.__save_parents(child)
-	
-	def register_svg(self, url, document):
-		"Register the downloaded SVG under the provided url."
-		
-		self.__pending.remove(url)
-		
-		if url in self.__svgs:
-			raise ValueError
-		self.__svgs[url] = self.transform_svg(url, document)
-		
+	def svg_register_document(self, url, document):
+		self.__documents[url] = document
 		self.__scan_links(url, document.getroot())
-		
-		#assert document.getroot() == document.getroot()
-		
-		#self.__parents[document.getroot()] = None
-		#self.__save_parents(document.getroot())
-		
-		try:
-			self.get_svg(self.main_url)
-		except:
-			raise
-		else:
-			self.update()
+		if self.svg_url == url:
+			self.__display(document.getroot())
+		if self.svg_url in self.__documents:
+			self.svg_update()
 	
-	def register_img(self, url, surface):
-		"Register the downloades image (as cairo surface) under the provided url."
-		
-		self.__pending.remove(url)
-		
-		if url in self.__imgs:
-			raise ValueError
-		self.__imgs[url] = self.transform_img(url, surface)
-		
-		try:
-			self.get_svg(self.main_url)
-		except:
-			raise
-		else:
-			self.update()
+	def svg_clear_documents(self):
+		self.__documents = {}
+		self.__defs = {}
+		self.svg_update()
 	
-	def register_err(self, url, error):
-		"Register an error, indicating that the resource is unavailable. The error object may be anything."
-		self.__errs[url] = error
-	
-	def get_svg(self, url):
-		try:
-			error = self.__errs[url]
-		except KeyError:
-			pass
-		else:
-			raise KeyError("SVG resource not available:", error)
-		
-		return self.__svgs[url]
-	
-	def get_img(self, url):
-		try:
-			error = self.__errs[url]
-		except KeyError:
-			pass
-		else:
-			raise KeyError("Image resource not available:", error)
-		
-		return self.__imgs[url]
-	
-	def get_err(self, error):
-		return self.__errs[url]
-	
-	def del_svg(self, url):
-		try:
-			self.__pending.remove(url)
-		except ValueError:
-			pass
-		del self.__svgs[url]
-	
-	def del_img(self, url):
-		try:
-			self.__pending.remove(url)
-		except ValueError:
-			pass
-		del self.__imgs[url]
-	
-	def del_err(self, url):
-		try:
-			self.__pending.remove(url)
-		except ValueError:
-			pass
-		del self.__errs[url]
-	
-	def clear(self):
-		"Reset the object to the default state. Should be called during cleanup."
-		
-		for img in self.__imgs.values():
-			img.finish()
-		self.__init__()
-		self.update()
-	
-	def update(self):
-		"Called when the document structure changed in a way that a redraw is needed. Trigger a drawing operation from here."
+	def svg_update(self):
 		pass
 	
-	def error(self, message, param, node):
-		"Called when the renderer encounters an non-fatal error. Safe to ignore."
+	def svg_get_document(self, url=None):
+		if url == None: url = self.svg_url
+		return self.__documents[url]
+	
+	def svg_render(self, ctx, box, pointer=None):
+		try:
+			document = self.__documents[self.svg_url]
+		except KeyError:
+			return [] if pointer else None
+		else:
+			return self.__render_svg(document.getroot(), ctx, box, True, pointer=pointer)
+	
+	def svg_alternative_stylesheet(self, node):
+		pass
+	
+	def svg_error(self, message, param, node):
 		import sys
-		print("SVG error in", self.main_url, ":", file=sys.stderr)
+		print("SVG error in", self.svg_url, ":", file=sys.stderr)
 		print("    ", message, file=sys.stderr)
 		print("    ", param, file=sys.stderr)
-		if node:
-			print("    ", node.tag, node.attrib, file=sys.stderr)
+		print("    ", node.tag, node.attrib, file=sys.stderr)
 	
-	def __scan_links(self, base_url, node):
+	def __scan_links(self, url, node):
 		try:
-			self.__defs[base_url + '#' + node.attrib['id']] = node
+			self.__defs[url + '#' + node.attrib['id']] = node
 		except KeyError:
 			pass
 		
 		if node.tag in (f'{{{self.xmlns_svg}}}use', f'{{{self.xmlns_svg}}}image'):
-			url = node.attrib[f'{{{self.xmlns_xlink}}}href'].strip()
-			if url and (url[0] != '#'):
-				abs_url = self.resolve_url(url, base_url)
-				self.request_url(abs_url)
+			url = node.attrib[f'{{{self.xmlns_xlink}}}href']
+			if url and (url[0] != '#') and (url not in self.__documents):
+				self.__documents[url] = None
+				self.svg_request_url(url)
 		
 		for child in node:
-			self.__scan_links(base_url, child)
+			self.__scan_links(url, child)
 	
-	def render(self, ctx, box):
-		self.render_url(ctx, box, self.main_url, level=0)
-		return []
-	
-	def render_url(self, ctx, box, url, level=0):
-		try:
-			document = self.get_svg(url)
-		except KeyError:
-			pass
-		else:
-			self.render_svg(ctx, box, document.getroot(), [], level)
-			return
+	def __display(self, node):
+		stylesheets = []
 		
-		try:
-			surface = self.get_img(url)
-		except KeyError:
-			pass
-		else:
-			self.render_image(ctx, box, surface, level=level)
-			return
+		for child in node:
+			if child.tag == f'{{{self.xmlns_svg}}}title':
+				self.svg_title = child.text
+			elif child.tag == f'{{{self.xmlns_svg}}}desc':
+				self.svg_description = child.text
+			elif child.tag == f'{{{self.xmlns_svg}}}defs':
+				for subchild in child:
+					if subchild.tag != f'{{{self.xmlns_svg}}}style': continue
+					
+					if ('type' not in subchild.attrib) or (subchild.attrib['type'] == 'text/css'):
+						stylesheets.extend(parse_stylesheet(subchild.text))
+					else:
+						stylesheet = self.svg_alternative_stylesheet(subchild)
+						if stylesheet:
+							stylesheets.extend(parse_stylesheet(stylesheet))
+			
+			if child.tag != f'{{{self.xmlns_svg}}}style': continue
+			
+			if ('type' not in child.attrib) or (child.attrib['type'] == 'text/css'):
+				stylesheets.extend(parse_stylesheet(child.text))
+			else:
+				stylesheet = self.svg_alternative_stylesheet(child)
+				if stylesheet:
+					stylesheets.append(parse_stylesheet(stylesheet))
 		
-		self.error(f"no content registered for the url {url}", url, None)
+		self.__stylesheets = stylesheets
+		self.__parents = {}
 	
-	def render_node(self, ctx, box, node, ancestors, level):
-		if node.tag in [f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in ('defs', 'title', 'desc', 'metadata', 'style', 'linearGradient', 'radialGradient', 'script', 'symbol')]:
-			pass
-		elif node.tag == f'{{{self.xmlns_sodipodi}}}namedview': # a very common nonstandard tag in svg documents created by inkscape
-			pass
-		elif node.tag == f'{{{self.xmlns_svg}}}use':
-			self.render_use(ctx, box, node, ancestors, level=level)
-		elif node.tag == f'{{{self.xmlns_svg}}}svg':
-			self.render_svg(ctx, box, node, ancestors, level=level)
-		elif node.tag == f'{{{self.xmlns_svg}}}g':
-			self.render_group(ctx, box, node, ancestors, level=level)
-		elif node.tag == f'{{{self.xmlns_svg}}}switch':
-			self.render_switch(ctx, box, node, ancestors, level=level)
-		elif node.tag == f'{{{self.xmlns_svg}}}a':
-			self.render_anchor(ctx, box, node, ancestors, level=level)
-		elif node.tag == f'{{{self.xmlns_svg}}}image':
-			self.render_image(ctx, box, node, ancestors, level=level)
-		elif node.tag == f'{{{self.xmlns_svg}}}foreignObject':
-			self.render_foreign_object(ctx, box, node, ancestors, level=level)
-		elif node.tag in [f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in ('polygon', 'line', 'ellipse', 'circle', 'rect', 'path', 'text')]:
-			self.render_shape(ctx, box, node, ancestors, level=level)
-		else:
-			self.error(f"unsupported tag: {node.tag}", node.tag, node)
+	@staticmethod
+	def __rounded_rectangle(ctx, x, y, w, h, rx, ry):
+		radius = max(rx, ry) # TODO
+		ctx.new_sub_path()
+		ctx.arc(x + rx, y + ry, radius, radians(180), radians(270))
+		ctx.arc(x + w - rx, y + ry, radius, radians(-90), radians(0))
+		ctx.arc(x + w - rx, y + h - ry, radius, radians(0), radians(90))
+		ctx.arc(x + rx, y + h - ry, radius, radians(90), radians(180))
+		ctx.close_path()
 	
-	class OverlayElement(list):
-		pass
-	
-	def render_use(self, ctx, box, node, ancestors, level):
-		href = node.attrib[f'{{{self.xmlns_xlink}}}href']
-		if href[0] == '#': href = self.main_url + href
-		
-		try:
-			original = self.__defs[href]
-		except KeyError:
-			self.error(f"Ref not found: {href}", href, node)
-			return
-		
-		target = self.OverlayElement()
-		target.tag = original.tag
-		target.attrib = dict(original.attrib)
-		target.attrib.update(dict((_k, _v) for (_k, _v) in node.attrib.items() if _k != f'{{{self.xmlns_xlink}}}href'))
-		target.extend(original)
-		target.text = original.text
-		target.tail = original.tail
-		
-		#target = deepcopy(original)
-		#for name, value in node.attrib.items():
-		#	if name != f'{{{self.xmlns_xlink}}}href':
-		#		target.attrib[name] = value
-		
-		#self.__parents[ref(target)] = self.__parents[node]
-		#self.__save_parents(target)
-		self.render_node(ctx, box, target, ancestors, level)
-	
-	def render_switch(self, ctx, box, node, ancestors, level):
-		self.error(f"element rendering not implemented: {node.tag}", node.tag, node) # TODO
-	
-	def render_anchor(self, ctx, box, node, ancestors, level):
-		try:
-			ctx.tag_begin('a', '')
-		except AttributeError:
-			pass
-		
-		self.render_group(ctx, box, node, ancestors, level)
-		
-		try:
-			ctx.tag_end('a')
-		except AttributeError:
-			pass
-	
-	def render_image(self, ctx, box, node, ancestors, level):
-		self.error(f"element rendering not implemented: {node.tag}", node.tag, node) # TODO
-	
-	def render_foreign_object(self, ctx, box, node, ancestors, level):
-		self.error(f"element rendering not implemented: {node.tag}", node.tag, node) # TODO
-	
-	def render_svg(self, ctx, box, node, ancestors, level):
-		if node.tag != f'{{{self.xmlns_svg}}}svg':
-			self.error("root element not 'svg'", node.tag, node)
-			return
-		
+	def __render_svg(self, node, ctx, box, topmost, mode=Mode.paint, pointer=None):
 		left, top, width, height = box
+		
+		if node.tag != f'{{{self.xmlns_svg}}}svg':
+			self.svg_error("Root element not 'svg'.", node.tag, node)
 		
 		ctx.save()
 		
@@ -651,13 +400,16 @@ class SVGRender:
 		ctx.rectangle(0, 0, svg_width, svg_height)
 		ctx.clip()
 		
+		#ctx.rectangle(0, 0, svg_width, svg_height)
+		#ctx.set_source_rgb(1, 0, 0)
+		#ctx.set_line_width(5)
+		#ctx.set_dash([5], 5)
+		#ctx.stroke()
+		#unit = ctx.get_matrix()
+		
 		try:
 			vb_x, vb_y, vb_w, vb_h = node.attrib['viewBox'].split()
-		except KeyError:
-			viewbox_x = viewbox_y = 0
-			viewbox_w = svg_width
-			viewbox_h = svg_height
-		else:
+			
 			viewbox_x = self.__units(vb_x, percentage=width)
 			viewbox_y = self.__units(vb_y, percentage=height)
 			viewbox_w = self.__units(vb_w, percentage=width)
@@ -670,15 +422,34 @@ class SVGRender:
 			
 			ctx.scale(x_scale, y_scale)
 			ctx.translate(-viewbox_x, -viewbox_y)
+		except KeyError:
+			viewbox_x = viewbox_y = 0
+			viewbox_w = svg_width
+			viewbox_h = svg_height
 		
-		self.render_group(ctx, (viewbox_x, viewbox_y, viewbox_w, viewbox_h), node, ancestors, level=level)
+		#ctx.rectangle(viewbox_x, viewbox_y, viewbox_w, viewbox_h)
+		#ctx.save()
+		#ctx.set_matrix(unit)
+		#ctx.set_source_rgb(0, 0, 1)
+		#ctx.set_dash([5], 0)
+		#ctx.stroke()
+		#ctx.restore()
+		
+		children_under_pointer = self.__render_group(node, ctx, (viewbox_x, viewbox_y, viewbox_w, viewbox_h), mode, pointer, ignore_xy=topmost)
 		
 		ctx.restore()
+		
+		if pointer:
+			return children_under_pointer
 	
-	def render_group(self, ctx, box, node, ancestors, level):
+	def __render_group(self, node, ctx, box, mode=Mode.paint, pointer=None, ignore_xy=False):
+		#print("group", node.tag)
 		left, top, width, height = box
 		
-		if level:
+		if pointer:
+			under_pointer = []
+		
+		if not ignore_xy:
 			try:
 				x = self.__units(node.attrib['x'], percentage=width)
 			except KeyError:
@@ -693,44 +464,58 @@ class SVGRender:
 				ctx.save()
 				ctx.translate(x, y)
 		
-		if 'transform' in node.attrib:
-			ctx.save()
-			self.__apply_transform(ctx, box, node, ancestors)
+		#ctx.set_source_rgb(0, 0, 0)
+		#ctx.move_to(0, -5)
+		#ctx.line_to(0, 5)
+		#ctx.move_to(-5, 0)
+		#ctx.line_to(5, 0)
+		#ctx.set_line_width(1)
+		#ctx.stroke()
+		#ctx.move_to(10, 10)
+		#ctx.text_path(node.attrib.get('id', '?'))
+		#ctx.fill()
 		
-		#print("node", node)
-		ancestors = ancestors + [node]
 		for child in node:
-			#print("child", child)
-			self.render_node(ctx, box, child, ancestors, level+1)
+			self.__parents[child] = node
+			children_under_pointer = self.__render_shape(child, ctx, (left, top, width, height), mode, pointer)
+			
+			if pointer:
+				under_pointer.extend(children_under_pointer)
 		
-		if 'transform' in node.attrib:
+		if not ignore_xy and (x or y):
 			ctx.restore()
 		
-		if level and (x or y):
-			ctx.restore()
+		if pointer:
+			return under_pointer
 	
-	@staticmethod
-	def render_rounded_rectangle(ctx, x, y, w, h, rx, ry):
-		r = max(rx, ry) # TODO
-		ctx.new_sub_path()
-		ctx.arc(x + r, y + r, r, radians(180), radians(270))
-		ctx.line_to(x + w - r, y)
-		ctx.arc(x + w - r, y + r, r, radians(-90), radians(0))
-		ctx.line_to(x + w, y + h - r)
-		ctx.arc(x + w - r, y + h - r, r, radians(0), radians(90))
-		ctx.line_to(x + r, y + h)
-		ctx.arc(x + r, y + h - r, r, radians(90), radians(180))
-		ctx.line_to(x, y + r)
-		ctx.close_path()
-	
-	def render_shape(self, ctx, box, node, ancestors, level):
+	def __render_shape(self, node, ctx, box, mode=Mode.paint, pointer=None):
+		if node.tag in [f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in ('defs', 'title', 'desc', 'metadata', 'style', 'linearGradient', 'radialGradient', 'script', 'symbol')]:
+			return []
+		elif node.tag == f'{{{self.xmlns_sodipodi}}}namedview':
+			return []
+		
 		left, top, width, height = box
 		
-		if 'transform' in node.attrib:
-			ctx.save()
-			self.__apply_transform(ctx, box, node, ancestors)
+		if pointer:
+			under_pointer = []
 		
-		if node.tag == f'{{{self.xmlns_svg}}}rect':
+		#style = self.__process_style(node)
+		
+		if node.tag == f'{{{self.xmlns_svg}}}use':
+			transform_present = False # ignore transform on <use/> tag, it will be applied on the target element anyway
+		else:
+			transform_present = self.__apply_transform(node, ctx, (left, top, width, height))
+		
+		shape = False
+		
+		if node.tag == f'{{{self.xmlns_svg}}}switch':
+			for child in node:
+				satisfied = False
+				if satisfied:
+					self.__render_shape(child, ctx, box, mode, pointer)
+					break
+		
+		elif node.tag == f'{{{self.xmlns_svg}}}rect':
 			x, w, rx = [self.__units(node.attrib.get(_a, '0'), percentage=width) for _a in ('x', 'width', 'rx')]
 			y, h, ry = [self.__units(node.attrib.get(_a, '0'), percentage=height) for _a in ('y', 'height', 'ry')]
 			
@@ -738,10 +523,11 @@ class SVGRender:
 			ry = max(ry, 0)
 			
 			if rx or ry:
-				self.render_rounded_rectangle(ctx, x, y, w, h, rx, ry)
+				self.__rounded_rectangle(ctx, x, y, w, h, rx, ry)
 			else:
-				#print("rectangle:", x, y, w, h)
 				ctx.rectangle(x, y, w, h)
+			
+			shape = True
 		
 		elif node.tag == f'{{{self.xmlns_svg}}}circle':
 			try:
@@ -756,6 +542,7 @@ class SVGRender:
 			
 			r = self.__units(node.attrib['r'], percentage=min(width, height)) # FIXME
 			ctx.arc(cx, cy, r, 0, 2*pi)
+			shape = True
 		
 		elif node.tag == f'{{{self.xmlns_svg}}}ellipse':
 			cx = self.__units(node.attrib['cx'], percentage=width)
@@ -767,6 +554,7 @@ class SVGRender:
 			ctx.scale(rx, ry)
 			ctx.arc(0, 0, 1, 0, 2*pi)
 			ctx.restore()
+			shape = True
 		
 		elif node.tag == f'{{{self.xmlns_svg}}}line':
 			x1 = self.__units(node.attrib['x1'], percentage=width)
@@ -775,6 +563,7 @@ class SVGRender:
 			y2 = self.__units(node.attrib['y2'], percentage=height)
 			ctx.move_to(x1, y1)
 			ctx.line_to(x2, y2)
+			shape = True
 		
 		elif node.tag == f'{{{self.xmlns_svg}}}polygon':
 			points = node.attrib['points'].split()
@@ -790,53 +579,151 @@ class SVGRender:
 					ctx.line_to(x, y)
 			if not first:
 				ctx.close_path()
+				shape = True
 		
-		elif node.tag == f'{{{self.xmlns_svg}}}path':
-			#print(node.attrib.get('transform', None))
-			self.render_path(ctx, box, node, ancestors, level)
+		elif node.tag == f'{{{self.xmlns_svg}}}g':
+			#print("start group")
+			children_under_pointer = self.__render_group(node, ctx, (left, top, width, height), mode, pointer)
+			if pointer:
+				under_pointer.extend(children_under_pointer)
+			#print("stop group")
+		
+		elif node.tag == f'{{{self.xmlns_svg}}}a':
+			try:
+				ctx.tag_begin('a', "href='%s'" % node.attrib[f'{{{self.xmlns_xlink}}}href'])
+			except AttributeError:
+				pass
+			
+			children_under_pointer = self.__render_group(node, ctx, (left, top, width, height), mode, pointer)
+			if pointer:
+				under_pointer.extend(children_under_pointer)
+			
+			try:
+				ctx.tag_end('a')
+			except AttributeError:
+				pass
+		
+		elif node.tag == f'{{{self.xmlns_svg}}}svg':
+			self.__render_svg(node, ctx, (left, top, width, height), False, mode, pointer)
 		
 		elif node.tag == f'{{{self.xmlns_svg}}}text':
-			self.render_text(ctx, box, node, ancestors, level)
+			self.__draw_text(node, ctx, (left, top, width, height))
+			shape = True
 		
-		else:
-			self.error(f"tag {node.tag} not supported by this method", node.tag, node)
+		elif node.tag == f'{{{self.xmlns_svg}}}path':
+			self.__draw_path(node, ctx, (left, top, width, height))
+			shape = True
 		
-		self.__apply_paint(ctx, box, node, ancestors)
+		elif node.tag == f'{{{self.xmlns_svg}}}use':
+			href = node.attrib[f'{{{self.xmlns_xlink}}}href']
+			if href[0] == '#': href = self.svg_url + href
+			if href in self.__defs:
+				use_node = deepcopy(self.__defs[href])
+				self.__parents[use_node] = self.__parents[node]
+				for attr, val in node.attrib.items():
+					use_node.attrib[attr] = val
+				#print("use", use_node.tag)
+				if use_node.tag == f'{{{self.xmlns_svg}}}symbol':
+					#print("render_group")
+					assert not transform_present
+					transform_present = self.__apply_transform(node, ctx, box)
+					children_under_pointer = self.__render_group(use_node, ctx, box, mode, pointer)
+				else:
+					#print("render_shape")
+					children_under_pointer = self.__render_shape(use_node, ctx, box, mode, pointer)
+				if pointer:
+					under_pointer.extend(children_under_pointer)
 		
-		if 'transform' in node.attrib:
+		elif node.tag == f'{{{self.xmlns_svg}}}image':
+			x, w = [self.__units(node.attrib[_a], percentage=width) for _a in ('x', 'width')]
+			y, h = [self.__units(node.attrib[_a], percentage=height) for _a in ('y', 'height')]
+			
+			href = node.attrib[f'{{{self.xmlns_xlink}}}href']
+			
+			if (href in self.__documents) and (self.__documents[href] != None):
+				ctx.save()
+				ctx.rectangle(x, y, w, h)
+				ctx.clip()
+				if mode == self.Mode.paint:
+					#ctx.translate(x, y)
+					children_under_pointer = self.__render_svg(self.__documents[href].getroot(), ctx, (x, y, w, h), False, mode, pointer)
+				ctx.restore()
+				if pointer:
+					under_pointer.extend(children_under_pointer)
+		
+		elif node.tag == f'{{{self.xmlns_svg}}}foreignObject':
+			x, w = [self.__units(node.attrib[_a], percentage=width) for _a in ('x', 'width')]
+			y, h = [self.__units(node.attrib[_a], percentage=height) for _a in ('y', 'height')]
+			
+			ctx.save()
+			ctx.rectangle(x, y, w, h)
+			ctx.clip()
+			
+			# TODO
+			self.svg_error("Foreign nodes not supported", None, node)
+			ctx.set_source_rgba(0.85, 0.85, 0.85, 0.2)
+			ctx.paint()
+			shape = True
+			
 			ctx.restore()
-	
-	def __apply_paint(self, ctx, box, node, ancestors):
-		if self.__apply_fill(ctx, box, node, ancestors):
-			#print(node.tag, "fill")
-			ctx.fill_preserve()
 		
-		if self.__apply_stroke(ctx, box, node, ancestors):
-			#print(node.tag, "stroke")
-			ctx.stroke()
 		else:
-			ctx.new_path()
-	
-	def __apply_pattern_from_url(self, ctx, box, node, ancestors, url):
-		href = url.strip()[4:-1]
-		#print("fence:", href[0], href[-1])
-		if href[0] == '"' and href[-1] == '"': href = href[1:-1]
-		if href[0] == '#': href = self.main_url + href
+			self.svg_error("UNSUPPORTED TAG: %s %s" % (node.tag, repr(node.attrib)), node.tag, node)
+			pass
 		
-		print("pattern", url)
+		if shape:
+			shape_under_pointer = False
+			
+			fill = self.__apply_fill(node, ctx)
+			if fill:
+				if pointer:
+					ctx.save()
+					ctx.identity_matrix()
+					if ctx.in_fill(*pointer):
+						shape_under_pointer = True
+					ctx.restore()
+				
+				if mode == self.Mode.paint:
+					ctx.fill_preserve()
+			
+			stroke = self.__apply_stroke(node, ctx)
+			if stroke:
+				if pointer:
+					ctx.save()
+					ctx.identity_matrix()
+					if ctx.in_stroke(*pointer):
+						shape_under_pointer = True
+					ctx.restore()
+	
+				if mode == self.Mode.paint:
+					ctx.stroke_preserve()
+			
+			#print(shape, fill, stroke, mode)
+			
+			if mode == self.Mode.paint or mode == self.Mode.none:
+				ctx.new_path()
+			elif mode == Mode.clip:
+				ctx.clip()
+			
+			if shape_under_pointer:
+				under_pointer.append(node)
+		
+		if transform_present:
+			ctx.restore()
+		
+		if pointer:
+			return under_pointer
+	
+	def __apply_pattern_from_url(self, url, ctx, node):
+		href = url[4:-1]
+		if href[0] == '#': href = self.svg_url + href
 		
 		try:
 			target = self.__defs[href]
-			#target_style = self.__process_style(target)
+			target_style = self.__process_style(target)
 		except KeyError:
-			self.error(f"ref not found: {href}", href, node)
-			#print(list(self.__defs.keys()))
-			print(href[0], self.main_url)
+			self.svg_error("Ref not found: %s" % href, href, node)
 			return False
-		
-		left, top, width, height = box
-		
-		print("target", target.tag)
 		
 		if target.tag == f'{{{self.xmlns_svg}}}linearGradient' or target.tag == f'{{{self.xmlns_svg}}}radialGradient':
 			
@@ -847,21 +734,16 @@ class SVGRender:
 				except KeyError:
 					pass
 				else:
-					if href[0] == '#': href = self.main_url + href
+					if href[0] == '#': href = self.svg_url + href
 					orig_target = target
 					try:
-						original = self.__defs[href]
+						target = deepcopy(self.__defs[href])
 					except KeyError:
-						self.error("Ref not found: %s" % href, href, node)
+						self.svg_error("Ref not found: %s" % href, href, node)
 						return False
-					else:
-						target = self.OverlayElement()
-						target.tag = original.tag
-						target.attrib = dict(original.attrib)
-						target.attrib.update(dict((_k, _v) for (_k, _v) in orig_target.attrib.items() if _k != f'{{{self.xmlns_xlink}}}href'))
-						target.extend(original)
-						target.text = original.text
-						target.tail = original.tail
+					
+					for attr, val in orig_target.attrib.items():
+						target.attrib[attr] = val
 					
 					for stop in orig_target:
 						for tstop in target:
@@ -872,7 +754,7 @@ class SVGRender:
 				default_x1, default_y1, default_x2, default_y2 = ctx.path_extents()
 				
 				try:
-					spec = target.attrib['x1']
+					spec = target_style['x1']
 					if spec[-1] == '%':
 						x1 = float(spec[:-1]) / 100 * (default_x2 - default_x1) + default_x1
 					else:
@@ -881,11 +763,11 @@ class SVGRender:
 				except KeyError:
 					x1 = default_x1
 				except ValueError:
-					self.error("Invalid x1 specification in linear gradient.", target.attrib['x1'], target)
+					self.svg_error("Invalid x1 specification in linear gradient.", target.attrib['x1'], target)
 					x1 = default_x1
 				
 				try:
-					spec = target.attrib['y1']
+					spec = target_style['y1']
 					if spec[-1] == '%':
 						y1 = float(spec[:-1]) / 100 * (default_y2 - default_y1) + default_y1
 					else:
@@ -894,11 +776,11 @@ class SVGRender:
 				except KeyError:
 					y1 = default_y1
 				except ValueError:
-					self.error("Invalid y1 specification in linear gradient.", target.attrib['y1'], target)
+					self.svg_error("Invalid y1 specification in linear gradient.", target.attrib['y1'], target)
 					y1 = default_y1
 				
 				try:
-					spec = target.attrib['x2']
+					spec = target_style['x2']
 					if spec[-1] == '%':
 						x2 = float(spec[:-1]) / 100 * (default_x2 - default_x1) + default_x1
 					else:
@@ -907,11 +789,11 @@ class SVGRender:
 				except KeyError:
 					x2 = default_x2
 				except ValueError:
-					self.error("Invalid x2 specification in linear gradient.", target.attrib['x2'], target)
+					self.svg_error("Invalid x2 specification in linear gradient.", target.attrib['x2'], target)
 					x2 = default_x2
 				
 				try:
-					spec = target.attrib['y2']
+					spec = target_style['y2']
 					if spec[-1] == '%':
 						y2 = float(spec[:-1]) / 100 * (default_y2 - default_y1) + default_y1
 					else:
@@ -920,110 +802,89 @@ class SVGRender:
 				except KeyError:
 					y2 = default_y1
 				except ValueError:
-					self.error("Invalid y2 specification in linear gradient.", target.attrib['y2'], target)
+					self.svg_error("Invalid y2 specification in linear gradient.", target.attrib['y2'], target)
 					y2 = default_y1
 				
 				gradient = cairo.LinearGradient(x1, y1, x2, y2)
 			
 			elif target.tag == f'{{{self.xmlns_svg}}}radialGradient':
 				try:
-					spec = target.attrib['r']
+					spec = target_style['r']
 					if spec[-1] == '%':
-						r = float(spec[:-1]) / 100 * min(width, height)
+						r = float(spec[:-1]) / 100
 					else:
 						r = float(spec)
 				except KeyError:
-					r = min(width, height)
+					r = 500 # FIXME
 				except ValueError:
-					self.error("Invalid r specification in radial gradient.", target.attrib['r'], target)
+					self.svg_error("Invalid r specification in radial gradient.", target.attrib['r'], target)
 					r = 0
 				
 				try:
-					spec = target.attrib['cx']
+					spec = target_style['cx']
 					if spec[-1] == '%':
-						cx = float(spec[:-1]) / 100 * width
+						cx = float(spec[:-1]) / 100
 					else:
 						cx = float(spec)
 				except KeyError:
 					cx = 0
 				except ValueError:
-					self.error("Invalid cx specification in linear gradient.", target.attrib['cx'], target)
+					self.svg_error("Invalid cx specification in linear gradient.", target.attrib['cx'], target)
 					cx = 0
 				
 				try:
-					spec = target.attrib['cy']
+					spec = target_style['cy']
 					if spec[-1] == '%':
-						cy = float(spec[:-1]) / 100 * height
+						cy = float(spec[:-1]) / 100
 					else:
 						cy = float(spec)
 				except KeyError:
 					cy = 0
 				except ValueError:
-					self.error("Invalid cy specification in linear gradient.", target.attrib['cy'], target)
+					self.svg_error("Invalid cy specification in linear gradient.", target.attrib['cy'], target)
 					cy = 0
 				
-				try:
-					spec = target.attrib['fx']
-					if spec[-1] == '%':
-						fx = float(spec[:-1]) / 100 * width
-					else:
-						fx = float(spec)
-				except KeyError:
-					fx = cx
-				except ValueError:
-					self.error("Invalid fx specification in linear gradient.", target.attrib['fx'], target)
-					fx = cx
-				
-				try:
-					spec = target.attrib['fy']
-					if spec[-1] == '%':
-						fy = float(spec[:-1]) / 100 * height
-					else:
-						fy = float(spec)
-				except KeyError:
-					fy = cy
-				except ValueError:
-					self.error("Invalid cy specification in linear gradient.", target.attrib['fy'], target)
-					fy = cy
-				
-				print("radial gradient", (cx, cy), (fx, fy), r)
-				gradient = cairo.RadialGradient(cx, cy, 0, fx, fy, r)
+				gradient = cairo.RadialGradient(cx, cx, 0, cx, cx, r)
 			
-			try:
-				href = target.attrib[f'{{{self.xmlns_xlink}}}href']
-				if href[0] == '#': href = self.main_url + href
-				target = self.__defs[href]
-			except KeyError:
-				pass
-			
-			last_offset = 0
 			for colorstop in target:
-				#colorstop_style = self.__process_style(colorstop)
+				colorstop_style = self.__process_style(colorstop)
 				try:
-					offset_spec = colorstop.attrib['offset']
+					offset_spec = colorstop_style['offset']
 					if offset_spec[-1] == '%':
 						offset = float(offset_spec[:-1]) / 100
 					else:
 						offset = float(offset_spec)
 				except KeyError:
-					offset = last_offset
+					offset = 0
 				except ValueError:
-					self.error("Error in offset spec of a linear gradient.", colorstop.attrib['offset'], colorstop)
-					offset = last_offset
+					self.svg_error("Error in offset spec of a linear gradient.", colorstop.attrib['offset'], colorstop)
+					continue
 				
-				last_offset = offset
 				stop_color = None
 				stop_opacity = None
+				try:
+					for decl in parse_declaration_list(colorstop.attrib['style']):
+						if not hasattr(decl, 'name'):
+							pass
+						elif decl.name == 'stop-color':
+							if decl.value[0].type == 'hash':
+								stop_color = '#' + decl.value[0].value
+							else:
+								stop_color = decl.value[0].value
+						elif decl.name == 'stop-opacity':
+							stop_opacity = decl.value[0].value
+				except KeyError:
+					pass
 				
 				try:
-					stop_color = colorstop.attrib['stop-color'].strip()
+					stop_color = colorstop_style['stop-color']
 				except KeyError:
 					if stop_color == None:
-						self.error("Stop color of linear gradient not found.", None, colorstop)
+						self.svg_error("Stop color of linear gradient not found.", None, colorstop)
 						continue
 				
 				try:
-					stop_opacity = float(colorstop.attrib['stop-opacity'])
+					stop_opacity = float(colorstop_style['stop-opacity'])
 				except KeyError:
 					pass
 				
@@ -1036,7 +897,7 @@ class SVGRender:
 					pass
 
 				if len(stop_color) not in (4, 7) or stop_color[0] != '#':
-					self.error("Unsupported color specification in gradient: %s" % stop_color, stop_color, colorstop)
+					self.svg_error("Unsupported color specification: %s" % stop_color, stop_color, colorstop)
 					continue
 				elif len(stop_color) == 7:
 					r = int(stop_color[1:3], 16) / 255
@@ -1048,46 +909,128 @@ class SVGRender:
 					b = int(stop_color[3:4], 16) / 15
 				
 				if stop_opacity == None:
-					print("gradient stop", offset, (r, g, b))
 					gradient.add_color_stop_rgb(offset, r, g, b)
 				else:
-					print("gradient stop", offset, (r, g, b, stop_opacity))
 					gradient.add_color_stop_rgba(offset, r, g, b, stop_opacity)
 			
 			ctx.set_source(gradient)
 		else:
-			self.error("Unsupported fill element: %s" % target.tag, target.tag, node)
+			self.svg_error("Unsupported fill element: %s" % target.tag, target.tag, node)
 			return False
+	
+	def __process_style(self, node):
+		result = {}
 		
-	def __search_attrib(self, node, ancestors, attrib):
-		try:
-			return node.attrib[attrib]
-		except KeyError:
-			pass
+		styles = []
 		
-		for ancestor in reversed(ancestors):
+		#print(node.tag)
+		
+		for stylesheet in self.__stylesheets:
 			try:
-				return ancestor.attrib[attrib]
+				qualifier = ''.join(_p.serialize() for _p in stylesheet.prelude).strip()
+			except AttributeError:
+				continue
+			
+			match = False
+			
+			# TODO: xpath matching
+			if qualifier[0] == '.' and node.attrib.get('class', None) == qualifier[1:]:
+				match = True
+			elif qualifier[0] == '#' and node.attrib.get('id', None) == qualifier[1:]:
+				match = True
+			elif f'{{{self.xmlns_svg}}}{qualifier}' == node.tag:
+				match = True
+			
+			#print(repr(qualifier), repr(node.attrib.get('class', None)), repr(node.attrib.get('id', None)))
+			#print(match, (qualifier[0] == '.'), (node.attrib.get('class', None) == qualifier[1:]), (qualifier[0] == '#'), (node.attrib.get('id', None) == qualifier[1:]), (f'{{{self.xmlns_svg}}}{qualifier}' == node.tag))
+			
+			if match:
+				style_decl = ''.join(_p.serialize() for _p in stylesheet.content).strip()
+				styles.append(parse_declaration_list(style_decl))
+				#print(style_decl)
+		
+		def ancestors(node):
+			yield node
+			try:
+				yield from ancestors(self.__parents[node])
 			except KeyError:
 				pass
 		
-		raise KeyError(f"Attribute {attrib} not found in any of ancestors")
+		for cnode in reversed(list(ancestors(node))):
+			try:
+				style_decl = cnode.attrib['style']
+				styles.append(parse_declaration_list(style_decl))
+			except KeyError:
+				pass
+		
+		for n, style in enumerate(styles):
+			for decl in style:
+				try:
+					attr = decl.name.strip()
+				except AttributeError:
+					continue
+				val = ''.join((_v.serialize() if _v.type != 'url' else f'url({_v.value})' ) for _v in  decl.value).strip()
+				if val != None and attr != 'transform': # transform should not be inherited
+					result[attr] = val
+		
+		if styles:
+			for decl in styles[-1]:
+				try:
+					attr = decl.name.strip()
+				except AttributeError:
+					continue
+				if attr == 'transform':
+					val = ''.join((_v.serialize() if _v.type != 'url' else f'url({_v.value})' ) for _v in  decl.value).strip()
+					if val != None:
+						result[attr] = val
+		
+		for cnode in reversed(list(ancestors(node))):
+			for attr, val in cnode.attrib.items():
+				attr = attr.replace('_', '-')
+				if attr != 'transform' and val != 'inherit': # transform should not be inherited
+					result[attr] = val
+		
+		if 'transform' in node.attrib:
+			result['transform'] = node.attrib['transform']
+		
+		for attr in result.keys():
+			if attr in self.color_attr:
+				v = result[attr]
+				
+				try:
+					v = self.colors[v.lower()]
+				except KeyError:
+					pass
+				
+				if v[0] == '#':
+					if len(v) == 7:
+						r = int(v[1:3], 16) / 255
+						g = int(v[3:5], 16) / 255
+						b = int(v[5:7], 16) / 255
+					elif len(v) == 4:
+						r = int(v[1:2], 16) / 15
+						g = int(v[2:3], 16) / 15
+						b = int(v[3:4], 16) / 15
+					else:
+						self.svg_error("Invalid color spec", v, node)
+				elif v[:4] == 'rgb(' and v[-1] == ')':
+					r, g, b = (float(_c) / 255 for _c in v[4:-1].split(','))
+			
+			try:
+				result[attr] = r, g, b
+				del r, g, b
+			except UnboundLocalError:
+				pass
+		
+		return result
 	
-	def __apply_color(self, ctx, box, node, ancestors, color_attr, opacity_attr, default_color):
-		#style = self.__process_style(node)
+	def __apply_color(self, node, ctx, color_attr, opacity_attr, default_color):
+		style = self.__process_style(node)
 		
 		try:
-			color = self.__search_attrib(node, ancestors, color_attr).strip()
+			color = style[color_attr]
 		except KeyError:
-			#print("color not found:", color_attr)
 			color = default_color
-		
-		#print(node.tag, node.attrib, color_attr, color)
-		
-		try:
-			color = self.colors[color.lower()]
-		except KeyError:
-			pass
 		
 		try:
 			if not color or color.lower() in ('none', 'transparent'):
@@ -1095,17 +1038,17 @@ class SVGRender:
 		except AttributeError:
 			pass
 		
-		#if color == 'currentColor':
-		#	try:
-		#		color = node.attrib['color']
-		#	except KeyError:
-		#		return False
+		if color == 'currentColor':
+			try:
+				color = style['color']
+			except KeyError:
+				return False
 		
 		try:
-			a = float(node.attrib[opacity_attr])
+			a = float(style[opacity_attr])
 		except KeyError:
 			try:
-				a = float(node.attrib['opacity'])
+				a = float(style['opacity'])
 			except KeyError:
 				a = None
 		
@@ -1114,30 +1057,22 @@ class SVGRender:
 		if a == 0:
 			return False
 		
-		if color[0] == '#' and len(color) == 4:
-			r, g, b = [int(_c, 16) / 15 for _c in color[1:]]
-		elif color[0] == '#' and len(color) == 7:
-			r, g, b = [int(_c, 16) / 255 for _c in (color[1:3], color[3:5], color[5:7])]
-			#print(color, r, g, b)
-		elif color[:4] == 'url(' and color[-1] == ')':
-			self.__apply_pattern_from_url(ctx, box, node, ancestors, color)
-			# TODO: transparency
-		elif color[:4] == 'rgb(' and color[-1] == ')':
-			r, g, b = [float(_c.strip()) for _c in color[4:-1].split(',')]
-		else:
-			self.error(f"Unsupported color specification in {color_attr}: {color}", color, node)
-		
 		try:
+			r, g, b = color
+		except ValueError:
+			spec = color
+			if spec[:4] == 'url(' and spec[-1] == ')':
+				self.__apply_pattern_from_url(spec, ctx, node)
+				# TODO: transparency
+			else:
+				self.svg_error("Unsupported color specification: %s" % spec, spec, node)
+		except KeyError:
+			ctx.set_source_rgb(0, 0, 0)
+		else:
 			if a == None:
 				ctx.set_source_rgb(r, g, b)
 			else:
 				ctx.set_source_rgba(r, g, b, a)
-		except UnboundLocalError:
-			pass
-
-		#if node.tag == '{http://www.w3.org/2000/svg}rect':
-		#	print("rect", color_attr, a, r, g, b)
-		
 		
 		return True
 	
@@ -1201,36 +1136,21 @@ class SVGRender:
 		
 		return l
 	
-	def __apply_fill(self, ctx, box, node, ancestors):
-		#print("apply_fill")
-		return self.__apply_color(ctx, box, node, ancestors, 'fill', 'fill-opacity', 'black')
-		
-		try:
-			fill_rule = self.__search_attrib(node, ancestors, 'fill-rule')
-		except KeyError:
-			fill_rule = None
-		
-		if fill_rule == 'evenodd':
-			ctx.set_fill_rule(cairo.FillRule.EVEN_ODD)
-		elif fill_rule == 'winding':
-			ctx.set_fill_rule(cairo.FillRule.WINDING)
-		elif fill_rule == None:
-			pass
-		else:
-			self.error(f"Unsupported fill rule: {fill_rule}", fill_rule, node)
+	def __apply_fill(self, node, ctx):
+		return self.__apply_color(node, ctx, 'fill', 'fill-opacity', (0, 0, 0))
 	
-	def __apply_stroke(self, ctx, box, node, ancestors):
-		if not self.__apply_color(ctx, box, node, ancestors, 'stroke', 'stroke-opacity', 'none'):
+	def __apply_stroke(self, node, ctx):
+		if not self.__apply_color(node, ctx, 'stroke', 'stroke-opacity', 'none'):
 			return False
 		
-		#style = self.__process_style(node)
+		style = self.__process_style(node)
 		
 		try:
-			stroke_width = self.__units(str(self.__search_attrib(node, ancestors, 'stroke-width')))
+			stroke_width = self.__units(str(style['stroke-width']))
 		except KeyError:
 			stroke_width = 1
 		except ValueError:
-			self.error(f"Unsupported stroke spec: {self.__search_attrib(node, ancestors, 'stroke-width')}", self.__search_attrib(node, ancestors, 'stroke-width'), node)
+			self.svg_error("Unsupported stroke spec: %s" % style['stroke-width'], style['stroke-width'], node)
 			return False
 		
 		#print("stroke_width", stroke_width)
@@ -1240,7 +1160,7 @@ class SVGRender:
 			return False
 		
 		try:
-			linecap = self.__search_attrib(node, ancestors, 'stroke-linecap')
+			linecap = style['stroke-linecap']
 		except KeyError:
 			ctx.set_line_cap(cairo.LINE_CAP_BUTT)
 		else:
@@ -1251,10 +1171,10 @@ class SVGRender:
 			elif linecap == 'square':
 				ctx.set_line_cap(cairo.LINE_CAP_SQUARE)
 			else:
-				self.error("Unsupported linecap", linecap, node)
+				self.svg_error("Unsupported linecap", linecap, node)
 		
 		try:
-			pathLength = float(node.attrib['pathLength'])
+			pathLength = float(style['pathLength'])
 		except KeyError:
 			pathLength = None
 			pathScale = 1
@@ -1262,12 +1182,12 @@ class SVGRender:
 			pathScale = self.__get_current_path_length(ctx) / pathLength
 		
 		try:
-			dasharray = self.__search_attrib(node, ancestors, 'stroke-dasharray')
+			dasharray = style['stroke-dasharray']
 		except KeyError:
 			ctx.set_dash([], 0)
 		else:
 			try:
-				dashoffset = float(self.__search_attrib(node, ancestors, 'stroke-dashoffset')) * pathScale
+				dashoffset = float(style['stroke-dashoffset']) * pathScale
 			except KeyError:
 				dashoffset = 0
 			
@@ -1283,28 +1203,26 @@ class SVGRender:
 			else:
 				ctx.set_dash([], 0)
 		
-		'''
 		try:
-			linecap = self.__search_attrib(node, 'stroke-linecap')
+			dasharray = style['stroke-linecap']
 		except KeyError:
 			pass
 		else:
 			pass # TODO
 		
 		try:
-			linejoin = self.__search_attrib(node, 'stroke-linejoin')
+			dasharray = style['stroke-linejoin']
 		except KeyError:
 			pass
 		else:
 			pass # TODO
 		
 		try:
-			mitterlimit = self.__search_attrib(node, 'stroke-mitterlimit')
+			dasharray = style['stroke-mitterlimit']
 		except KeyError:
 			pass
 		else:
 			pass # TODO
-		'''
 		
 		return True
 	
@@ -1312,11 +1230,10 @@ class SVGRender:
 	
 	__re_tokens = re.compile(fr'({__p_number}|[a-zA-Z])')
 	
-	def render_path(self, ctx, box, node, ancestors, level):
+	def __draw_path(self, node, ctx, box):
 		left, top, width, height = box
 		
 		text = node.attrib['d']
-		#print("path:", text)
 		
 		tokens = (_t for _t in (_t.strip() for _t in self.__re_tokens.split(text)) if (_t and _t != ','))
 		
@@ -1503,13 +1420,87 @@ class SVGRender:
 						sweep_flag = bool(sweep_flag)
 						
 						self.__draw_arc(ctx, x_start, y_start, x_stop, y_stop, rx, ry, angle, large_arc_flag, sweep_flag)
+						
+						#debug_surface = cairo.RecordingSurface(cairo.Content.COLOR_ALPHA, None)
+						#debug_ctx = cairo.Context(debug_surface)
+						#try:
+						#	self.__draw_arc(ctx, x_start, y_start, x_stop, y_stop, rx, ry, angle, large_arc_flag, sweep_flag, debug_ctx)
+						#except AssertionError as error:
+						#	print("error:", repr(error))
+						#ctx.set_source_surface(debug_surface)
+						#ctx.paint()
+						#debug_surface.finish()
+						
+						'''
+						if command == 'a':
+							x_mid, y_mid = -x_stop / 2, -y_stop / 2
+							x_stop += x_start
+							y_stop += y_start
+						elif command == 'A':
+							x_mid, y_mid = (x_start - x_stop) / 2, (y_start - y_stop) / 2
+						
+						large_arc_flag = bool(large_arc_flag)
+						sweep_flag = bool(sweep_flag)
+						
+						rx, ry = abs(rx), abs(ry)
+						
+						angle = radians(angle)
+						sin_angle = math.sin(angle)
+						cos_angle = math.cos(angle)
+						
+						print(rx, ry, angle, large_arc_flag, sweep_flag, x_stop, y_stop)
+						print(x_mid, y_mid)
+						
+						x_rot = cos_angle * x_mid + sin_angle * y_mid
+						y_rot = -sin_angle * x_mid + cos_angle * y_mid
+						
+						l = (x_rot / rx)**2 + (y_rot / ry)**2
+						if l > 1:
+							ls = math.sqrt(l)
+							rx *= ls
+							ry *= ls
+						
+						sd = (rx * y_rot)**2 + (ry * x_rot)**2
+						sn = (rx * ry)**2 - sd
+						print(sn, sd)
+						s = math.sqrt(sn / sd)
+						
+						if large_arc_flag == sweep_flag:
+							s = -s
+						
+						cx_rot = s * rx * y_rot / ry
+						cy_rot = -s * ry * x_rot / rx
+						
+						cx = cos_angle * cx_rot - sin_angle * cy_rot + (x_start + x_stop) / 2
+						cy = sin_angle * cx_rot + cos_angle * cy_rot + (y_start + y_stop) / 2
+						
+						theta = self.__arc_angle((1, 0), ((x_rot - cx_rot) / rx, (y_rot - cy_rot) / ry))
+						delta = self.__arc_angle(((x_rot - cx_rot) / rx, (y_rot - cy_rot) / ry), ((-x_rot - cx_rot) / rx, (-y_rot - cy_rot) / ry))
+						while delta >= 2 * pi: delta -= 2 * pi
+						while delta < 0: delta += 2 * pi
+						if not sweep_flag: delta -= 2 * pi
+						
+						ctx.save()
+						#ctx.translate((x_start + x_stop) / 2, (y_start + y_stop) / 2)
+						ctx.translate(cx, cy)
+						ctx.scale(rx, ry)
+						ctx.rotate(angle)
+						#ctx.translate(-(x_start + x_stop) / 2, -(y_start + y_stop) / 2)
+						
+						
+						if sweep_flag:
+							ctx.arc(0, 0, 1, theta, theta + delta)
+						else:
+							ctx.arc_negative(0, 0, 1, theta, theta + delta)
+						ctx.restore()
+						'''
 				
 				elif command in 'Zz':
 					ctx.close_path()
 					first = True
 				
 				else:
-					self.error('Unsupported path syntax: %s' % command, tokens, node)
+					self.svg_error('Unsupported path syntax: %s' % command, tokens, node)
 					raise ValueError("Unsupported path syntax")
 				
 				next_token()
@@ -1519,11 +1510,13 @@ class SVGRender:
 			except StopIteration:
 				break
 			except ValueError as error:
-				self.error("Error in path rendering", str(error), node)
+				self.svg_error("Error in path rendering", str(error), node)
 				raise
 				return
+		
+		#ctx.close_path()
 	
-	def render_text(self, ctx, box, node, ancestors, level):
+	def __draw_text(self, node, ctx, box):
 		left, top, width, height = box
 		
 		try:
@@ -1578,7 +1571,7 @@ class SVGRender:
 				
 				ctx.restore()
 			else:
-				self.error("Unsupported tag %s" % child.tag, child.tag, child)
+				self.svg_error("Unsupported tag %s" % child.tag, child.tag, child)
 			
 			if child.tail:
 				ctx.text_path(child.tail.strip())
@@ -1597,16 +1590,17 @@ class SVGRender:
 		text = text.replace(',', '')
 		return not text or text.isspace()
 	
-	def __apply_transform(self, ctx, box, node, ancestors):
+	def __apply_transform(self, node, ctx, box, save_ctx=True):
 		left, top, width, height = box
 		
+		style = self.__process_style(node)
 		try:
-			text = node.attrib['transform']
+			text = style['transform']
 		except KeyError:
 			return False
 		
 		try:
-			origin = node.attrib['transform-origin'].split()
+			origin = style['transform-origin'].split()
 		except KeyError:
 			#origin_x = width / 2 + left
 			#origin_y = height / 2 + top
@@ -1616,7 +1610,7 @@ class SVGRender:
 			origin_x = self.__units(origin[0], percentage=width)
 			origin_y = self.__units(origin[1], percentage=height)
 		
-		#if save_ctx: ctx.save()
+		if save_ctx: ctx.save()
 		
 		#print(box, origin_x, origin_y)
 		#
@@ -1706,7 +1700,7 @@ class SVGRender:
 				n = match.end()
 				continue
 			
-			self.error("Unsupported transformation: %s" % repr(text[n:]), text[n:], node)
+			self.svg_error("Unsupported transformation: %s" % repr(text[n:]), text[n:], node)
 			break
 		
 		if origin_x or origin_y:
@@ -1723,6 +1717,19 @@ class SVGRender:
 		#ctx.restore()
 		
 		return True
+	
+	@staticmethod
+	def __arc_angle(u, v):
+		ux, uy = u
+		vx, vy = v
+		
+		dot = ux * vx + uy * vy
+		len_ = math.sqrt((ux**2 + uy**2) * (vx**2 + vy**2))
+		ang = math.acos(min(max(dot / len_, -1), 1))
+		
+		if ux * vy - uy * vx < 0:
+			ang = -ang
+		return ang
 	
 	@classmethod
 	def __draw_arc(cls, ctx, start_x, start_y, end_x, end_y, radius_x, radius_y, alpha_angle, large_arc_flag, sweep_flag, debug_ctx=None):
@@ -1751,15 +1758,8 @@ class SVGRender:
 		start_angle = mid_angle + ext_angle
 		end_angle = mid_angle - ext_angle
 		
-		try:
-			less_x = chord_x / (radius_x * (math.cos(start_angle) -  math.cos(end_angle)))
-		except ZeroDivisionError:
-			less_x = 0
-		
-		try:
-			less_y = chord_y / (radius_y * (math.sin(start_angle) -  math.sin(end_angle)))
-		except ZeroDivisionError:
-			less_y = 0
+		less_x = chord_x / (radius_x * (math.cos(start_angle) -  math.cos(end_angle)))
+		less_y = chord_y / (radius_y * (math.sin(start_angle) -  math.sin(end_angle)))
 		less = max(less_x, less_y)
 		
 		if less > 1:
@@ -1769,18 +1769,20 @@ class SVGRender:
 		center_x = (start_x + end_x - radius_x * (math.cos(start_angle + alpha_angle) + math.cos(end_angle + alpha_angle))) / 2
 		center_y = (start_y + end_y - radius_y * (math.sin(start_angle + alpha_angle) + math.sin(end_angle + alpha_angle))) / 2
 		
-		#start_angle_scaled = math.tan((radius_y / radius_x) * math.atan(start_angle - alpha_angle))
-		#end_angle_scaled = math.tan((radius_y / radius_x) * math.atan(end_angle - alpha_angle))
-		
 		ctx.save()
 		ctx.translate(center_x, center_y)
 		ctx.rotate(alpha_angle)
 		ctx.scale(radius_x, radius_y)
 		ctx.translate(-center_x, -center_y)
+		
+		start_angle_scaled = math.tan((radius_y / radius_x) * math.atan(start_angle - alpha_angle))
+		end_angle_scaled = math.tan((radius_y / radius_x) * math.atan(end_angle - alpha_angle))
+		
 		if sweep_flag:
 			ctx.arc(center_x, center_y, 1, start_angle, end_angle)
 		else:
 			ctx.arc_negative(center_x, center_y, 1, start_angle, end_angle)
+		
 		ctx.restore()
 		
 		if debug_ctx:
@@ -1836,15 +1838,15 @@ class SVGRender:
 			debug_ctx.stroke()
 			debug_ctx.restore()
 		
-		#try:
-		#	assert mid_x / (-2* sin_mid_angle) == mid_y / (2 * cos_mid_angle) + epsilon, "identity 1"
-		#	assert mid_x / mid_y == -math.tan((start_angle + end_angle) / 2) + epsilon, "identity 2"
-		#	#assert start_x == center_x + radius_x * math.cos(start_angle) + epsilon, "identity 5"
-		#	#assert start_y == center_y + radius_y * math.sin(start_angle) + epsilon, "identity 6"
-		#	#assert end_x == center_x + radius_x * math.cos(end_angle) + epsilon, "identity 7"
-		#	#assert end_y == center_y + radius_y * math.sin(end_angle) + epsilon, "identity 8"
-		#except ZeroDivisionError:
-		#	pass
+		try:
+			assert mid_x / (-2* sin_mid_angle) == mid_y / (2 * cos_mid_angle) + epsilon, "identity 1"
+			assert mid_x / mid_y == -math.tan((start_angle + end_angle) / 2) + epsilon, "identity 2"
+			#assert start_x == center_x + radius_x * math.cos(start_angle) + epsilon, "identity 5"
+			#assert start_y == center_y + radius_y * math.sin(start_angle) + epsilon, "identity 6"
+			#assert end_x == center_x + radius_x * math.cos(end_angle) + epsilon, "identity 7"
+			#assert end_y == center_y + radius_y * math.sin(end_angle) + epsilon, "identity 8"
+		except ZeroDivisionError:
+			pass
 	
 	@staticmethod
 	def __units(spec, percentage=None, percentage_origin=0):
@@ -1924,23 +1926,23 @@ if __name__ == '__main__':
 	gfx = Path('gfx')
 	
 	class SVGRenderGfx(SVGRender):
-		def request_url(self, url):
+		def svg_request_url(self, url):
 			if url.startswith('data:'):
 				pass
 			elif url == 'espresso.svg':
-				super().request_url(str(gfx / url))
-				self.register_svg(url, self.svg_get_document(str(gfx / url)))
+				super().svg_request_url(str(gfx / url))
+				self.svg_register_document(url, self.svg_get_document(str(gfx / url)))
 			else:
-				super().request_url(url)
+				super().svg_request_url(url)
 	
 	for filepath in gfx.iterdir():
 		if filepath.suffix != '.svg': continue
 		print(filepath)
 		if not str(filepath).startswith('gfx/typographer_caps.svg'): continue
 		rnd = SVGRenderGfx()
-		rnd.open(str(filepath))
+		rnd.svg_open(str(filepath))
 		ctx = PseudoContext(f'Context("{str(filepath)}")')
-		rnd.render(ctx, (0, 0, 1024, 768))
+		rnd.svg_render(ctx, (0, 0, 1024, 768))
 
 
 '''

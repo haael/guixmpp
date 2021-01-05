@@ -2,6 +2,8 @@
 #-*- coding: utf-8 -*-
 
 
+__all__ = 'SVGWidget',
+
 
 import gi
 gi.require_version('Gtk', '3.0')
@@ -11,7 +13,7 @@ from gi.repository import GObject as gobject
 from gi.repository import GLib as glib
 
 from domevents import *
-from svgrender import render_svg, parse_svg_defs, parse_svg_links
+from svgrender import SVGRender
 
 import cairo
 
@@ -27,49 +29,79 @@ if __debug__:
 
 
 class SVGWidget(gtk.DrawingArea):
-	__gsignals__ = { \
+	__gsignals__ = {
 		'clicked': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_PYOBJECT,)),
-		'dblclicked': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_PYOBJECT,))
+		'dblclicked': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_PYOBJECT,)),
+		'request_url': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING,))
 	}
-
+	
 	EMPTY_SVG = b'''<?xml version="1.0" encoding="UTF-8"?>
 		<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 1 1" width="1px" height="1px">
 		</svg>
 	'''
-
+	
 	CLICK_TIME = float("inf")
 	CLICK_RANGE = 5
 	DBLCLICK_TIME = float("inf")
 	DBLCLICK_RANGE = 5
 	COUNT_TIME = float("inf")
 	COUNT_RANGE = 5
-
+	
 	class Keys(Enum):
 		SHIFT = 1
 		ALT = 2
 		CTRL = 4
 		META = 8
-
-	def __init__(self):
-		super().__init__()
-		self.set_can_focus(True)
-
-		if __debug__:
-			self.emitted_dom_events = list()
+	
+	class ExtSVGRender(SVGRender):
+		def __init__(self, parent):
+			super().__init__()
+			self.parent = parent
 		
+		#def svg_request_url(self, url):
+		#	glib.idle_add(lambda: self.parent.emit('request_url', url) and False)
+		
+		def request_url(self, url):
+			if url.startswith('data:'):
+				self.register_err(url, "not supported")
+			elif url == 'espresso.svg':
+				super().svg_request_url('gfx/' + url)
+				self.register_svg(url, self.svg_get_document('gfx/' + url))
+			else:
+				super().request_url(url)
+		
+		def svg_update(self):
+			self.parent.reset_state()
+			self.parent.document = self.svg_get_document()
+			self.parent.queue_draw()
+			self.parent.synthesize_events()
+	
+	def reset_state(self):
 		self.document = fromstring(self.EMPTY_SVG)
-		self.document_refs = {}
-		
 		self.rendered_svg_surface = None
 		self.nodes_under_pointer = []
 		self.previous_nodes_under_pointer = []
 		self.last_mousedown = None
+		self.last_mousedown_target = None
 		self.first_click = None
 		self.last_click = None
 		self.current_click_count = 0
 		self.last_keydown = None
 		self.element_in_focus = self.document
 		self.previous_focus = None
+		self.pointer = None
+	
+	def __init__(self):
+		super().__init__()
+		self.set_can_focus(True)
+		
+		if __debug__:
+			self.emitted_dom_events = list()
+		
+		self.reset_state()
+		
+		self.svgrender = self.ExtSVGRender(self)
+		self.rendered_svg_surface = None
 		
 		self.connect('configure-event', self.handle_configure_event)
 		self.connect('draw', self.handle_draw)
@@ -98,23 +130,8 @@ class SVGWidget(gtk.DrawingArea):
 		self.add_events(gdk.EventMask.SMOOTH_SCROLL_MASK)
 		#~ print(dir(gdk.EventMask))
 	
-	def load_url(self, filename):
-		self.document = ElementTree().parse(filename)
-		
-		self.element_in_focus = self.document
-		
-		defs = parse_svg_defs(self.document)
-		links = parse_svg_links(self.document)
-		
-		self.document_refs = {}
-		for link in links:
-			if link[0] == '#':
-				try:
-					self.document_refs[link] = defs[link[1:]]
-				except KeyError:
-					pass
-		
-		self.queue_draw()
+	def show_svg(self, url):
+		self.svgrender.open(url)
 	
 	def xml_nodes(self, node=None):
 		if node == None:
@@ -129,36 +146,39 @@ class SVGWidget(gtk.DrawingArea):
 		   and (event.get_time() - press_event.get_time()) < cls.DBLCLICK_TIME:
 			return True
 		return False
-
+	
 	@classmethod
 	def check_count_hysteresis(cls, press_event, event):
 		if hypot(press_event.x - event.x, press_event.y - event.y) < cls.COUNT_RANGE \
 		   and (event.get_time() - press_event.get_time()) < cls.COUNT_TIME:
 			return True
 		return False
-
+	
 	@classmethod
 	def check_click_hysteresis(cls, press_event, event):
 		if hypot(press_event.x - event.x, press_event.y - event.y) < cls.CLICK_RANGE \
 		   and (event.get_time() - press_event.get_time()) < cls.CLICK_TIME:
 			return True
 		return False
-
+	
 	def gen_node_parents(self, node):
-		if node in self.child_parent_cache:
-			yield from self.gen_node_parents(self.child_parent_cache[node])
+		#if node in self.child_parent_cache:
+		#	yield from self.gen_node_parents(self.child_parent_cache[node])
+		parent = node.findall('..')
+		if parent:
+			self.gen_node_parents(parent[0])
 		yield node
-
+	
 	@classmethod
 	def get_keys(cls, event):
 		return {cls.Keys.SHIFT: bool(event.state & gdk.ModifierType.SHIFT_MASK),\
 				cls.Keys.CTRL: bool(event.state & gdk.ModifierType.CONTROL_MASK),\
 				cls.Keys.ALT: bool(event.state & (gdk.ModifierType.MOD1_MASK | gdk.ModifierType.MOD5_MASK)),\
 				cls.Keys.META: bool(event.state & (gdk.ModifierType.META_MASK | gdk.ModifierType.SUPER_MASK | gdk.ModifierType.MOD4_MASK))}
-
+	
 	def ancestors(self, node):
 		return frozenset(id(anc) for anc in self.gen_node_parents(node))
-
+	
 	@staticmethod
 	def get_pressed_mouse_buttons_mask(event):
 		active_buttons = 0
@@ -169,7 +189,7 @@ class SVGWidget(gtk.DrawingArea):
 		if event.state & gdk.ModifierType.BUTTON2_MASK:
 			active_buttons |= 4
 		return active_buttons
-
+	
 	@staticmethod
 	def get_pressed_mouse_button(event):
 		active_button = 0
@@ -180,7 +200,7 @@ class SVGWidget(gtk.DrawingArea):
 		elif event.button == gdk.BUTTON_MIDDLE:
 			active_button = 1
 		return active_button
-		
+	
 	@staticmethod
 	def get_key_location(keyval_name):
 		if len(keyval_name) > 1:
@@ -194,7 +214,10 @@ class SVGWidget(gtk.DrawingArea):
 				return KeyboardEvent.DOM_KEY_LOCATION_STANDARD
 		else:
 			return KeyboardEvent.DOM_KEY_LOCATION_STANDARD
-
+	
+	def synthesize_events(self):
+		pass # TODO
+	
 	def set_dom_focus(self, element):
 		if self.element_in_focus is self.document:
 			
@@ -205,7 +228,7 @@ class SVGWidget(gtk.DrawingArea):
 			
 			fc_ev = FocusEvent( "focus", target=element)
 			self.emit_dom_event("focus_changed_event", fc_ev)
-
+		
 		elif element != self.element_in_focus:
 			
 			fc_ev = FocusEvent(	"focusout", target=self.element_in_focus, relatedTarget=element)
@@ -224,7 +247,7 @@ class SVGWidget(gtk.DrawingArea):
 			self.emit_dom_event("focus_changed_event", fc_ev)
 		
 		if __debug__: self.check_dom_events("focus_changed_event")
-
+	
 	def change_dom_focus_next(self):
 		iterator = (i for i in self.xml_nodes() if self.is_element_focusable(i))
 		previous_id = id(next(iterator))
@@ -251,30 +274,47 @@ class SVGWidget(gtk.DrawingArea):
 				previous_element = item
 		else:
 			glib.idle_add(lambda: self.set_dom_focus(previous_element))
+	
 	def is_element_focusable(self, element):
 		return True
-
+	
 	def is_focused(self, element):
 		return self.element_in_focus == element
 	
-	def update_nodes_under_pointer(self, event):
-		self.previous_nodes_under_pointer = self.nodes_under_pointer[:]
-		#rect = self.get_allocation()
-		#self.nodes_under_pointer, self.rendered_svg_surface = self.SVGRenderBg.pointer(self.document, rect.width, rect.height, event.x, event.y)
-	
-	def handle_configure_event(self, drawingarea, event):
-		rect = self.get_allocation()
-		#self.rendered_svg_surface = self.SVGRenderBg.render(self.document, rect.width, rect.height)
-	
-	def handle_draw(self, drawingarea, context):
-		context.set_source_rgb(1, 1, 1)
-		context.paint()
+	def render(self):
+		if self.pointer:
+			self.previous_nodes_under_pointer = self.nodes_under_pointer[:]
 		
 		rect = self.get_allocation()
-		m = min(rect.width, rect.height)
-		context.translate((rect.width - m) / 2, (rect.height - m) / 2)
-		context.scale(m, m)
-		render_svg(self.document, context, self.document_refs)
+		
+		surface = cairo.RecordingSurface(cairo.Content.COLOR_ALPHA, None)
+		context = cairo.Context(surface)
+		
+		context.set_source_rgb(1, 1, 1)
+		context.paint() # background
+		
+		nodes_under_pointer = self.svgrender.render(context, (0, 0, rect.width, rect.height)) #pointer=self.pointer
+		
+		if self.pointer:
+			self.nodes_under_pointer = nodes_under_pointer
+		assert self.nodes_under_pointer != None
+		
+		if self.rendered_svg_surface != None:
+			self.rendered_svg_surface.finish()
+		self.rendered_svg_surface = surface
+	
+	def update_nodes_under_pointer(self, event):
+		self.pointer = event.x, event.y
+		self.render()
+	
+	def handle_configure_event(self, drawingarea, event):
+		self.render()
+	
+	def handle_draw(self, drawingarea, ctx):
+		if self.rendered_svg_surface == None:
+			self.render()
+		ctx.set_source_surface(self.rendered_svg_surface)
+		ctx.paint()
 	
 	def handle_motion_notify_event(self, drawingarea, event):
 		if __debug__:
@@ -282,13 +322,16 @@ class SVGWidget(gtk.DrawingArea):
 		
 		if self.last_mousedown and not self.check_click_hysteresis(self.last_mousedown, event):
 			self.last_mousedown = None
+			self.last_mousedown_target = None
 		
 		self.update_nodes_under_pointer(event)
 		
 		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 		keys = self.get_keys(event)
-
+		
 		if self.previous_nodes_under_pointer != self.nodes_under_pointer:
+			self.queue_draw()
+			
 			if self.previous_nodes_under_pointer:
 				if self.nodes_under_pointer:
 					if self.previous_nodes_under_pointer[-1] != self.nodes_under_pointer[-1]:
@@ -327,7 +370,7 @@ class SVGWidget(gtk.DrawingArea):
 										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 										buttons=mouse_buttons)
 					self.emit_dom_event("motion_notify_event", ms_ev)
-
+			
 			if self.nodes_under_pointer:
 				if self.previous_nodes_under_pointer:
 					if self.previous_nodes_under_pointer[-1] != self.nodes_under_pointer[-1]:
@@ -344,7 +387,7 @@ class SVGWidget(gtk.DrawingArea):
 										altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 										buttons=mouse_buttons, relatedTarget=self.previous_nodes_under_pointer[-1])
 						self.emit_dom_event("motion_notify_event", ms_ev)
-
+				
 				else:
 					ms_ev = MouseEvent("mouseover", target=self.nodes_under_pointer[-1], \
 									clientX=event.x, clientY=event.y, screenX=event.x_root, screenY=event.y_root, \
@@ -367,9 +410,7 @@ class SVGWidget(gtk.DrawingArea):
 							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 							buttons=mouse_buttons)
 			self.emit_dom_event("motion_notify_event", ms_ev)
-
-		#canvas.queue_draw()
-
+				
 		if __debug__:
 			self.check_dom_events("motion_notify_event")
 			assert not self.emitted_dom_events
@@ -383,6 +424,7 @@ class SVGWidget(gtk.DrawingArea):
 			self.last_mousedown = event.copy()
 		else:
 			self.last_mousedown = None
+			self.last_mousedown_target = None
 		
 		if self.first_click and not self.check_count_hysteresis(self.first_click, event):
 			self.current_click_count = 0
@@ -392,46 +434,55 @@ class SVGWidget(gtk.DrawingArea):
 		mouse_button = self.get_pressed_mouse_button(event)
 		keys = self.get_keys(event)
 		
-		if self.nodes_under_pointer:
-			ms_ev = MouseEvent(	"mousedown", target=self.nodes_under_pointer[-1], \
+		try:
+			mousedown_target = self.nodes_under_pointer[-1]
+		except IndexError:
+			mousedown_target = None
+		
+		if mousedown_target != None:
+			ms_ev = MouseEvent(	"mousedown", target=mousedown_target, \
 								detail=self.current_click_count+1, clientX=event.x, clientY=event.y, \
 								screenX=event.x_root, screenY=event.y_root, \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								button=mouse_button, buttons=mouse_buttons)
 			self.emit_dom_event("button_press_event", ms_ev)
-
+		
+		self.last_mousedown_target = mousedown_target
+		
 		if __debug__: self.check_dom_events("button_press_event")
-
+	
 	def handle_button_release_event(self, drawingarea, event):
 		if self.last_mousedown and self.check_click_hysteresis(self.last_mousedown, event):
 			event_copy = event.copy()
 			glib.idle_add(lambda: self.emit('clicked', event_copy) and False)
-
+		
 		if self.first_click and not self.check_count_hysteresis(self.first_click, event):
 			self.current_click_count = 0
 			self.first_click = None
-
-		self.last_mousedown = None
-
+		
 		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 		mouse_button = self.get_pressed_mouse_button(event)
 		keys = self.get_keys(event)
-
-		if self.nodes_under_pointer:
-			mouseup_target = self.nodes_under_pointer[-1]
-		else:
-			mouseup_target = None
-		ms_ev = MouseEvent(	"mouseup", target=mouseup_target, \
-							detail=self.current_click_count+1, clientX=event.x, clientY=event.y, \
-							screenX=event.x_root, screenY=event.y_root, \
-							shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
-							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
-							button=mouse_button, buttons=mouse_buttons)
-		self.emit_dom_event("button_release_event", ms_ev)
-
+		
+		if self.last_mousedown_target != None:
+			try:
+				mouseup_target = self.nodes_under_pointer[-1]
+			except IndexError:
+				mouseup_target = None
+			ms_ev = MouseEvent(	"mouseup", target=mouseup_target, \
+								detail=self.current_click_count+1, clientX=event.x, clientY=event.y, \
+								screenX=event.x_root, screenY=event.y_root, \
+								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
+								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
+								button=mouse_button, buttons=mouse_buttons)
+			self.emit_dom_event("button_release_event", ms_ev)
+		
+		self.last_mousedown = None
+		self.last_mousedown_target = None
+		
 		if __debug__: self.check_dom_events("button_release_event")
-
+	
 	def handle_clicked(self, drawingarea, event):
 		if self.last_click and self.check_dblclick_hysteresis(self.last_click, event):
 			event_copy = event.copy()
@@ -445,10 +496,10 @@ class SVGWidget(gtk.DrawingArea):
 		else:
 			self.current_click_count = 1
 			self.first_click = event.copy()
-
+		
 		if self.nodes_under_pointer and self.is_element_focusable(self.nodes_under_pointer[-1]) and not (self.is_focused(self.nodes_under_pointer[-1])):
 			glib.idle_add(lambda: self.set_dom_focus(self.nodes_under_pointer[-1]))
-
+		
 		if self.nodes_under_pointer:
 			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 			mouse_button = self.get_pressed_mouse_button(event)
@@ -461,9 +512,8 @@ class SVGWidget(gtk.DrawingArea):
 								button=mouse_button, buttons=mouse_buttons)
 			self.emit_dom_event("clicked", ms_ev)
 		
-
-			if __debug__: self.check_dom_events("clicked")
-
+		if __debug__: self.check_dom_events("clicked")
+	
 	def handle_dblclicked(self, drawingarea, event):
 		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
 		mouse_button = self.get_pressed_mouse_button(event)
@@ -479,7 +529,7 @@ class SVGWidget(gtk.DrawingArea):
 			self.emit_dom_event("dblclicked", ms_ev)
 		
 		if __debug__: self.check_dom_events("dblclicked")
-
+	
 	def handle_key_press_event(self, widget, event):
 		#print("Press", gdk.keyval_name(event.keyval))
 		if self.last_keydown and self.last_keydown.keyval == event.keyval:
@@ -523,7 +573,7 @@ class SVGWidget(gtk.DrawingArea):
 		self.emit_dom_event("key_released", kb_ev)
 		
 		if __debug__: self.check_dom_events("key_released")
-
+	
 	def handle_scroll_event(self, widget, event):
 		#print("Scrolled")
 		keys = self.get_keys(event)
@@ -531,7 +581,7 @@ class SVGWidget(gtk.DrawingArea):
 			wheel_target = self.nodes_under_pointer[-1]
 		else:
 			wheel_target = None
-			
+		
 		wh_ev = WheelEvent(	"wheel", target=wheel_target, \
 							clientX=event.x, clientY=event.y, \
 							screenX=event.x_root, screenY=event.y_root, \
@@ -539,11 +589,11 @@ class SVGWidget(gtk.DrawingArea):
 							altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 							deltaX=event.delta_x, deltaY=event.delta_y, \
 							deltaMode=WheelEvent.DOM_DELTA_LINE)
-			
+		
 		self.emit_dom_event("scrolled_event", wh_ev)
-
+		
 		if __debug__: self.check_dom_events("scrolled_event")
-
+	
 	def emit_dom_event(self, handler, ev):
 		#print(ev.type_, ev.target['id'] if hasattr(ev, 'target') and ('id' in ev.target) else "")
 		try:
@@ -552,21 +602,21 @@ class SVGWidget(gtk.DrawingArea):
 			print(ev.type_, ev.target, '#None')
 		if __debug__:
 			self.emitted_dom_events.append(ev)
-
+	
 	def reset_after_exception(self):
 		if __debug__:
 			self.emitted_dom_events.clear()
-
+	
 	if __debug__:
 		def check_dom_events(self, handler):
 			nup = self.nodes_under_pointer
 			pnup = self.previous_nodes_under_pointer
-
+			
 			cnt = Counter((_ms_ev.type_, id(_ms_ev.target)) for _ms_ev in self.emitted_dom_events)
 			if cnt:
 				common, common_num = cnt.most_common(1)[0]
 				assert common_num < 2, "For a DOM Event `{}`, shoudn't be emitted two events with equal target and type.".format(common[0])
-
+			
 			#~ Target
 			assert all(_ms_ev.target != None for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mouseover", "mouseout", "mouseenter","mouseleave", "mousedown", "click", "dblclick")), "For events of types `mouseover`, `mouseout`, `mouseenter`,`mouseleave`, `mousedown`, `click` and `dblclick` event target can't be None."
 			assert all(nup and (_ms_ev.target == nup[-1]) for _ms_ev in self.emitted_dom_events if (_ms_ev.type_ == "mouseover")), "For events of type `mouseover`, event target should be top `nodes_under_pointer` element"
@@ -581,21 +631,21 @@ class SVGWidget(gtk.DrawingArea):
 			assert all(self.is_element_focusable(_fc_ev.target) for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focusout"), "Focus Event target of type `focusout` should be focusable"
 			assert all(self.is_element_focusable(_fc_ev.target) for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focus"), "Focus Event target of type `focus` should be focusable"
 			assert all(self.is_element_focusable(_fc_ev.target) for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "blur"), "Focus Event target of type `blur` should be focusable"
-
+			
 			#~ Detail
 			assert all(_ms_ev.detail == 0 for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mouseenter", "mouseleave", "mousemove", "mouseout", "mouseover")), "For events of types: `mouseenter`, `mouseleave`, `mousemove`, `mouseout` or `mouseover`. `detail` value should be equal to 0."
 			assert all(_ms_ev.detail > 0 for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("click", "dblclick", "mousedown", "mouseup")), "For events of types: `click`, `dblclick`, `mousedown` or `mouseup`. `detail` value should be higher then 0."
 			assert all(_ms_ev.detail == self.current_click_count + 1 for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mousedown", "mouseup")), "For events of types: `mousedown` or `mouseup`. `detail` value should be equal to `current_click_count` + 1."
 			assert all(_ms_ev.detail == self.current_click_count for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("click", "dblclick")), "For events of types: `click` or `dblclick`. `detail` value should be equal to `current_click_count`."
 			assert all(_kb_ev.detail == 0 for _kb_ev in self.emitted_dom_events if _kb_ev.type_ in ("keydown", "keyup")), "For `key_pressed`, all events of type `keydown` or `keyup` should be emitted with default detail."
-
+			
 			#~ Mouse event order
 			mouseout_events = [_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseout"]
 			mouseleave_events = [_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseleave"]
 			mouseover_events = [_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseover"]
 			mouseenter_events = [_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseenter"]
 			mousemove_events = [_ms_ev for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mousemove"]
-
+			
 			for mouseout, mouseleave in itertools.product(mouseout_events, mouseleave_events):
 				assert self.emitted_dom_events.index(mouseout) < self.emitted_dom_events.index(mouseleave), "For the appropriate Mouse Event order, events of type `mouseout` should happen before events of type `mouseleave`."
 			for mouseleave, mouseover in itertools.product(mouseleave_events, mouseover_events):
@@ -604,7 +654,7 @@ class SVGWidget(gtk.DrawingArea):
 				assert self.emitted_dom_events.index(mouseover) < self.emitted_dom_events.index(mouseenter), "For the appropriate Mouse Event order, events of type `mouseover` should happen before events of type `mouseenter`."
 			for mouseenter, mousemove in itertools.product(mouseenter_events, mousemove_events):
 				assert self.emitted_dom_events.index(mouseenter) < self.emitted_dom_events.index(mousemove), "For the appropriate Mouse Event order, events of type `mouseenter` should happen before events of type `mousemove`."
-
+			
 			# Focus event order
 			focusin_event = [_fc_ev for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focusin"]
 			focusout_event = [_fc_ev for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focusout"]
@@ -619,7 +669,7 @@ class SVGWidget(gtk.DrawingArea):
 				assert self.emitted_dom_events.index(focusin) < self.emitted_dom_events.index(blur), "For the appropriate Focus Event order, events of type `focusin` should happen before events of type `blur`."
 			for focusout, blur in zip(focusout_event, focus_event):
 				assert self.emitted_dom_events.index(focusout) < self.emitted_dom_events.index(focus), "For the appropriate Focus Event order, events of type `focusout` should happen before events of type `focus`."
-				
+			
 			#~ Repeat
 			assert all(_kb_ev.repeat == False for _kb_ev in self.emitted_dom_events if _kb_ev.type_ == "keydown") if not self.last_keydown else True, "For event of type `keydown`, repeat attribute should be False if `last_keydown` not exist."
 			assert all(_kb_ev.repeat == True for _kb_ev in self.emitted_dom_events if _kb_ev.type_ == "keydown" and self.last_keydown.keyval == _kb_ev.code) if self.last_keydown else True, "For event of type `keydown`, repeat attribute should be True if `last_keydown` exist and their `keyval` is equal to `KeyboardEvent.code`."
@@ -706,20 +756,56 @@ class SVGWidget(gtk.DrawingArea):
 if __name__ == '__main__':
 	import signal
 	import sys
-
+	
 	glib.threads_init()
-
+	
 	css = gtk.CssProvider()
 	css.load_from_path('gfx/style.css')
 	gtk.StyleContext.add_provider_for_screen(gdk.Screen.get_default(), css, gtk.STYLE_PROVIDER_PRIORITY_USER)
-
+	
 	window = gtk.Window(gtk.WindowType.TOPLEVEL)
 	window.set_name('main_window')
-
+	
 	svgwidget = SVGWidget()
-	#~ svgwidget.load_url('gfx/BYR_color_wheel.svg')
-	#~ svgwidget.load_url('gfx/drawing.svg')
-	svgwidget.load_url('gfx/drawing_no_white_BG.svg')
+	#svgwidget.show_svg('gfx/acid1.svg')
+	#svgwidget.show_svg('gfx/arcs_0.svg') # OK
+	#svgwidget.show_svg('gfx/arcs_1.svg') # OK
+	#svgwidget.show_svg('gfx/arcs_2.svg') # text
+	#svgwidget.show_svg('gfx/BYR_color_wheel.svg') # OK
+	#svgwidget.show_svg('gfx/Circulatory system SMIL.svg')
+	#svgwidget.show_svg('gfx/Comparison of several satellite navigation system orbits.svg')
+	#svgwidget.show_svg('gfx/Contra-zoom aka dolly zoom animation.svg')
+	#svgwidget.show_svg('gfx/drawing.svg') # OK
+	#svgwidget.show_svg('gfx/drawing_no_white_BG.svg') # OK
+	#svgwidget.show_svg('gfx/ECB_encryption.svg') # text anchor
+	#svgwidget.show_svg('gfx/espresso.svg')
+	#svgwidget.show_svg('gfx/epicyclic gearing animation.svg')
+	#svgwidget.show_svg('gfx/fcGold Token.svg') # bezier
+	#svgwidget.show_svg('gfx/genesis_pepe.svg') # OK
+	#svgwidget.show_svg('gfx/Glutamic_acid_test.svg') # text anchor, clipPath
+	#svgwidget.show_svg('gfx/gradient_france.svg') # OK
+	#svgwidget.show_svg('gfx/gradient_linear.svg') # OK
+	#svgwidget.show_svg('gfx/gradient_radial.svg')
+	#svgwidget.show_svg('gfx/gradient_rainbow.svg') # OK
+	#svgwidget.show_svg('gfx/Hamming(7,4)_example_1100.svg') # text
+	#svgwidget.show_svg('gfx/History_of_the_Universe-zh-hant.svg')
+	#svgwidget.show_svg('gfx/Homo_sapiens_lineage.svg') # gradient
+	#svgwidget.show_svg('gfx/Letters_SVG.svg') # radial gradient
+	#svgwidget.show_svg('gfx/logo_nocss.svg') # OK
+	#svgwidget.show_svg('gfx/Morphing SMIL.svg') # blur
+	#svgwidget.show_svg('gfx/PageRanks-Example.svg') # radial gradient
+	svgwidget.show_svg('gfx/Phonetics Guide.svg') # text anchor
+	#svgwidget.show_svg('gfx/status_icons.svg') # OK
+	#svgwidget.show_svg('gfx/Steering_wheel_1.svg') # OK
+	#svgwidget.show_svg('gfx/Steering_wheel_2.svg')
+	#svgwidget.show_svg('gfx/SVG_Blur_sample.svg') # blur
+	#svgwidget.show_svg('gfx/SVG_logo.svg') # OK
+	#svgwidget.show_svg('gfx/targets.svg') # OK
+	#svgwidget.show_svg('gfx/Text_background_edge.svg') # OK
+	#svgwidget.show_svg('gfx/typographer_caps.svg') # bezier
+	#svgwidget.show_svg('gfx/Vector-based_example.svg') # radial gradient
+	#svgwidget.show_svg('gfx/xforms_sample.svg')
+	
 	window.add(svgwidget)
 	
 	window.show_all()

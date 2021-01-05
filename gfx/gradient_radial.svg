@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120">
+<title>An example of a radial gradient</title>
+<radialGradient id="rg" cx="50%" cy="50%" r="40%">
+<stop stop-color="#0FF" offset="0"/>
+<stop stop-color="#F00" offset="1"/>
+</radialGradient>
+<rect fill="none" stroke="#000" x="1" y="1" rx="10" width="118" height="118"/>
+<rect fill="url(#rg)" x="10" y="10" width="100" height="100"/>
+</svg>

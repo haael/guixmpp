@@ -2,9 +2,6 @@
 #-*- coding:utf-8 -*-
 
 
-from gi.repository import GObject as gobject
-from gi.repository import Gtk as gtk
-
 import slixmpp
 import slixmpp.plugins.base
 import slixmpp.stanza
@@ -22,7 +19,7 @@ class SVGElement(slixmpp.xmlstream.ElementBase):
 	
 	def init_from_string(self, xml):
 		element = slixmpp.xmlstream.ET.fromstring(xml)
-		if element.tag != self.name and element.tag != "".join(['{', self.namespace, '}', self.name]):
+		if element.tag != f'{{{self.namespace}}}{self.name}':
 			raise ValueError("The supplied string must be an XML/SVG document.")
 		self.clear()
 		for c in element:
@@ -31,7 +28,7 @@ class SVGElement(slixmpp.xmlstream.ElementBase):
 	
 	def init_from_file(self, path):
 		element = slixmpp.xmlstream.ET.parse(path).getroot()
-		if element.tag != self.name and element.tag != "".join(['{', self.namespace, '}', self.name]):
+		if element.tag != f'{{{self.namespace}}}{self.name}':
 			raise ValueError("The supplied path must point to an XML/SVG document.")
 		self.clear()
 		for c in element:
@@ -45,11 +42,8 @@ class extension_SVG(slixmpp.plugins.base.base_plugin):
 	def plugin_init(self):
 		self.description = ""
 		self.xep = 'x-SVG'
-		self.svg = ""
-		self.alpha = {}
-		self.matrix = {}
 		
-		self.xmpp.register_handler(Callback('SVG', MatchXPath('{%s}message/{%s}svg' % (self.xmpp.default_ns, SVGElement.namespace)), self.__message))
+		self.xmpp.register_handler(Callback('SVG', MatchXPath(f'{{{self.xmpp.default_ns}}}message/{{{SVGElement.namespace}}}svg', self.__message))
 		slixmpp.xmlstream.register_stanza_plugin(slixmpp.stanza.Message, SVGElement)
 	
 	def __message(self, msg):
@@ -58,7 +52,7 @@ class extension_SVG(slixmpp.plugins.base.base_plugin):
 	def make_svg_string_message(self, mto, msvgstr, mbody=None):
 		msg = self.xmpp.make_message(mto=mto)
 		msg['svg'].init_from_string(msvgstr)
-		if mbody is not None:
+		if mbody != None:
 			msg['body'] = mbody
 		return msg
 	
@@ -68,10 +62,11 @@ class extension_SVG(slixmpp.plugins.base.base_plugin):
 	def make_svg_file_message(self, mto, msvgfile, mbody=None):
 		msg = self.xmpp.make_message(mto=mto)
 		msg['svg'].init_from_file(msvgfile)
-		if mbody is not None:
+		if mbody != None:
 			msg['body'] = mbody
 		return msg
 	
 	def send_svg_file(self, mto, msvgfile, mbody=None):
 		self.make_svg_file_message(mto, msvgfile, mbody).send()
-	
+
+
