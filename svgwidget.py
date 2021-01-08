@@ -58,17 +58,18 @@ class SVGWidget(gtk.DrawingArea):
 			super().__init__()
 			self.parent = parent
 		
-		#def svg_request_url(self, url):
+		#def request_url(self, url):
 		#	glib.idle_add(lambda: self.parent.emit('request_url', url) and False)
 		
-		def request_url(self, url):
-			if url.startswith('data:'):
-				self.register_err(url, "not supported")
-			elif url == 'espresso.svg':
-				super().svg_request_url('gfx/' + url)
-				self.register_svg(url, self.svg_get_document('gfx/' + url))
-			else:
-				super().request_url(url)
+		#def request_url(self, url):
+		#	print("request_url", url)
+		#	if url.startswith('data:'):
+		#		self.register_err(url, "not supported")
+		#	elif url == 'espresso.svg':
+		#		super().request_url('gfx/' + url)
+		#		#self.register_svg(url, self.get_document('gfx/' + url))
+		#	else:
+		#		super().request_url(url)
 		
 		def svg_update(self):
 			self.parent.reset_state()
@@ -131,6 +132,7 @@ class SVGWidget(gtk.DrawingArea):
 		#~ print(dir(gdk.EventMask))
 	
 	def show_svg(self, url):
+		self.svgrender.clear()
 		self.svgrender.open(url)
 	
 	def xml_nodes(self, node=None):
@@ -305,7 +307,7 @@ class SVGWidget(gtk.DrawingArea):
 	
 	def update_nodes_under_pointer(self, event):
 		self.pointer = event.x, event.y
-
+		
 		if self.pointer:
 			self.previous_nodes_under_pointer = self.nodes_under_pointer[:]
 		
@@ -780,7 +782,7 @@ if __name__ == '__main__':
 	window.set_name('main_window')
 	
 	svgwidget = SVGWidget()
-	#svgwidget.show_svg('gfx/acid1.svg')
+	svgwidget.show_svg('gfx/acid1.svg')
 	#svgwidget.show_svg('gfx/arcs_0.svg') # OK
 	#svgwidget.show_svg('gfx/arcs_1.svg') # OK
 	#svgwidget.show_svg('gfx/arcs_2.svg') # text
@@ -807,7 +809,7 @@ if __name__ == '__main__':
 	#svgwidget.show_svg('gfx/logo_nocss.svg') # OK
 	#svgwidget.show_svg('gfx/Morphing SMIL.svg') # blur
 	#svgwidget.show_svg('gfx/PageRanks-Example.svg') # radial gradient
-	svgwidget.show_svg('gfx/Phonetics Guide.svg') # text anchor
+	#svgwidget.show_svg('gfx/Phonetics Guide.svg') # text anchor
 	#svgwidget.show_svg('gfx/status_icons.svg') # OK
 	#svgwidget.show_svg('gfx/Steering_wheel_1.svg') # OK
 	#svgwidget.show_svg('gfx/Steering_wheel_2.svg')

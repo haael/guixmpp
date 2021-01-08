@@ -1,7 +1,7 @@
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xforms="http://www.w3.org/2002/xforms" xmlns:ev="http://www.w3.org/2001/xml-events" xmlns:s="http://example.com/survey" width="700px" height="600px" viewBox="0 0 700 600">
   <defs>
-    <polygon id="bullet" points="-30,-30, -10,-10, -20,10" fill="#007138" />
+    <polygon id="bullet" points="-20,-20, 0,0, -10,20" fill="#007138" />
     <xforms:model id="form1" schema="surveyschema.xsd">
       <xforms:instance id="instance1">
         <s:survey xmlns="http://example.com/survey">
@@ -21,12 +21,12 @@
   <g>
     <text x="50" y="70" font-size="40" font-family="Arial Black, sans-serif" font-weight="900">Customer Survey: Espresso</text>
     <g font-family="Arial, Helvetica, sans-serif" font-size="18">
-      <foreignObject x="80" y="150" width="250" height="40">
+      <foreignObject x="80" y="150" width="250" height="20">
         <xforms:select1 appearance="minimal" model="form1" ref="s:drink">
           <xforms:label>
-            <g transform="translate(80, 140)">
+            <g>
               <use xlink:href="#bullet" />
-              <text>Your usual coffee drink is:</text>
+              <text x="10" y="16" font-size="12">Your usual coffee drink is:</text>
             </g>
           </xforms:label>
           <xforms:item>
@@ -50,9 +50,9 @@
       <foreignObject x="80" y="240" width="250" height="40">
         <xforms:range model="form1" start="0" end="30" step="5" ref="s:espressoPrefs/s:numberPerWeek">
           <xforms:label>
-            <g transform="translate(80, 230)">
+            <g>
               <use xlink:href="#bullet" />
-              <text>Shots of espresso per week:</text>
+              <text x="10" y="12" font-size="12">Shots of espresso per week:</text>
             </g>
           </xforms:label>
         </xforms:range>
@@ -60,9 +60,9 @@
       <foreignObject x="80" y="350" width="250" height="40">
         <xforms:select model="form1" ref="s:espressoPrefs/s:sugar">
           <xforms:label>
-            <g transform="translate(80, 340)">
+            <g>
               <use xlink:href="#bullet" />
-              <text>Sugar?</text>
+              <text x="10" y="12" font-size="12">Sugar?</text>
             </g>
           </xforms:label>
           <xforms:item>
@@ -71,12 +71,12 @@
           </xforms:item>
         </xforms:select>
       </foreignObject>
-      <foreignObject x="80" y="420" width="250" height="90">
+      <foreignObject x="80" y="420" width="250" height="80">
         <xforms:select1 appearance="full" model="form1" ref="s:espressoPrefs/s:lemon">
           <xforms:label>
-            <g transform="translate(80, 410)">
+            <g>
               <use xlink:href="#bullet" />
-              <text>Lemon?</text>
+              <text x="10" y="12" font-size="12">Lemon?</text>
             </g>
           </xforms:label>
           <xforms:item>
