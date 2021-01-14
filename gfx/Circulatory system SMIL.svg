@@ -77,6 +77,9 @@
   <g>
    <use xlink:href="#vessels" class="stroke_d"/>
    <use xlink:href="#vessels" class="stroke_o" mask="url(#mask)"/>
+
+   <!--<circle x="0" y="0" r="1" fill="red" stroke="black" transform="scale(-1,1)"/>-->
+
    <use xlink:href="#vessels" class="stroke_o" transform="scale(-1,1)"/>
    <use xlink:href="#vessels" class="stroke_d" mask="url(#mask)" transform="scale(-1,1)"/>
    <animate attributeType="css" attributeName="stroke-dashoffset" values="25;25;0" keyTimes="0;0.4;1" dur="4s" repeatCount="indefinite"/>

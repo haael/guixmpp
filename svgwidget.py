@@ -782,7 +782,7 @@ if __name__ == '__main__':
 	window.set_name('main_window')
 	
 	svgwidget = SVGWidget()
-	svgwidget.show_svg('gfx/acid1.svg')
+	#svgwidget.show_svg('gfx/acid1.svg')
 	#svgwidget.show_svg('gfx/arcs_0.svg') # OK
 	#svgwidget.show_svg('gfx/arcs_1.svg') # OK
 	#svgwidget.show_svg('gfx/arcs_2.svg') # text
@@ -794,7 +794,7 @@ if __name__ == '__main__':
 	#svgwidget.show_svg('gfx/drawing_no_white_BG.svg') # OK
 	#svgwidget.show_svg('gfx/ECB_encryption.svg') # text anchor
 	#svgwidget.show_svg('gfx/espresso.svg')
-	#svgwidget.show_svg('gfx/epicyclic gearing animation.svg')
+	#svgwidget.show_svg('gfx/epicyclic gearing animation.svg') # text anchor
 	#svgwidget.show_svg('gfx/fcGold Token.svg') # bezier
 	#svgwidget.show_svg('gfx/genesis_pepe.svg') # OK
 	#svgwidget.show_svg('gfx/Glutamic_acid_test.svg') # text anchor, clipPath
@@ -804,7 +804,7 @@ if __name__ == '__main__':
 	#svgwidget.show_svg('gfx/gradient_rainbow.svg') # OK
 	#svgwidget.show_svg('gfx/Hamming(7,4)_example_1100.svg') # text
 	#svgwidget.show_svg('gfx/History_of_the_Universe-zh-hant.svg')
-	#svgwidget.show_svg('gfx/Homo_sapiens_lineage.svg') # gradient
+	#svgwidget.show_svg('gfx/Homo_sapiens_lineage.svg') # gradient transform
 	#svgwidget.show_svg('gfx/Letters_SVG.svg') # radial gradient
 	#svgwidget.show_svg('gfx/logo_nocss.svg') # OK
 	#svgwidget.show_svg('gfx/Morphing SMIL.svg') # blur
@@ -812,14 +812,14 @@ if __name__ == '__main__':
 	#svgwidget.show_svg('gfx/Phonetics Guide.svg') # text anchor
 	#svgwidget.show_svg('gfx/status_icons.svg') # OK
 	#svgwidget.show_svg('gfx/Steering_wheel_1.svg') # OK
-	#svgwidget.show_svg('gfx/Steering_wheel_2.svg')
+	#svgwidget.show_svg('gfx/Steering_wheel_2.svg') # gradient transform
 	#svgwidget.show_svg('gfx/SVG_Blur_sample.svg') # blur
 	#svgwidget.show_svg('gfx/SVG_logo.svg') # OK
 	#svgwidget.show_svg('gfx/targets.svg') # OK
-	#svgwidget.show_svg('gfx/Text_background_edge.svg') # OK
+	#svgwidget.show_svg('gfx/Text_background_edge.svg')
 	#svgwidget.show_svg('gfx/typographer_caps.svg') # bezier
 	#svgwidget.show_svg('gfx/Vector-based_example.svg') # radial gradient
-	#svgwidget.show_svg('gfx/xforms_sample.svg')
+	svgwidget.show_svg('gfx/xforms_sample.svg')
 	
 	window.add(svgwidget)
 	

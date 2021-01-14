@@ -266,6 +266,7 @@ class SVGRender:
 		self.__imgs = {}
 		self.__defs = {}
 		self.__errs = {}
+		self.__docs = {}
 	
 	def open(self, url, base_url=''):
 		"Open an SVG document for display. Supported non-SVG images will also work. `url` is an absolute or relative url, in the latter case resolved relative to `base_url`."
@@ -296,27 +297,56 @@ class SVGRender:
 			return rel_url
 	
 	def enter_pending(self, url):
+		if (url in self.__svgs) or (url in self.__imgs) or (url in self.__docs) or (url in self.__errs):
+			return True
+		
 		if url in self.__pending:
 			return True
 		self.__pending.add(url)
 		return False
-	
+
 	def request_url(self, url):
 		"""
 		Called when a resource needs to be downloaded. `url` is always absolute. The implementation should call one of `register_*` methods, possibly asynchronously.
 		To avoid requesting the same resource multiple times, call `self.enter_pending(url)` at the start and exit the function if it returns True.
 		"""
 		
+		#print("request_url", url)
 		if self.enter_pending(url): return
-		
-		if (url in self.__svgs) or (url in self.__imgs): return
 		
 		exceptions = []
 		
 		try:
-			from xml.etree.ElementTree import ElementTree
+			from xml.etree.ElementTree import ElementTree, XMLParser
+
+			class Parser(XMLParser): # overcome the limitation of XMLParser that it doesn't parse processing instructions
+				def feed(self, data):
+					#print(data)
+					
+					try:
+						start = data.index(b'<?xml-stylesheet')
+						stop = data.index(b'?>', start) + 2
+						stylesheet_instruction = data[start:stop]
+						
+						start = stylesheet_instruction.find(b'href')
+						start = stylesheet_instruction.find(b'=', start)
+						try:
+							start = stylesheet_instruction.index(b'"', start) + 1
+							stop = stylesheet_instruction.index(b'"', start)
+						except ValueError:
+							start = stylesheet_instruction.index(b'\'', start) + 1
+							stop = stylesheet_instruction.index(b'\'', start)
+						
+						self.stylesheet = stylesheet_instruction[start:stop].decode('utf-8')
+					except ValueError:
+						self.stylesheet = None
+					
+					return super().feed(data)	
+			
+			parser = Parser()
 			document = ElementTree()
-			document.parse(url)
+			document.parse(url, parser)
+			document.stylesheet = parser.stylesheet
 		except Exception as error:
 			exceptions.append(error)
 		else:
@@ -331,32 +361,48 @@ class SVGRender:
 			self.register_img(url, surface)
 			return
 		
+		try:
+			from pathlib import Path
+			
+			document = Path(url).read_bytes()
+		except Exception as error:
+			exceptions.append(error)
+		else:
+			#print("register_doc", url)
+			self.register_doc(url, document)
+			return
+		
 		self.register_err(url, exceptions)
 		self.error(f"Could not open url: {url}", (url, exceptions), None)
 	
-	def __apply_style_tag(self, url, style, node):
+	def __apply_stylesheet(self, url, style, node):
 		from tinycss2 import parse_declaration_list, serialize
 		
 		for rule in style:
 			try:
-				target_ref = serialize(rule.prelude).strip()
+				target_refs = serialize(rule.prelude).strip().split(',')
 				
 				match = False
-				if target_ref[0] == '#' and node.attrib.get('id', None) == target_ref[1:]:
-					match = True
-				elif target_ref[0] == '.' and node.attrib.get('class', None) == target_ref[1:]:
-					match = True
+				for target_ref in target_refs:
+					target_ref = target_ref.strip()
+					if target_ref[0] == '#' and node.attrib.get('id', None) == target_ref[1:]:
+						match = True
+					elif target_ref[0] == '.' and node.attrib.get('class', None) == target_ref[1:]:
+						match = True
+					elif node.tag == f'{{{self.xmlns_svg}}}{target_ref}':
+						match = True
+					
+					if match: break
 				
+				#print(target_ref, node.tag, match)
 				if not match: continue
-
-				#print(target_ref[1:], node.attrib.get('id', None), node.attrib.get('class', None), match)
 				
 				for decl in parse_declaration_list(serialize(rule.content)):
 					#print(decl)
 					try:
-						#print(decl.name, serialize(decl.value))
-						if decl.name not in node.attrib:
-							node.attrib[decl.name] = serialize(decl.value)
+						#print(target_ref, node.tag, decl.name, serialize(decl.value))
+						#if decl.name not in node.attrib:
+						node.attrib[decl.name] = serialize(decl.value)
 					except AttributeError:
 						pass
 			
@@ -364,13 +410,17 @@ class SVGRender:
 				pass
 		
 		for child in node:
-			self.__apply_style_tag(url, style, child)
+			self.__apply_stylesheet(url, style, child)
+	
+	def __parse_stylesheet_resource(self, stylesheet_text, target_url, root):
+		from tinycss2 import parse_stylesheet
+		self.__apply_stylesheet(target_url, parse_stylesheet(stylesheet_text), root)
 	
 	def __parse_style_tag(self, style_url, node, target_url, root):
 		from tinycss2 import parse_stylesheet, serialize
 		
 		if node.tag == f'{{{self.xmlns_svg}}}style':
-			self.__apply_style_tag(target_url, parse_stylesheet(node.text), root)
+			self.__apply_stylesheet(target_url, parse_stylesheet(node.text), root)
 		
 		for child in node:
 			self.__parse_style_tag(style_url, child, target_url, root)
@@ -382,8 +432,8 @@ class SVGRender:
 			for decl in parse_declaration_list(node.attrib['style']):
 				try:
 					#print(decl.name, serialize(decl.value))
-					if decl.name not in node.attrib:
-						node.attrib[decl.name] = serialize(decl.value)
+					#if decl.name not in node.attrib:
+					node.attrib[decl.name] = serialize(decl.value)
 				except AttributeError:
 					pass
 		except KeyError:
@@ -393,8 +443,27 @@ class SVGRender:
 			self.__parse_style_attrib(url, child)
 	
 	def parse_css(self, url, document):
-		self.__parse_style_tag(url, document.getroot(), url, document.getroot())
-		self.__parse_style_attrib(url, document.getroot())
+		root = document.getroot()
+		try:
+			if document.stylesheet:
+				#print("document.stylesheet", document.stylesheet)
+				href = self.resolve_url(document.stylesheet, self.main_url)
+				#print("href", href)
+				stylesheet = self.get_doc(href).decode('utf-8')
+				#print("stylesheet present")
+			else:
+				stylesheet = None
+		except AttributeError:
+			pass
+		except KeyError:
+			#print("(key error)")
+			self.request_url(self.resolve_url(document.stylesheet, self.main_url))
+		else:
+			#print(stylesheet)
+			if stylesheet:
+				self.__parse_stylesheet_resource(stylesheet, url, root)
+		self.__parse_style_tag(url, root, url, root)
+		self.__parse_style_attrib(url, root)
 		return document
 	
 	def transform_svg(self, url, document):
@@ -413,14 +482,14 @@ class SVGRender:
 		
 		if url in self.__svgs:
 			raise ValueError("SVG already registered")
-		self.__svgs[url] = self.transform_svg(url, document)
+		self.__svgs[url] = document #self.transform_svg(url, document)
 		
 		self.__scan_links(url, document.getroot())
 		
 		try:
 			self.get_svg(self.main_url)
-		except:
-			raise
+		except KeyError:
+			pass
 		else:
 			self.update()
 	
@@ -431,12 +500,28 @@ class SVGRender:
 		
 		if url in self.__imgs:
 			raise ValueError("Img already registered")
-		self.__imgs[url] = self.transform_img(url, surface)
+		self.__imgs[url] = surface #self.transform_img(url, surface)
 		
 		try:
 			self.get_svg(self.main_url)
-		except:
-			raise
+		except KeyError:
+			pass
+		else:
+			self.update()
+	
+	def register_doc(self, url, doc):
+		"Register document (non-image type) under the provided url."
+		
+		self.__pending.remove(url)
+		
+		if url in self.__docs:
+			raise ValueError("Doc already registered")
+		self.__docs[url] = doc
+		
+		try:
+			self.get_svg(self.main_url)
+		except KeyError:
+			pass
 		else:
 			self.update()
 	
@@ -452,7 +537,7 @@ class SVGRender:
 		else:
 			raise KeyError("SVG resource not available:", error)
 		
-		return self.__svgs[url]
+		return self.transform_svg(url, self.__svgs[url])
 	
 	def get_img(self, url):
 		try:
@@ -462,7 +547,17 @@ class SVGRender:
 		else:
 			raise KeyError("Image resource not available:", error)
 		
-		return self.__imgs[url]
+		return self.transform_img(url, self.__imgs[url])
+	
+	def get_doc(self, url):
+		try:
+			error = self.__errs[url]
+		except KeyError:
+			pass
+		else:
+			raise KeyError("Document resource not available:", error)
+		
+		return self.__docs[url]
 	
 	def get_err(self, error):
 		return self.__errs[url]
@@ -480,6 +575,13 @@ class SVGRender:
 		except ValueError:
 			pass
 		del self.__imgs[url]
+	
+	def del_doc(self, url):
+		try:
+			self.__pending.remove(url)
+		except ValueError:
+			pass
+		del self.__docs[url]
 	
 	def del_err(self, url):
 		try:
@@ -516,7 +618,8 @@ class SVGRender:
 	
 	def __scan_links(self, base_url, node):
 		try:
-			self.__defs[base_url + '#' + node.attrib['id']] = node
+			self.__defs[base_url + '#' + node.attrib['id'].strip()] = node
+			#print(base_url + '#' + node.attrib['id'])
 		except KeyError:
 			pass
 		
@@ -526,8 +629,8 @@ class SVGRender:
 				abs_url = self.resolve_url(url, base_url)
 				if '#' in abs_url:
 					abs_url = '#'.join(abs_url.split('#')[:-1])
-				if (url not in self.__svgs) and (url not in self.__imgs):
-					self.request_url(abs_url)
+				#if (url not in self.__svgs) and (url not in self.__imgs):
+				self.request_url(abs_url)
 		
 		for child in node:
 			self.__scan_links(base_url, child)
@@ -609,17 +712,33 @@ class SVGRender:
 			return []
 		
 		target = self.OverlayElement()
-		target.tag = original.tag
+		if original.tag == f'{{{self.xmlns_svg}}}symbol':
+			target.tag = f'{{{self.xmlns_svg}}}g'
+		else:
+			target.tag = original.tag
 		target.attrib = dict(original.attrib)
-		target.attrib.update(dict((_k, _v) for (_k, _v) in node.attrib.items() if _k != f'{{{self.xmlns_xlink}}}href'))
+		target.attrib.update(dict((_k, _v) for (_k, _v) in node.attrib.items() if _k not in [f'{{{self.xmlns_xlink}}}href', 'transform']))
 		target.extend(original)
 		target.text = original.text
 		target.tail = original.tail
 		
+		#print("render_use", node.attrib, target.attrib)
+		
+		if 'transform' in node.attrib:
+			target.attrib['transform'] = node.attrib['transform'] + target.attrib.get('transform', '')
+		
 		return self.render_node(ctx, box, target, ancestors, current_url, level, draw, pointer)
 	
+	supported_features = frozenset(['http://www.w3.org/TR/SVG11/feature#Shape'])
+	supported_extensions = frozenset()
+	
 	def render_switch(self, ctx, box, node, ancestors, current_url, level, draw, pointer):
-		self.error(f"element rendering not implemented: {node.tag}", node.tag, node) # TODO
+		for child in node:
+			required_features = frozenset(child.attrib.get('requiredFeatures', '').strip().split())
+			required_extensions = frozenset(child.attrib.get('requiredExtensions', '').strip().split())
+			#print(required_features, required_extensions)
+			if required_features <= self.supported_features and required_extensions <= self.supported_extensions:
+				return self.render_node(ctx, box, child, ancestors + [node], current_url, level, draw, pointer)
 		return []
 	
 	def render_anchor(self, ctx, box, node, ancestors, current_url, level, draw, pointer):
@@ -872,7 +991,7 @@ class SVGRender:
 			ctx.set_source_rgb(0.9, 0.9, 0.2)
 			ctx.rectangle(*box)
 			ctx.fill()
-			print(node.tag)
+			#print(node.tag)
 		
 		return nodes_under_pointer
 	
@@ -968,7 +1087,7 @@ class SVGRender:
 	
 	@staticmethod
 	def __draw_rounded_rectangle(ctx, x, y, w, h, rx, ry):
-		r = max(rx, ry) # TODO
+		r = (rx + ry) / 2 # TODO
 		ctx.new_sub_path()
 		ctx.arc(x + r, y + r, r, radians(180), radians(270))
 		ctx.line_to(x + w - r, y)
@@ -1011,7 +1130,7 @@ class SVGRender:
 			except KeyError:
 				cy = 0
 			
-			r = self.__units(node.attrib['r'], percentage=min(width, height)) # FIXME
+			r = self.__units(node.attrib['r'], percentage=(width + height) / 2)
 			ctx.arc(cx, cy, r, 0, 2*pi)
 		
 		elif node.tag == f'{{{self.xmlns_svg}}}ellipse':
@@ -1084,6 +1203,7 @@ class SVGRender:
 			ctx.new_path()
 	
 	def __apply_pattern_from_url(self, ctx, box, node, ancestors, current_url, url):
+		#print(url)
 		href = url.strip()[4:-1]
 		if href[0] == '"' and href[-1] == '"': href = href[1:-1]
 		href = self.resolve_url(href, current_url)
@@ -1091,7 +1211,7 @@ class SVGRender:
 		try:
 			target = self.__defs[href]
 		except KeyError:
-			self.error(f"ref not found: {href}", href, node)
+			self.error(f"Color pattern ref not found: {href}", href, node)
 			return False
 		
 		left, top, width, height = box
@@ -1188,11 +1308,11 @@ class SVGRender:
 				try:
 					spec = target.attrib['r']
 					if spec[-1] == '%':
-						r = float(spec[:-1]) / 100 * min(width, height)
+						r = float(spec[:-1]) / 100 * (width + height) / 2
 					else:
 						r = float(spec)
 				except KeyError:
-					r = min(width, height)
+					r = (width + height) / 2
 				except ValueError:
 					self.error("Invalid r specification in radial gradient.", target.attrib['r'], target)
 					r = 0
@@ -1322,7 +1442,7 @@ class SVGRender:
 	def __search_attrib(self, node, ancestors, attrib):
 		try:
 			return node.attrib[attrib]
-		except KeyError:
+		except (KeyError, AttributeError):
 			pass
 		
 		for ancestor in reversed(ancestors):
@@ -1342,7 +1462,25 @@ class SVGRender:
 			#print("color not found:", color_attr)
 			color = default_color
 		
-		#print(node.tag, node.attrib, color_attr, color)
+		n = -1
+		while color == 'currentColor' or color == 'inherit':
+			if color == 'currentColor':
+				try:
+					color = self.__search_attrib(node if n == -1 else None, ancestors[:(-n if n > 0 else None)], 'color').strip()
+				except KeyError:
+					color = default_color
+			elif color == 'inherit' and n >= 0:
+				try:
+					color = self.__search_attrib(None, ancestors[:(-n if n > 0 else None)], color_attr).strip()
+					#print(node.tag, color_attr, "inherit ->", color)
+					#print("inherit:", [_a.tag for _a in ancestors[:(-n if n > 0 else None)]], n)
+				except KeyError:
+					color = default_color
+			n += 1
+		
+		assert color != 'currentColor' and color != 'inherit'
+		
+		#color = color.lower()
 		
 		try:
 			color = self.colors[color.lower()]
@@ -1354,12 +1492,6 @@ class SVGRender:
 				return False
 		except AttributeError:
 			pass
-		
-		#if color == 'currentColor':
-		#	try:
-		#		color = node.attrib['color']
-		#	except KeyError:
-		#		return False
 		
 		try:
 			a = float(node.attrib[opacity_attr])
@@ -1383,7 +1515,7 @@ class SVGRender:
 			self.__apply_pattern_from_url(ctx, box, node, ancestors, current_url, color)
 			# TODO: transparency
 		elif color[:4] == 'rgb(' and color[-1] == ')':
-			r, g, b = [float(_c.strip()) for _c in color[4:-1].split(',')]
+			r, g, b = [max(0, min(1, (float(_c) / 255 if _c.strip()[-1] != '%' else float(_c.strip()[:-1]) / 100))) for _c in color[4:-1].split(',')]
 		else:
 			self.error(f"Unsupported color specification in {color_attr}: {color}", color, node)
 		
@@ -1463,14 +1595,17 @@ class SVGRender:
 	
 	def __apply_fill(self, ctx, box, node, ancestors, current_url):
 		#print("apply_fill")
-		return self.__apply_color(ctx, box, node, ancestors, current_url, 'fill', 'fill-opacity', 'black')
+		if not self.__apply_color(ctx, box, node, ancestors, current_url, 'fill', 'fill-opacity', 'black'):
+			return False
 		
 		try:
 			fill_rule = self.__search_attrib(node, ancestors, 'fill-rule')
 		except KeyError:
 			fill_rule = None
 		
+		#print(fill_rule)
 		if fill_rule == 'evenodd':
+			#print("fill rule even-odd")
 			ctx.set_fill_rule(cairo.FillRule.EVEN_ODD)
 		elif fill_rule == 'winding':
 			ctx.set_fill_rule(cairo.FillRule.WINDING)
@@ -1478,6 +1613,8 @@ class SVGRender:
 			pass
 		else:
 			self.error(f"Unsupported fill rule: {fill_rule}", fill_rule, node)
+		
+		return True
 	
 	def __apply_stroke(self, ctx, box, node, ancestors, current_url):
 		if not self.__apply_color(ctx, box, node, ancestors, current_url, 'stroke', 'stroke-opacity', 'none'):
@@ -1797,10 +1934,11 @@ class SVGRender:
 			y = 0
 		
 		try:
-			font_size = self.__units(node.attrib['font-size'], percentage=min(width, height))
+			font_size = self.__units(node.attrib['font-size'], percentage=(width + height) / 2)
 		except KeyError:
 			font_size = 12
 		
+		#if font_size != None:
 		ctx.set_font_size(font_size)
 		
 		ctx.move_to(x, y)
@@ -2176,6 +2314,10 @@ if __name__ == '__main__':
 			print(self.__name + '.get_line_width()')
 			return 1
 		
+		def copy_path(self):
+			print(self.__name + '.copy_path()')
+			return [(cairo.PATH_MOVE_TO, (0, 0))]
+		
 		def path_extents(self):
 			print(self.__name + '.path_extents()')
 			return 0, 0, 1, 1
@@ -2189,7 +2331,7 @@ if __name__ == '__main__':
 	for filepath in Path('gfx').iterdir():
 		if filepath.suffix != '.svg': continue
 		print(filepath)
-		if not str(filepath).startswith('gfx/typographer_caps.svg'): continue
+		#if not str(filepath).startswith('gfx/typographer_caps.svg'): continue
 		rnd = SVGRender()
 		rnd.open(str(filepath))
 		ctx = PseudoContext(f'Context("{str(filepath)}")')
