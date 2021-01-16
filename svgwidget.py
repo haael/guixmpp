@@ -788,7 +788,7 @@ if __name__ == '__main__':
 	#svgwidget.show_svg('gfx/arcs_2.svg') # text
 	#svgwidget.show_svg('gfx/BYR_color_wheel.svg') # OK
 	#svgwidget.show_svg('gfx/Circulatory system SMIL.svg')
-	#svgwidget.show_svg('gfx/Comparison of several satellite navigation system orbits.svg')
+	svgwidget.show_svg('gfx/Comparison of several satellite navigation system orbits.svg')
 	#svgwidget.show_svg('gfx/Contra-zoom aka dolly zoom animation.svg')
 	#svgwidget.show_svg('gfx/drawing.svg') # OK
 	#svgwidget.show_svg('gfx/drawing_no_white_BG.svg') # OK
@@ -819,7 +819,7 @@ if __name__ == '__main__':
 	#svgwidget.show_svg('gfx/Text_background_edge.svg')
 	#svgwidget.show_svg('gfx/typographer_caps.svg') # bezier
 	#svgwidget.show_svg('gfx/Vector-based_example.svg') # radial gradient
-	svgwidget.show_svg('gfx/xforms_sample.svg')
+	#svgwidget.show_svg('gfx/xforms_sample.svg')
 	
 	window.add(svgwidget)
 	

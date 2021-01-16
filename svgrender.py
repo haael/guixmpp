@@ -251,10 +251,6 @@ class SVGRender:
 		'yellowgreen': '#9ACD32',
 	}
 	
-	color_attr = 'stroke', 'fill'
-	
-	Mode = Enum('Mode', 'none paint clip')
-	
 	class NotANumber(BaseException):
 		def __init__(self, original):
 			self.original = original
@@ -283,7 +279,10 @@ class SVGRender:
 	def resolve_url(rel_url, base_url):
 		"Provided the relative url and the base url, return an absolute url."
 		
-		#print(repr(base_url), repr(rel_url))
+		if rel_url.startswith('file:'):
+			rel_url = rel_url[5:]
+		elif rel_url.startswith('data:'):
+			return rel_url
 		
 		if base_url and base_url[-1] == '/':
 			return base_url + rel_url
@@ -311,7 +310,6 @@ class SVGRender:
 		To avoid requesting the same resource multiple times, call `self.enter_pending(url)` at the start and exit the function if it returns True.
 		"""
 		
-		#print("request_url", url)
 		if self.enter_pending(url): return
 		
 		exceptions = []
@@ -321,8 +319,6 @@ class SVGRender:
 
 			class Parser(XMLParser): # overcome the limitation of XMLParser that it doesn't parse processing instructions
 				def feed(self, data):
-					#print(data)
-					
 					try:
 						start = data.index(b'<?xml-stylesheet')
 						stop = data.index(b'?>', start) + 2
@@ -354,7 +350,31 @@ class SVGRender:
 			return
 		
 		try:
-			surface = cairo.ImageSurface.create_from_png(url)
+			if url.startswith('data:image/png;base64,'):
+				from base64 import b64decode
+				from png import Reader
+				data = b64decode(url[22:])
+				print("data:", len(data))
+				image = Reader(bytes=data)
+				print("image:", image)
+				width, height, rows, info = image.asRGBA()
+				print(width, height, rows, info)
+				surface = cairo.ImageSurface.create_for_data(bytearray([0]) * width * height * 4, cairo.Format.ARGB32, width, height)
+				ctx = cairo.Context(surface)
+				for y, row in enumerate(rows):
+					for x in range(len(row) // 4):
+						r = row[4 * x] / 255
+						g = row[4 * x + 1] / 255
+						b = row[4 * x + 2] / 255
+						a = row[4 * x + 3] / 255
+						#print(x, y, (r, g, b, a))
+						ctx.rectangle(x, y, 1, 1)
+						ctx.set_source_rgba(r, g, b, a)
+						ctx.fill()
+				
+				print(surface)
+			else:
+				surface = cairo.ImageSurface.create_from_png(url)
 		except Exception as error:
 			exceptions.append(error)
 		else:
@@ -368,7 +388,6 @@ class SVGRender:
 		except Exception as error:
 			exceptions.append(error)
 		else:
-			#print("register_doc", url)
 			self.register_doc(url, document)
 			return
 		
@@ -394,14 +413,10 @@ class SVGRender:
 					
 					if match: break
 				
-				#print(target_ref, node.tag, match)
 				if not match: continue
 				
 				for decl in parse_declaration_list(serialize(rule.content)):
-					#print(decl)
 					try:
-						#print(target_ref, node.tag, decl.name, serialize(decl.value))
-						#if decl.name not in node.attrib:
 						node.attrib[decl.name] = serialize(decl.value)
 					except AttributeError:
 						pass
@@ -431,8 +446,6 @@ class SVGRender:
 		try:
 			for decl in parse_declaration_list(node.attrib['style']):
 				try:
-					#print(decl.name, serialize(decl.value))
-					#if decl.name not in node.attrib:
 					node.attrib[decl.name] = serialize(decl.value)
 				except AttributeError:
 					pass
@@ -446,20 +459,15 @@ class SVGRender:
 		root = document.getroot()
 		try:
 			if document.stylesheet:
-				#print("document.stylesheet", document.stylesheet)
 				href = self.resolve_url(document.stylesheet, self.main_url)
-				#print("href", href)
 				stylesheet = self.get_doc(href).decode('utf-8')
-				#print("stylesheet present")
 			else:
 				stylesheet = None
 		except AttributeError:
 			pass
 		except KeyError:
-			#print("(key error)")
 			self.request_url(self.resolve_url(document.stylesheet, self.main_url))
 		else:
-			#print(stylesheet)
 			if stylesheet:
 				self.__parse_stylesheet_resource(stylesheet, url, root)
 		self.__parse_style_tag(url, root, url, root)
@@ -619,7 +627,6 @@ class SVGRender:
 	def __scan_links(self, base_url, node):
 		try:
 			self.__defs[base_url + '#' + node.attrib['id'].strip()] = node
-			#print(base_url + '#' + node.attrib['id'])
 		except KeyError:
 			pass
 		
@@ -629,7 +636,6 @@ class SVGRender:
 				abs_url = self.resolve_url(url, base_url)
 				if '#' in abs_url:
 					abs_url = '#'.join(abs_url.split('#')[:-1])
-				#if (url not in self.__svgs) and (url not in self.__imgs):
 				self.request_url(abs_url)
 		
 		for child in node:
@@ -654,7 +660,10 @@ class SVGRender:
 		except KeyError:
 			pass
 		else:
-			return self.render_image(ctx, box, surface, url, level, draw, pointer)
+			ctx.set_source_surface(surface)
+			ctx.paint()
+			return [None]
+			#return self.render_image(ctx, box, surface, [], url, level, draw, pointer)
 		
 		self.error(f"no content registered for the url {url}", url, None)
 		return []
@@ -675,21 +684,7 @@ class SVGRender:
 		elif node.tag == f'{{{self.xmlns_svg}}}a':
 			return self.render_anchor(ctx, box, node, ancestors, current_url, level, draw, pointer)
 		elif node.tag == f'{{{self.xmlns_svg}}}image':
-			href = node.attrib[f'{{{self.xmlns_xlink}}}href']
-			url = self.resolve_url(href, current_url)
-			
-			left, top, width, height = box
-			x = self.__units(node.attrib['x'], percentage=width)
-			y = self.__units(node.attrib['y'], percentage=height)
-			w = self.__units(node.attrib['width'], percentage=width)
-			h = self.__units(node.attrib['height'], percentage=height)
-			
-			if pointer: pointer = pointer[0] - x, pointer[1] - y # TODO: user coordinates
-			
-			nodes_under_pointer = self.render_url(ctx, (x, y, w, h), url, level, draw, pointer)
-			if nodes_under_pointer:
-				nodes_under_pointer.insert(0, node)
-			return nodes_under_pointer
+			return self.render_image(ctx, box, node, ancestors, current_url, level, draw, pointer)
 		elif node.tag == f'{{{self.xmlns_svg}}}foreignObject':
 			return self.render_foreign_object(ctx, box, node, ancestors, current_url, level, draw, pointer)
 		elif node.tag in [f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in ('polygon', 'line', 'ellipse', 'circle', 'rect', 'path', 'text')]:
@@ -722,8 +717,6 @@ class SVGRender:
 		target.text = original.text
 		target.tail = original.tail
 		
-		#print("render_use", node.attrib, target.attrib)
-		
 		if 'transform' in node.attrib:
 			target.attrib['transform'] = node.attrib['transform'] + target.attrib.get('transform', '')
 		
@@ -736,7 +729,6 @@ class SVGRender:
 		for child in node:
 			required_features = frozenset(child.attrib.get('requiredFeatures', '').strip().split())
 			required_extensions = frozenset(child.attrib.get('requiredExtensions', '').strip().split())
-			#print(required_features, required_extensions)
 			if required_features <= self.supported_features and required_extensions <= self.supported_extensions:
 				return self.render_node(ctx, box, child, ancestors + [node], current_url, level, draw, pointer)
 		return []
@@ -757,8 +749,33 @@ class SVGRender:
 		return nodes_under_pointer
 	
 	def render_image(self, ctx, box, node, ancestors, current_url, level, draw, pointer):
-		self.error(f"element rendering not implemented: {node.tag}", node.tag, node) # TODO
-		return []
+		href = node.attrib[f'{{{self.xmlns_xlink}}}href']
+		url = self.resolve_url(href, current_url)
+		
+		left, top, width, height = box
+		x = self.__units(node.attrib['x'], percentage=width)
+		y = self.__units(node.attrib['y'], percentage=height)
+		w = self.__units(node.attrib['width'], percentage=width)
+		h = self.__units(node.attrib['height'], percentage=height)
+		box = x, y, w, h
+		
+		if pointer: pointer = pointer[0] - x, pointer[1] - y # TODO: user coordinates
+		
+		if 'transform' in node.attrib:
+			ctx.save()
+			self.__apply_transform(ctx, box, node, ancestors)
+		
+		ctx.save()
+		ctx.translate(x, y)
+		nodes_under_pointer = self.render_url(ctx, box, url, level, draw, pointer)
+		ctx.restore()
+		
+		if 'transform' in node.attrib:
+			ctx.restore()
+		
+		if nodes_under_pointer:
+			nodes_under_pointer.insert(0, node)
+		return nodes_under_pointer
 	
 	def render_foreign_object(self, ctx, box, node, ancestors, current_url, level, draw, pointer):
 		#self.error(f"element rendering not implemented: {node.tag}", node.tag, node) # TODO
@@ -1071,8 +1088,7 @@ class SVGRender:
 		nodes_under_pointer = []
 		ancestors = ancestors + [node]
 		for child in node:
-			#print("group child", child)
-			nodes_under_pointer.extend(self.render_node(ctx, box, child, ancestors, current_url, level+1, draw, pointer))
+			nodes_under_pointer += self.render_node(ctx, box, child, ancestors, current_url, level+1, draw, pointer)
 		
 		if 'transform' in node.attrib:
 			ctx.restore()
@@ -2299,7 +2315,7 @@ class SVGRender:
 		return float(value) * scale + shift
 
 
-if __name__ == '__main__':
+if __debug__ and __name__ == '__main__':
 	from pathlib import Path
 	
 	class PseudoContext:
@@ -2331,7 +2347,6 @@ if __name__ == '__main__':
 	for filepath in Path('gfx').iterdir():
 		if filepath.suffix != '.svg': continue
 		print(filepath)
-		#if not str(filepath).startswith('gfx/typographer_caps.svg'): continue
 		rnd = SVGRender()
 		rnd.open(str(filepath))
 		ctx = PseudoContext(f'Context("{str(filepath)}")')
