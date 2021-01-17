@@ -353,24 +353,23 @@ class SVGRender:
 			if url.startswith('data:image/png;base64,'):
 				from base64 import b64decode
 				from png import Reader
-				data = b64decode(url[22:])
-				print("data:", len(data))
-				image = Reader(bytes=data)
-				print("image:", image)
+				
+				png_data = b64decode(url[22:])
+				image = Reader(bytes=png_data)
 				width, height, rows, info = image.asRGBA()
-				print(width, height, rows, info)
-				surface = cairo.ImageSurface.create_for_data(bytearray([0]) * width * height * 4, cairo.Format.ARGB32, width, height)
-				ctx = cairo.Context(surface)
+				pixel_data = bytearray([0]) * width * height * 4
+				
 				for y, row in enumerate(rows):
 					for x in range(len(row) // 4):
-						r = row[4 * x] / 255
-						g = row[4 * x + 1] / 255
-						b = row[4 * x + 2] / 255
-						a = row[4 * x + 3] / 255
-						#print(x, y, (r, g, b, a))
-						ctx.rectangle(x, y, 1, 1)
-						ctx.set_source_rgba(r, g, b, a)
-						ctx.fill()
+						# little endian byte order assumed
+						# TODO: endianess detection, big endian
+						alpha = row[4 * x + 3] / 255
+						pixel_data[4 * (width * y + x) + 0] = int(alpha * row[4 * x + 2]) # blue
+						pixel_data[4 * (width * y + x) + 1] = int(alpha * row[4 * x + 1]) # green
+						pixel_data[4 * (width * y + x) + 2] = int(alpha * row[4 * x + 0]) # red
+						pixel_data[4 * (width * y + x) + 3] = row[4 * x + 3] # alpha
+				
+				surface = cairo.ImageSurface.create_for_data(pixel_data, cairo.Format.ARGB32, width, height)
 				
 				print(surface)
 			else:
@@ -660,7 +659,7 @@ class SVGRender:
 		except KeyError:
 			pass
 		else:
-			ctx.set_source_surface(surface)
+			ctx.set_source_surface(surface, box[0], box[1])
 			ctx.paint()
 			return [None]
 			#return self.render_image(ctx, box, surface, [], url, level, draw, pointer)
@@ -765,10 +764,7 @@ class SVGRender:
 			ctx.save()
 			self.__apply_transform(ctx, box, node, ancestors)
 		
-		ctx.save()
-		ctx.translate(x, y)
 		nodes_under_pointer = self.render_url(ctx, box, url, level, draw, pointer)
-		ctx.restore()
 		
 		if 'transform' in node.attrib:
 			ctx.restore()
@@ -1210,13 +1206,17 @@ class SVGRender:
 		return nodes_under_pointer
 	
 	def __apply_paint(self, ctx, box, node, ancestors, current_url):
+		ctx.save()
 		if self.__apply_fill(ctx, box, node, ancestors, current_url):
 			ctx.fill_preserve()
+		ctx.restore()
 		
+		ctx.save()
 		if self.__apply_stroke(ctx, box, node, ancestors, current_url):
 			ctx.stroke()
 		else:
 			ctx.new_path()
+		ctx.restore()
 	
 	def __apply_pattern_from_url(self, ctx, box, node, ancestors, current_url, url):
 		#print(url)
@@ -1233,6 +1233,11 @@ class SVGRender:
 		left, top, width, height = box
 		
 		if target.tag == f'{{{self.xmlns_svg}}}linearGradient' or target.tag == f'{{{self.xmlns_svg}}}radialGradient':
+			
+			if target.attrib.get('gradientUnits', '') == 'userSpaceOnUse':
+				userspace = True
+			else:
+				userspace = False
 			
 			if target.tag == f'{{{self.xmlns_svg}}}linearGradient':
 
@@ -1271,7 +1276,11 @@ class SVGRender:
 					if spec[-1] == '%':
 						x1 = float(spec[:-1]) / 100 * (default_x2 - default_x1) + default_x1
 					else:
-						x1 = float(spec) * (default_x2 - default_x1) + default_x1
+						x1 = float(spec) #* (default_x2 - default_x1) + default_x1
+						
+						if not userspace:
+							x1 = x1 * (default_x2 - default_x1) + default_x1
+					
 					#x1 = self.__units(target.attrib['x1'], percentage=default_x2-default_x1, percentage_origin=default_x1)
 				except KeyError:
 					x1 = default_x1
@@ -1284,7 +1293,11 @@ class SVGRender:
 					if spec[-1] == '%':
 						y1 = float(spec[:-1]) / 100 * (default_y2 - default_y1) + default_y1
 					else:
-						y1 = float(spec) * (default_y2 - default_y1) + default_y1
+						y1 = float(spec) #* (default_y2 - default_y1) + default_y1
+						
+						if not userspace:
+							y1 = y1 * (default_y2 - default_y1) + default_y1
+
 					#y1 = self.__units(target.attrib['y1'], percentage=default_y2-default_y1, percentage_origin=default_y1)
 				except KeyError:
 					y1 = default_y1
@@ -1297,7 +1310,11 @@ class SVGRender:
 					if spec[-1] == '%':
 						x2 = float(spec[:-1]) / 100 * (default_x2 - default_x1) + default_x1
 					else:
-						x2 = float(spec) * (default_x2 - default_x1) + default_x1
+						x2 = float(spec) #* (default_x2 - default_x1) + default_x1
+						
+						if not userspace:
+							x2 = x2 * (default_x2 - default_x1) + default_x1
+
 					#x2 = self.__units(target.attrib['x2'], percentage=default_x2-default_x1, percentage_origin=default_x1)
 				except KeyError:
 					x2 = default_x2
@@ -1310,7 +1327,11 @@ class SVGRender:
 					if spec[-1] == '%':
 						y2 = float(spec[:-1]) / 100 * (default_y2 - default_y1) + default_y1
 					else:
-						y2 = float(spec) * (default_y2 - default_y1) + default_y1
+						y2 = float(spec) #* (default_y2 - default_y1) + default_y1
+						
+						if not userspace:
+							y2 = y2 * (default_y2 - default_y1) + default_y1
+
 					#y2 = self.__units(target.attrib['y2'], percentage=default_y2-default_y1, percentage_origin=default_y1)
 				except KeyError:
 					y2 = default_y1
@@ -1318,13 +1339,16 @@ class SVGRender:
 					self.error("Invalid y2 specification in linear gradient.", target.attrib['y2'], target)
 					y2 = default_y1
 				
-				gradient = cairo.LinearGradient(x1, y1, x2, y2)
+				print("linear gradient", (x1, y1), (x2, y2), box)
+				gradient = cairo.LinearGradient(x1 + left, y1 + top, x2 + left, y2 + top)
 			
 			elif target.tag == f'{{{self.xmlns_svg}}}radialGradient':
+				default_x1, default_y1, default_x2, default_y2 = ctx.path_extents()
+				
 				try:
 					spec = target.attrib['r']
 					if spec[-1] == '%':
-						r = float(spec[:-1]) / 100 * (width + height) / 2
+						r = float(spec[:-1]) / 100 * (default_x2 - default_x1 + default_y2 - default_y1) / 2 # TODO: right calculation
 					else:
 						r = float(spec)
 				except KeyError:
@@ -1336,7 +1360,7 @@ class SVGRender:
 				try:
 					spec = target.attrib['cx']
 					if spec[-1] == '%':
-						cx = float(spec[:-1]) / 100 * width
+						cx = float(spec[:-1]) / 100 * (default_x2 - default_x1) + default_x1
 					else:
 						cx = float(spec)
 				except KeyError:
@@ -1348,7 +1372,7 @@ class SVGRender:
 				try:
 					spec = target.attrib['cy']
 					if spec[-1] == '%':
-						cy = float(spec[:-1]) / 100 * height
+						cy = float(spec[:-1]) / 100 * (default_y2 - default_y1) + default_y1
 					else:
 						cy = float(spec)
 				except KeyError:
@@ -1360,7 +1384,7 @@ class SVGRender:
 				try:
 					spec = target.attrib['fx']
 					if spec[-1] == '%':
-						fx = float(spec[:-1]) / 100 * width
+						fx = float(spec[:-1]) / 100 * (default_x2 - default_x1) + default_x1
 					else:
 						fx = float(spec)
 				except KeyError:
@@ -1372,7 +1396,7 @@ class SVGRender:
 				try:
 					spec = target.attrib['fy']
 					if spec[-1] == '%':
-						fy = float(spec[:-1]) / 100 * height
+						fy = float(spec[:-1]) / 100 * (default_y2 - default_y1) + default_y1
 					else:
 						fy = float(spec)
 				except KeyError:
@@ -1381,7 +1405,7 @@ class SVGRender:
 					self.error("Invalid cy specification in linear gradient.", target.attrib['fy'], target)
 					fy = cy
 				
-				#print("radial gradient", (cx, cy), (fx, fy), r)
+				print("radial gradient", (cx, cy), (fx, fy), r, box)
 				gradient = cairo.RadialGradient(cx, cy, 0, fx, fy, r)
 			
 			try:
@@ -1449,6 +1473,9 @@ class SVGRender:
 				else:
 					#print("gradient stop", offset, (r, g, b, stop_opacity))
 					gradient.add_color_stop_rgba(offset, r, g, b, stop_opacity)
+			
+			print(target.attrib)
+			self.__apply_transform(ctx, box, target, ancestors + [node], 'gradientTransform')
 			
 			ctx.set_source(gradient)
 		else:
@@ -1542,7 +1569,7 @@ class SVGRender:
 				ctx.set_source_rgba(r, g, b, a)
 		except UnboundLocalError:
 			pass
-
+		
 		#if node.tag == '{http://www.w3.org/2000/svg}rect':
 		#	print("rect", color_attr, a, r, g, b)
 		
@@ -1610,7 +1637,6 @@ class SVGRender:
 		return l
 	
 	def __apply_fill(self, ctx, box, node, ancestors, current_url):
-		#print("apply_fill")
 		if not self.__apply_color(ctx, box, node, ancestors, current_url, 'fill', 'fill-opacity', 'black'):
 			return False
 		
@@ -1619,12 +1645,12 @@ class SVGRender:
 		except KeyError:
 			fill_rule = None
 		
-		#print(fill_rule)
 		if fill_rule == 'evenodd':
-			#print("fill rule even-odd")
 			ctx.set_fill_rule(cairo.FillRule.EVEN_ODD)
 		elif fill_rule == 'winding':
 			ctx.set_fill_rule(cairo.FillRule.WINDING)
+		elif fill_rule == 'nonzero':
+			self.error(f"Unsupported fill rule: {fill_rule}", fill_rule, node) # TODO
 		elif fill_rule == None:
 			pass
 		else:
@@ -1636,8 +1662,6 @@ class SVGRender:
 		if not self.__apply_color(ctx, box, node, ancestors, current_url, 'stroke', 'stroke-opacity', 'none'):
 			return False
 		
-		#style = self.__process_style(node)
-		
 		try:
 			stroke_width = self.__units(str(self.__search_attrib(node, ancestors, 'stroke-width')))
 		except KeyError:
@@ -1646,7 +1670,6 @@ class SVGRender:
 			self.error(f"Unsupported stroke spec: {self.__search_attrib(node, ancestors, 'stroke-width')}", self.__search_attrib(node, ancestors, 'stroke-width'), node)
 			return False
 		
-		#print("stroke_width", stroke_width)
 		if stroke_width > 0:
 			ctx.set_line_width(stroke_width)
 		else:
@@ -1936,6 +1959,60 @@ class SVGRender:
 				raise
 				return
 	
+	def __apply_font(self, ctx, box, node, ancestors):
+		left, top, width, height = box
+		
+		try:
+			font_family = self.__search_attrib(node, ancestors, 'font-family')
+		except KeyError:
+			font_family = ''
+		
+		try:
+			font_style_attrib = self.__search_attrib(node, ancestors, 'font-style')
+		except KeyError:
+			font_style = cairo.FontSlant.NORMAL
+		else:
+			if font_style_attrib == 'normal':
+				font_style = cairo.FontSlant.NORMAL
+			elif font_style_attrib == 'italic':
+				font_style = cairo.FontSlant.ITALIC
+			elif font_style_attrib == 'oblique':
+				font_style = cairo.FontSlant.OBLIQUE
+			else:
+				self.error(f"Unsupported font style '{font_style_attrib}'", font_style_attrib, node)
+				font_style = cairo.FontSlant.NORMAL
+		
+		try:
+			font_weight_attrib = self.__search_attrib(node, ancestors, 'font-weight')
+		except KeyError:
+			font_weight = cairo.FontWeight.NORMAL
+		else:
+			if font_weight_attrib == 'normal':
+				font_weight = cairo.FontWeight.NORMAL
+			elif font_weight_attrib == 'bold':
+				font_weight = cairo.FontWeight.BOLD
+			else:
+				self.error(f"Unsupported font weight '{font_weight_attrib}'", font_weight_attrib, node)
+				font_weight = cairo.FontWeight.NORMAL
+		
+		try:
+			text_anchor = self.__search_attrib(node, ancestors, 'text-anchor').strip()
+		except KeyError:
+			text_anchor = ''
+		
+		try:
+			font_size_attrib = self.__search_attrib(node, ancestors, 'font-size')
+		except KeyError:
+			font_size = 12
+		else:
+			font_size = self.__units(font_size_attrib, percentage=(width + height) / 2)
+		
+		#print("font size", font_size)
+		ctx.set_font_face(cairo.ToyFontFace(font_family, font_style, font_weight))
+		ctx.set_font_size(font_size)
+		
+		return text_anchor
+	
 	def render_text(self, ctx, box, node, ancestors, level):
 		left, top, width, height = box
 		
@@ -1949,18 +2026,20 @@ class SVGRender:
 		except KeyError:
 			y = 0
 		
-		try:
-			font_size = self.__units(node.attrib['font-size'], percentage=(width + height) / 2)
-		except KeyError:
-			font_size = 12
-		
-		#if font_size != None:
-		ctx.set_font_size(font_size)
+		text_anchor = self.__apply_font(ctx, box, node, ancestors)
 		
 		ctx.move_to(x, y)
 		
 		if node.text:
-			ctx.text_path(node.text.strip())
+			txt = node.text.strip()
+			if text_anchor == 'end':
+				extents = ctx.text_extents(txt)
+				ctx.rel_move_to(-extents.width, 0)
+			elif text_anchor == 'middle':
+				extents = ctx.text_extents(txt)
+				#print("text anchor", text_anchor, extents.width)
+				ctx.rel_move_to(-extents.width / 2, 0)
+			ctx.text_path(txt)
 		
 		for child in node:
 			if child.tag == f'{{{self.xmlns_svg}}}tspan':
@@ -1994,8 +2073,17 @@ class SVGRender:
 				if dx or dy:
 					ctx.rel_move_to(dx, dy)
 				
+				text_anchor = self.__apply_font(ctx, box, child, ancestors + [node])
+				
 				if child.text:
-					ctx.text_path(child.text.strip())
+					txt = child.text.strip()
+					if text_anchor == 'end':
+						extents = ctx.text_extents(txt)
+						ctx.rel_move_to(-extents.width, 0)
+					elif text_anchor == 'middle':
+						extents = ctx.text_extents(txt)
+						ctx.rel_move_to(-extents.width / 2, 0)
+					ctx.text_path(txt)
 				
 				ctx.restore()
 			else:
@@ -2018,38 +2106,23 @@ class SVGRender:
 		text = text.replace(',', '')
 		return not text or text.isspace()
 	
-	def __apply_transform(self, ctx, box, node, ancestors):
+	def __apply_transform(self, ctx, box, node, ancestors, transform_attrib='transform'):
 		left, top, width, height = box
 		
 		try:
-			text = node.attrib['transform']
+			text = node.attrib[transform_attrib]
+			#print(transform_attrib, text)
 		except KeyError:
 			return False
 		
 		try:
 			origin = node.attrib['transform-origin'].split()
 		except KeyError:
-			#origin_x = width / 2 + left
-			#origin_y = height / 2 + top
 			origin_x = 0
 			origin_y = 0
 		else:
 			origin_x = self.__units(origin[0], percentage=width)
 			origin_y = self.__units(origin[1], percentage=height)
-		
-		#if save_ctx: ctx.save()
-		
-		#print(box, origin_x, origin_y)
-		#
-		#ctx.move_to(0, -5)
-		#ctx.line_to(0, 5)
-		#ctx.move_to(-5, 0)
-		#ctx.line_to(5, 0)
-		#ctx.set_source_rgb(1, 0, 0)
-		#ctx.save()
-		#ctx.set_line_width(1)
-		#ctx.stroke()
-		#ctx.restore()
 		
 		if origin_x or origin_y:
 			ctx.translate(origin_x, origin_y)
@@ -2132,16 +2205,6 @@ class SVGRender:
 		
 		if origin_x or origin_y:
 			ctx.translate(-origin_x, -origin_y)
-		
-		#ctx.move_to(-5, -5)
-		#ctx.line_to(5, 5)
-		#ctx.move_to(-5, 5)
-		#ctx.line_to(5, -5)
-		#ctx.set_source_rgb(0, 1, 0)
-		#ctx.save()
-		#ctx.set_line_width(1)
-		#ctx.stroke()
-		#ctx.restore()
 		
 		return True
 	
