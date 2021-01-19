@@ -659,10 +659,18 @@ class SVGRender:
 		except KeyError:
 			pass
 		else:
-			ctx.set_source_surface(surface, box[0], box[1])
-			ctx.paint()
-			return [None]
-			#return self.render_image(ctx, box, surface, [], url, level, draw, pointer)
+			#ctx.set_source_rgb(0, 0, 0)
+			ctx.rectangle(box[0], box[1], box[2], box[3])
+			ctx.clip()
+			if draw:
+				ctx.set_source_surface(surface, box[0], box[1])
+				ctx.paint()
+			if pointer:
+				#print(ctx.device_to_user(*pointer), ctx.clip_extents())
+				if ctx.in_clip(*ctx.device_to_user(*pointer)):
+					#print("hit")
+					return [None]
+			return []
 		
 		self.error(f"no content registered for the url {url}", url, None)
 		return []
@@ -758,7 +766,7 @@ class SVGRender:
 		h = self.__units(node.attrib['height'], percentage=height)
 		box = x, y, w, h
 		
-		if pointer: pointer = pointer[0] - x, pointer[1] - y # TODO: user coordinates
+		#if pointer: pointer = pointer[0] - x, pointer[1] - y # TODO: user coordinates
 		
 		if 'transform' in node.attrib:
 			ctx.save()
@@ -771,6 +779,8 @@ class SVGRender:
 		
 		if nodes_under_pointer:
 			nodes_under_pointer.insert(0, node)
+			if nodes_under_pointer[-1] == None:
+				del nodes_under_pointer[-1]
 		return nodes_under_pointer
 	
 	def render_foreign_object(self, ctx, box, node, ancestors, current_url, level, draw, pointer):
@@ -838,22 +848,38 @@ class SVGRender:
 				else:
 					self.render_foreign_node(ctx, (x, y, w, h / (item_count + 1)), label, ancestors + [node], current_url, level, draw, pointer)
 				
-				ctx.set_line_width(1.0)
 				ctx.set_source_rgb(0.75, 0.75, 0.75)
 				for n, item in enumerate(_item for _item in node if _item.tag == f'{{{self.xmlns_xforms}}}item'):
 
-					ctx.save()
-					ctx.rectangle(x + 1.5, y + (n + 1) * (h / (item_count + 1)) + 1.5, h / (item_count + 1) - 3, h / (item_count + 1) - 3)
-					ctx.clip()
-					ctx.set_source_rgb(0.25, 0.25, 0.25)
-					ctx.paint()
-					ctx.set_source_rgb(1, 1, 1)
-					ctx.rectangle(x + 1.5 + 1.5, y + (n + 1) * (h / (item_count + 1)) + 1.5 + 1.5, h / (item_count + 1) - 3, h / (item_count + 1) - 3)
-					ctx.fill()
-					ctx.restore()
-					ctx.set_source_rgb(0.75, 0.75, 0.75)
-					ctx.rectangle(x + 1.5, y + (n + 1) * (h / (item_count + 1)) + 1.5, h / (item_count + 1) - 3, h / (item_count + 1) - 3)
-					ctx.stroke()
+					if multiselect:
+						ctx.set_line_width(1.0)
+						ctx.save()
+						ctx.rectangle(x + 1.5, y + (n + 1) * (h / (item_count + 1)) + 1.5, h / (item_count + 1) - 3, h / (item_count + 1) - 3)
+						ctx.clip()
+						ctx.set_source_rgb(0.25, 0.25, 0.25)
+						ctx.paint()
+						ctx.set_source_rgb(1, 1, 1)
+						ctx.rectangle(x + 1.5 + 1.5, y + (n + 1) * (h / (item_count + 1)) + 1.5 + 1.5, h / (item_count + 1) - 3, h / (item_count + 1) - 3)
+						ctx.fill()
+						ctx.restore()
+						ctx.set_source_rgb(0.75, 0.75, 0.75)
+						ctx.rectangle(x + 1.5, y + (n + 1) * (h / (item_count + 1)) + 1.5, h / (item_count + 1) - 3, h / (item_count + 1) - 3)
+						ctx.stroke()
+					else:
+						ctx.set_line_width(1.5)
+						ctx.save()
+						r = (h / (item_count + 1) - 3) / 2
+						ctx.arc(x + 1.5 + r, y + (n + 1) * (h / (item_count + 1)) + 1.5 + r, r, 0, 2 * pi)
+						ctx.clip()
+						ctx.set_source_rgb(0.25, 0.25, 0.25)
+						ctx.paint()
+						ctx.set_source_rgb(1, 1, 1)
+						ctx.arc(x + 1.5 + r + 1.5, y + (n + 1) * (h / (item_count + 1)) + 1.5 + r + 1.5, r, 0, 2 * pi)
+						ctx.fill()
+						ctx.restore()
+						ctx.set_source_rgb(0.75, 0.75, 0.75)
+						ctx.arc(x + 1.5 + r, y + (n + 1) * (h / (item_count + 1)) + 1.5 + r, r, 0, 2 * pi)
+						ctx.stroke()
 					
 					item_box = (x + 1.5 + h / (item_count + 1), y + 1.5 + (n + 1) * (h / (item_count + 1)), w - 3, h / (item_count + 1) - 3)
 					self.render_foreign_node(ctx, item_box, item, ancestors + [node], current_url, level, draw, pointer)
@@ -981,6 +1007,7 @@ class SVGRender:
 				text_node.attrib = dict()
 				text_node.attrib['x'] = '10'
 				text_node.attrib['y'] = str((box[3] + 12) / 2)
+				text_node.attrib['font-size'] = '12'
 				text_node.text = node.text
 				
 				ctx.save()
@@ -1189,34 +1216,38 @@ class SVGRender:
 		else:
 			self.error(f"tag {node.tag} not supported by this method", node.tag, node)
 		
+		has_fill, has_stroke = self.__apply_paint(ctx, box, node, ancestors, current_url, draw)
+		
 		nodes_under_pointer = []
 		if pointer:
-			x, y = pointer
-			if ctx.in_stroke(x, y) or ctx.in_fill(x, y):
+			x, y = ctx.device_to_user(*pointer)
+			if (has_stroke and ctx.in_stroke(x, y)) or (has_fill and ctx.in_fill(x, y)):
 				nodes_under_pointer.append(node)
 		
-		if draw:
-			self.__apply_paint(ctx, box, node, ancestors, current_url)
-		else:
-			ctx.new_path()
+		ctx.new_path()
 		
 		if 'transform' in node.attrib:
 			ctx.restore()
 		
 		return nodes_under_pointer
 	
-	def __apply_paint(self, ctx, box, node, ancestors, current_url):
+	def __apply_paint(self, ctx, box, node, ancestors, current_url, draw):
+		has_fill = False
 		ctx.save()
 		if self.__apply_fill(ctx, box, node, ancestors, current_url):
-			ctx.fill_preserve()
+			has_fill = True
+			if draw:
+				ctx.fill_preserve()
 		ctx.restore()
 		
+		has_stroke = False
 		ctx.save()
 		if self.__apply_stroke(ctx, box, node, ancestors, current_url):
-			ctx.stroke()
-		else:
-			ctx.new_path()
+			if draw:
+				ctx.stroke_preserve()
 		ctx.restore()
+		
+		return has_fill, has_stroke
 	
 	def __apply_pattern_from_url(self, ctx, box, node, ancestors, current_url, url):
 		#print(url)
@@ -1339,7 +1370,7 @@ class SVGRender:
 					self.error("Invalid y2 specification in linear gradient.", target.attrib['y2'], target)
 					y2 = default_y1
 				
-				print("linear gradient", (x1, y1), (x2, y2), box)
+				#print("linear gradient", (x1, y1), (x2, y2), box)
 				gradient = cairo.LinearGradient(x1 + left, y1 + top, x2 + left, y2 + top)
 			
 			elif target.tag == f'{{{self.xmlns_svg}}}radialGradient':
@@ -1405,7 +1436,7 @@ class SVGRender:
 					self.error("Invalid cy specification in linear gradient.", target.attrib['fy'], target)
 					fy = cy
 				
-				print("radial gradient", (cx, cy), (fx, fy), r, box)
+				#print("radial gradient", (cx, cy), (fx, fy), r, box)
 				gradient = cairo.RadialGradient(cx, cy, 0, fx, fy, r)
 			
 			try:
@@ -1474,7 +1505,7 @@ class SVGRender:
 					#print("gradient stop", offset, (r, g, b, stop_opacity))
 					gradient.add_color_stop_rgba(offset, r, g, b, stop_opacity)
 			
-			print(target.attrib)
+			#print(target.attrib)
 			self.__apply_transform(ctx, box, target, ancestors + [node], 'gradientTransform')
 			
 			ctx.set_source(gradient)
@@ -1992,8 +2023,16 @@ class SVGRender:
 			elif font_weight_attrib == 'bold':
 				font_weight = cairo.FontWeight.BOLD
 			else:
-				self.error(f"Unsupported font weight '{font_weight_attrib}'", font_weight_attrib, node)
-				font_weight = cairo.FontWeight.NORMAL
+				try:
+					font_weight_number = int(font_weight_attrib)
+				except ValueError:
+					self.error(f"Unsupported font weight '{font_weight_attrib}'", font_weight_attrib, node)
+					font_weight = cairo.FontWeight.NORMAL
+				else:
+					if font_weight_number > 500:
+						font_weight = cairo.FontWeight.BOLD
+					else:
+						font_weight = cairo.FontWeight.NORMAL
 		
 		try:
 			text_anchor = self.__search_attrib(node, ancestors, 'text-anchor').strip()
@@ -2008,7 +2047,8 @@ class SVGRender:
 			font_size = self.__units(font_size_attrib, percentage=(width + height) / 2)
 		
 		#print("font size", font_size)
-		ctx.set_font_face(cairo.ToyFontFace(font_family, font_style, font_weight))
+		#print("font family", font_family.split(',')[-1])
+		ctx.select_font_face(font_family.split(',')[-1], font_style, font_weight)
 		ctx.set_font_size(font_size)
 		
 		return text_anchor
@@ -2048,16 +2088,14 @@ class SVGRender:
 				try:
 					x = self.__units(child.attrib['x'], percentage=width)
 				except KeyError:
-					x = None
+					x = 0
 				
 				try:
 					y = self.__units(child.attrib['y'], percentage=height)
 				except KeyError:
-					y = None
+					y = 0
 				
-				if x != None or y != None:
-					if x == None: x = 0
-					if y == None: y = 0
+				if x or y:
 					ctx.move_to(x, y)
 				
 				try:
@@ -2342,7 +2380,7 @@ class SVGRender:
 			scale = 1
 			value = spec[:-2]
 		elif spec[-2:] == 'ex':
-			scale = 1
+			scale = 24
 			value = spec[:-2]
 		elif spec[-2:] == 'mm':
 			scale = 96 / 25.4

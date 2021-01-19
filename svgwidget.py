@@ -809,7 +809,7 @@ if __name__ == '__main__':
 	#svgwidget.show_svg('gfx/logo_nocss.svg') # OK
 	#svgwidget.show_svg('gfx/Morphing SMIL.svg') # blur
 	#svgwidget.show_svg('gfx/PageRanks-Example.svg') # OK
-	#svgwidget.show_svg('gfx/Phonetics Guide.svg') # text anchor
+	#svgwidget.show_svg('gfx/Phonetics Guide.svg') # OK
 	#svgwidget.show_svg('gfx/status_icons.svg') # OK
 	#svgwidget.show_svg('gfx/Steering_wheel_1.svg') # OK
 	#svgwidget.show_svg('gfx/Steering_wheel_2.svg') # OK

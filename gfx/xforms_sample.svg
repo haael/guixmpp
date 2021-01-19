@@ -13,7 +13,7 @@
           </s:espressoPrefs>
         </s:survey>
       </xforms:instance>
-      <xforms:submission id="submit1" method="post" action="http://www.example.org/surveyhandler" />
+      <xforms:submission id="submit1" method="message" action="." />
     </xforms:model>
   </defs>
   <title>Espresso survey</title>
