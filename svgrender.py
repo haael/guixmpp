@@ -1216,13 +1216,60 @@ class SVGRender:
 		else:
 			self.error(f"tag {node.tag} not supported by this method", node.tag, node)
 		
-		has_fill, has_stroke = self.__apply_paint(ctx, box, node, ancestors, current_url, draw)
+		try:
+			visibility = self.__search_attrib(node, ancestors, 'visibility')
+		except KeyError:
+			visibility = 'visible'
+		
+		is_visible = visibility not in ('hidden', 'collapse')
+		
+		has_fill, has_stroke = self.__apply_paint(ctx, box, node, ancestors, current_url, draw and is_visible)
 		
 		nodes_under_pointer = []
 		if pointer:
-			x, y = ctx.device_to_user(*pointer)
-			if (has_stroke and ctx.in_stroke(x, y)) or (has_fill and ctx.in_fill(x, y)):
-				nodes_under_pointer.append(node)
+			try:
+				pointer_events = self.__search_attrib(node, ancestors, 'pointer-events')
+			except KeyError:
+				pointer_events = 'visiblePainted'
+			else:
+				if pointer_events in ('auto', 'inherit', 'initial', 'unset'):
+					pointer_events = 'visiblePainted'
+			
+			if pointer_events == 'visiblePainted':
+				check_fill = is_visible and has_fill
+				check_stroke = is_visible and has_stroke
+			elif pointer_events == 'visibleFill':
+				check_fill = is_visible
+				check_stroke = False
+			elif pointer_events == 'visibleStroke':
+				check_fill = False
+				check_stroke = is_visible
+			elif pointer_events == 'visible':
+				check_fill = is_visible
+				check_stroke = is_visible
+			elif pointer_events == 'painted':
+				check_fill = has_fill
+				check_stroke = has_stroke
+			elif pointer_events == 'fill':
+				check_fill = True
+				check_stroke = False
+			elif pointer_events == 'stroke':
+				check_fill = False
+				check_stroke = True
+			elif pointer_events == 'all':
+				check_fill = True
+				check_stroke = True
+			elif pointer_events == 'none':
+				check_fill = False
+				check_stroke = False
+			else: # same as 'visiblePainted'
+				check_fill = is_visible and has_fill
+				check_stroke = is_visible and has_stroke
+			
+			if check_fill or check_stroke:
+				x, y = ctx.device_to_user(*pointer)
+				if (check_stroke and ctx.in_stroke(x, y)) or (check_fill and ctx.in_fill(x, y)):
+					nodes_under_pointer.append(node)
 		
 		ctx.new_path()
 		

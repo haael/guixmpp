@@ -788,7 +788,7 @@ if __name__ == '__main__':
 	#svgwidget.show_svg('gfx/arcs_2.svg') # text
 	#svgwidget.show_svg('gfx/BYR_color_wheel.svg') # OK
 	#svgwidget.show_svg('gfx/Circulatory system SMIL.svg')
-	svgwidget.show_svg('gfx/Comparison of several satellite navigation system orbits.svg')
+	#svgwidget.show_svg('gfx/Comparison of several satellite navigation system orbits.svg')
 	#svgwidget.show_svg('gfx/Contra-zoom aka dolly zoom animation.svg')
 	#svgwidget.show_svg('gfx/drawing.svg') # OK
 	#svgwidget.show_svg('gfx/drawing_no_white_BG.svg') # OK
@@ -797,7 +797,7 @@ if __name__ == '__main__':
 	#svgwidget.show_svg('gfx/epicyclic gearing animation.svg') # text anchor
 	#svgwidget.show_svg('gfx/fcGold Token.svg') # bezier
 	#svgwidget.show_svg('gfx/genesis_pepe.svg') # OK
-	#svgwidget.show_svg('gfx/Glutamic_acid_test.svg') # text anchor, clipPath
+	#svgwidget.show_svg('gfx/Glutamic_acid_test.svg') # clipPath
 	#svgwidget.show_svg('gfx/gradient_france.svg') # OK
 	#svgwidget.show_svg('gfx/gradient_linear.svg') # OK
 	#svgwidget.show_svg('gfx/gradient_radial.svg') # OK
@@ -809,7 +809,7 @@ if __name__ == '__main__':
 	#svgwidget.show_svg('gfx/logo_nocss.svg') # OK
 	#svgwidget.show_svg('gfx/Morphing SMIL.svg') # blur
 	#svgwidget.show_svg('gfx/PageRanks-Example.svg') # OK
-	#svgwidget.show_svg('gfx/Phonetics Guide.svg') # OK
+	svgwidget.show_svg('gfx/Phonetics Guide.svg') # OK
 	#svgwidget.show_svg('gfx/status_icons.svg') # OK
 	#svgwidget.show_svg('gfx/Steering_wheel_1.svg') # OK
 	#svgwidget.show_svg('gfx/Steering_wheel_2.svg') # OK
