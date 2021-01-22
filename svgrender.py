@@ -489,7 +489,7 @@ class SVGRender:
 		
 		if url in self.__svgs:
 			raise ValueError("SVG already registered")
-		self.__svgs[url] = document #self.transform_svg(url, document)
+		self.__svgs[url] = document
 		
 		self.__scan_links(url, document.getroot())
 		
@@ -676,7 +676,7 @@ class SVGRender:
 		return []
 	
 	def render_node(self, ctx, box, node, ancestors, current_url, level, draw, pointer):
-		if node.tag in [f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in ('defs', 'title', 'desc', 'metadata', 'style', 'linearGradient', 'radialGradient', 'script', 'symbol')]:
+		if node.tag in [f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in ('defs', 'title', 'desc', 'metadata', 'style', 'linearGradient', 'radialGradient', 'script', 'symbol', 'animate', 'filter')]:
 			pass
 		elif node.tag == f'{{{self.xmlns_sodipodi}}}namedview': # a very common nonstandard tag in svg documents created by inkscape
 			pass
@@ -702,7 +702,11 @@ class SVGRender:
 		return []
 	
 	class OverlayElement(list):
-		pass
+		def findall(self, path):
+			if path == '..':
+				return [self.parent]
+			else:
+				raise ValueError
 	
 	def render_use(self, ctx, box, node, ancestors, current_url, level, draw, pointer):
 		href = self.resolve_url(node.attrib[f'{{{self.xmlns_xlink}}}href'], current_url)
@@ -723,6 +727,7 @@ class SVGRender:
 		target.extend(original)
 		target.text = original.text
 		target.tail = original.tail
+		target.parent = node
 		
 		if 'transform' in node.attrib:
 			target.attrib['transform'] = node.attrib['transform'] + target.attrib.get('transform', '')
@@ -1263,11 +1268,13 @@ class SVGRender:
 				check_fill = False
 				check_stroke = False
 			else: # same as 'visiblePainted'
+				self.error(f"Unsupported value of attribute `visibility`: '{visibility}'", visibility, node)
 				check_fill = is_visible and has_fill
 				check_stroke = is_visible and has_stroke
 			
 			if check_fill or check_stroke:
 				x, y = ctx.device_to_user(*pointer)
+				#print(has_fill, has_stroke, check_fill, check_stroke, (x, y), ctx.in_fill(x, y), ctx.in_stroke(x, y))
 				if (check_stroke and ctx.in_stroke(x, y)) or (check_fill and ctx.in_fill(x, y)):
 					nodes_under_pointer.append(node)
 		
@@ -1290,6 +1297,7 @@ class SVGRender:
 		has_stroke = False
 		ctx.save()
 		if self.__apply_stroke(ctx, box, node, ancestors, current_url):
+			has_stroke = True
 			if draw:
 				ctx.stroke_preserve()
 		ctx.restore()
