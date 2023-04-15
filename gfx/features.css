@@ -1,0 +1,112 @@
+
+
+a { b : 1; }
+
+@charset "UTF-8";
+
+@import url("chrome://communicator/skin/");
+
+
+@namespace prefix url(XML-namespace-URL);
+
+
+@font-face {
+  font-family: "Trickster";
+  src: local("Trickster"),
+    url("trickster-COLRv1.otf") format("opentype") tech(color-COLRv1), url("trickster-outline.otf")
+      format("opentype"), url("trickster-outline.woff") format("woff");
+}
+
+@font-feature-values Font One {
+  @styleset {
+    nice-style: 12;
+  }
+}
+
+
+@font-feature-values Font Two {
+  @styleset {
+    nice-style: 4;
+  }
+}
+
+
+@keyframes identifier {
+  0% {
+    top: 0;
+    left: 0;
+  }
+  30% {
+    top: 50px;
+  }
+  68%,
+  72% {
+    left: 50px;
+  }
+  100% {
+    top: 100px;
+    left: 100%;
+  }
+}
+
+@unsupported {
+
+
+ xyz
+ ===
+ iii
+
+ {}
+ {x}
+}
+
+
+GtkEntry.invalid
+{
+	background:#ffdddd;
+	background-color:#ffdddd;
+}
+
+
+GtkEntry.inactive
+{
+	background:#a0a0a0;
+	background-color:#a0a0a0;
+}
+
+GtkBox
+{
+	background:white;
+	background-color:white;
+}
+
+:root {
+  --blue: #1e90ff;
+  --white: #ffffff;
+}
+
+body { background-color: var(--blue); }
+
+h2 { border-bottom: 2px solid var(--blue); }
+
+.container {
+  color: var(--blue);
+  background-color: var(--white);
+  padding: 15px;
+}
+
+button {
+  background-color: var(--white);
+  color: var(--blue);
+  border: 1px solid var(--blue);
+  padding: 5px;
+/* property: calc(expression) */
+width: calc(100% - 80px);
+
+}
+
+
+a.b a:has(.c) a.b.c #ia.b:with(a .b) > *::sth ~ a.b:hobe {
+  background-color: var(--white);
+}
+

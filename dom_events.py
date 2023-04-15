@@ -26,7 +26,6 @@ class Event:
     AT_TARGET = 2
     BUBBLING_PHASE = 3
 
-
     def __init__(self, type_, **kwargs):
         if type(self) == Event:
             raise ValueError("Direct instantiation of class 'Event' is not allowed.")
@@ -40,7 +39,6 @@ class Event:
         self.timeStamp = time() #~ ToDo DOMHighResTimeStamp
         if kwargs:
             raise TypeError("Check arguments names or remove surplus.\nNot allowed kwarguments: {}".format(list(kwargs.keys())))
-
 
     def __setattr__(self, attr, value):
         if attr in ("eventPhase", "defaultPrevented", "timeStamp"):
@@ -57,7 +55,7 @@ class Event:
     def __repr__(self):
         rejected = ("type_", "composed", "cancelable", "bubbles", "target", "isTrusted", "srcElement", "currentTarget",\
                     "eventPhase", "defaultPrevented", "timeStamp", "currentTarget")
-        return "{}(\"{}\", target={}, {})".format(type(self).__name__, self.type_, self.target,
+        return "{}(\'{}\', target={}, {})".format(type(self).__name__, self.type_, repr(self.target),
                 ", ".join(k+"="+str(v) if not v == "" else k+"="+"\"\"" for k,v in self.__dict__.items() if k not in rejected))
 
     def _default_type_fields(self, type_):
@@ -161,6 +159,7 @@ class WheelEvent(MouseEvent):
     DOM_DELTA_PIXEL = 0x00
     DOM_DELTA_LINE = 0x01
     DOM_DELTA_PAGE = 0x02
+
     _EVENTS = { "wheel": {"bubbles":True, "composed":True, "cancelable":True}}
 
     def __init__(self, type_, **kwargs):
@@ -190,6 +189,7 @@ class KeyboardEvent(UIEvent):
     DOM_KEY_LOCATION_LEFT = 0x01
     DOM_KEY_LOCATION_RIGHT = 0x02
     DOM_KEY_LOCATION_NUMPAD = 0x03
+
     _EVENTS = { "keydown": {"bubbles":True, "composed":True, "cancelable":True},
                 "keyup": {"bubbles":True, "composed":True, "cancelable":True}}
 
@@ -215,7 +215,6 @@ class CompositionEvent(UIEvent):
                 "compositionupdate": {"bubbles":True, "composed":True, "cancelable":True},
                 "compositionend": {"bubbles":True, "composed":True, "cancelable":True}}
 
-
     def __init__(self, type_, **kwargs):
         self._default_type_fields(type_)
 
@@ -228,6 +227,7 @@ class FocusEvent(UIEvent):
                 "focus": {"composed":True},
                 "focusin": {"bubbles":True, "composed":True},
                 "focusout": {"bubbles":True, "composed":True}}
+
     def __init__(self, type_, **kwargs):
         self._default_type_fields(type_)
 
@@ -329,4 +329,4 @@ if __debug__ and __name__ == "__main__":
     tc.assertEquals(ke.isComposing, True)
     del(ke)
 
-    print("No error during unittest, has occured.")
+    print("No error during unittest has occured.")

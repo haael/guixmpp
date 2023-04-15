@@ -22,7 +22,7 @@
     <text x="50" y="70" font-size="40" font-family="Arial Black, sans-serif" font-weight="900">Customer Survey: Espresso</text>
     <g font-family="Arial, Helvetica, sans-serif" font-size="18">
       <foreignObject x="80" y="150" width="250" height="20">
-        <xforms:select1 appearance="minimal" model="form1" ref="s:drink">
+        <xforms:select1 appearance="minimal" model="form1" ref="s:drink" navindex="0">
           <xforms:label>
             <g>
               <use xlink:href="#bullet" />
@@ -48,7 +48,7 @@
         </xforms:select1>
       </foreignObject>
       <foreignObject x="80" y="240" width="250" height="40">
-        <xforms:range model="form1" start="0" end="30" step="5" ref="s:espressoPrefs/s:numberPerWeek">
+        <xforms:range model="form1" start="0" end="30" step="5" ref="s:espressoPrefs/s:numberPerWeek" navindex="1">
           <xforms:label>
             <g>
               <use xlink:href="#bullet" />
@@ -65,7 +65,7 @@
               <text x="10" y="12" font-size="12">Sugar?</text>
             </g>
           </xforms:label>
-          <xforms:item>
+          <xforms:item navindex="2">
             <xforms:label>Yes</xforms:label>
             <xforms:value>X</xforms:value>
           </xforms:item>
@@ -79,15 +79,15 @@
               <text x="10" y="12" font-size="12">Lemon?</text>
             </g>
           </xforms:label>
-          <xforms:item>
+          <xforms:item navindex="3">
             <xforms:label>Required for the full experience</xforms:label>
             <xforms:value>Always</xforms:value>
           </xforms:item>
-          <xforms:item>
+          <xforms:item navindex="4">
             <xforms:label>Whatever</xforms:label>
             <xforms:value>Indifferent</xforms:value>
           </xforms:item>
-          <xforms:item>
+          <xforms:item navindex="5">
             <xforms:label>Keep that citrus to yourself</xforms:label>
             <xforms:value>Never</xforms:value>
           </xforms:item>
@@ -96,7 +96,7 @@
     </g>
     <use xlink:href="#bullet" x="101" y="64" transform="scale(7,3)" />
     <foreignObject y="150" x="500" height="60" width="100">
-      <xforms:submit model="form1">
+      <xforms:submit model="form1" navindex="6">
         <xforms:label>Send survey</xforms:label>
       </xforms:submit>
     </foreignObject>

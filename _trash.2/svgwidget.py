@@ -13,7 +13,9 @@ from gi.repository import GObject as gobject
 from gi.repository import GLib as glib
 
 from domevents import *
+from xmlmodel import XMLModel
 from svgrender import SVGRender
+from xforms import XForms
 
 import cairo
 
@@ -29,17 +31,14 @@ if __debug__:
 
 class SVGWidget(gtk.DrawingArea):
 	__gsignals__ = {
-		'clicked': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_PYOBJECT,)),
-		'auxclicked': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_PYOBJECT,)),
-		'dblclicked': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_PYOBJECT,)),
-		'request_url': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING,)),
-		'dom_event': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING, gobject.TYPE_PYOBJECT))
+		'clicked': (gobject.SignalFlags.RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_PYOBJECT,)),
+		'auxclicked': (gobject.SignalFlags.RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_PYOBJECT,)),
+		'dblclicked': (gobject.SignalFlags.RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_PYOBJECT,)),
+		'request_url': (gobject.SignalFlags.RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING,)),
+		'dom_event': (gobject.SignalFlags.RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING, gobject.TYPE_PYOBJECT))
 	}
 	
-	EMPTY_SVG = b'''<?xml version="1.0" encoding="UTF-8"?>
-		<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 1 1" width="1px" height="1px">
-		</svg>
-	'''
+	EMPTY_SVG = b'<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 1 1" width="1px" height="1px"/>'
 	
 	CLICK_TIME = float("inf")
 	CLICK_RANGE = 5
@@ -54,10 +53,14 @@ class SVGWidget(gtk.DrawingArea):
 		CTRL = 4
 		META = 8
 	
-	class ExtSVGRender(SVGRender):
+	class ExtSVGRender(XMLModel, SVGRender):
 		def __init__(self, parent):
-			super().__init__()
+			XMLModel.__init__(self)
+			SVGRender.__init__(self)
+			#XForms.__init__(self)
 			self.parent = parent
+			self.last_main_url = None
+			self.loaded_urls = None
 		
 		def request_url(self, url):
 			glib.idle_add(lambda: self.parent.emit('request_url', url) and False)
@@ -66,17 +69,44 @@ class SVGWidget(gtk.DrawingArea):
 			super().request_url(url)
 		
 		def update(self):
-			super().update()
 			if self.main_url != None:
-				try:
-					document = self.get_svg(self.main_url)
-					if self.parent.document is not document:
-						self.parent.document = document
-				except KeyError:
-					pass
-				else:
-					self.parent.synthesize_events()
+				if self.main_url != self.last_main_url:
+					try:
+						self.parent.set_document(self.get_transformed_doc(self.main_url))
+					except KeyError:
+						pass
+					else:
+						self.last_main_url = self.main_url
+				
+				loaded_urls = frozenset(self.all_urls())
+				if self.loaded_urls != loaded_urls:
+					self.loaded_urls = loaded_urls
+					glib.idle_add(lambda: self.parent.synthesize_events() and False)
+			elif self.last_main_url != None:
+				self.reset_state()
+				self.last_main_url = self.main_url
+			
+			self.parent.render(False)
 			self.parent.queue_draw()
+		
+		def scan_link(self, base_url, node):
+			XMLModel.scan_link(self, base_url, node)
+			SVGRender.scan_link(self, base_url, node)
+			#XForms.scan_link(self, base_url, node)
+		
+		def render_xml(self, ctx, box, node, ancestors, url, level, draw, pointer):
+			if node.tag.startswith(f'{{{self.xmlns_svg}}}') or node.tag.startswith(f'{{{self.xmlns_sodipodi}}}'):
+				return SVGRender.render_xml(self, ctx, box, node, ancestors, url, level, draw, pointer)
+			#elif node.tag.startswith(f'{{{self.xmlns_xforms}}}'):
+			#	return XForms.render_xml(self, ctx, box, node, ancestors, url, level, draw, pointer)
+			else:
+				return XMLModel.render_xml(self, ctx, box, node, ancestors, url, level, draw, pointer)
+		
+		def transform_document(self, url, doc):
+			doc = XMLModel.transform_document(self, url, doc)
+			doc = SVGRender.transform_document(self, url, doc)
+			#doc = XForms.transform_document(self, url, doc)
+			return doc
 	
 	def reset_state(self):
 		self.document = ElementTree()
@@ -90,7 +120,9 @@ class SVGWidget(gtk.DrawingArea):
 		self.last_click = None
 		self.current_click_count = 0
 		self.last_keydown = None
-		self.element_in_focus = self.document
+		self.element_in_focus = None
+		self.tabindex = None
+		self.tabindex_list = []
 		self.previous_focus = None
 		self.pointer = None
 	
@@ -136,6 +168,15 @@ class SVGWidget(gtk.DrawingArea):
 		self.reset_state()
 		self.svgrender.clear()
 		self.svgrender.open(url)
+	
+	def set_document(self, document):
+		self.document = document
+		tabindex_set = set()
+		for item in self.subtree(self.document.getroot()):
+			index = self.get_element_tabindex(item)
+			if index != None:
+				tabindex_set.add(index)
+		self.tabindex_list = list(sorted(tabindex_set))
 	
 	def subtree(self, node):
 		for child in node:
@@ -228,73 +269,106 @@ class SVGWidget(gtk.DrawingArea):
 		load_ev = UIEvent("load", target=self.document.getroot())
 		self.emit_dom_event("content_changed_event", load_ev)
 		
+		self.change_dom_focus_tabindex(self.tabindex)
+		
 		if __debug__: self.check_dom_events("content_changed_event")
 	
 	def set_dom_focus(self, element):
-		if self.element_in_focus is self.document:
-			
-			fc_ev = FocusEvent(	"focusin", target=element)
-			self.emit_dom_event("focus_changed_event", fc_ev)
-			
-			self.element_in_focus = element
-			
-			fc_ev = FocusEvent( "focus", target=element)
-			self.emit_dom_event("focus_changed_event", fc_ev)
+		if element == self.element_in_focus:
+			if __debug__: self.check_dom_events("focus_changed_event")
+			return
 		
-		elif element != self.element_in_focus:
-			
+		if self.element_in_focus != None:
+			#print("focusout", self.element_in_focus.tag)
 			fc_ev = FocusEvent(	"focusout", target=self.element_in_focus, relatedTarget=element)
 			self.emit_dom_event("focus_changed_event", fc_ev)
-			
+		
+		if element != None:
+			#print("focusin", element.tag)
 			fc_ev = FocusEvent(	"focusin", target=element, relatedTarget=self.element_in_focus)
 			self.emit_dom_event("focus_changed_event", fc_ev)
-			
-			self.previous_focus = self.element_in_focus
-			self.element_in_focus = element
-			
+		
+		self.previous_focus = self.element_in_focus
+		self.element_in_focus = element
+		self.tabindex = self.get_element_tabindex(element) if element != None else None
+		#print("set_dom_focus: tabindex set to", self.tabindex)
+		
+		if self.previous_focus != None:
+			#print("blur", self.previous_focus.tag)
 			fc_ev = FocusEvent(	"blur", target=self.previous_focus, relatedTarget=self.element_in_focus)
 			self.emit_dom_event("focus_changed_event", fc_ev)
-			
+		
+		if self.element_in_focus != None:
+			#print("focus", self.element_in_focus.tag)
 			fc_ev = FocusEvent(	"focus", target=self.element_in_focus, relatedTarget=self.previous_focus)
 			self.emit_dom_event("focus_changed_event", fc_ev)
 		
 		if __debug__: self.check_dom_events("focus_changed_event")
 	
-	def change_dom_focus_next(self):
-		iterator = (i for i in self.subtree(self.document.getroot()) if self.is_element_focusable(i))
-		previous_id = id(next(iterator))
-		focused_id = id(self.element_in_focus)
-		for item in iterator:
-			if previous_id == focused_id:
-				glib.idle_add(lambda: self.set_dom_focus(item))
+	def change_dom_focus_tabindex(self, index):
+		#print("change_dom_focus_tabindex: requested tabindex", index, self.tabindex_list)
+		for item in self.subtree(self.document.getroot()):
+			i = self.get_element_tabindex(item)
+			if i != None and int(i) == index:
+				self.set_dom_focus(item)
 				break
-			else:
-				previous_id = id(item)
 		else:
-			glib.idle_add(lambda: self.set_dom_focus(next(i for i in self.xml_nodes() if self.is_element_focusable(i))))
+			self.set_dom_focus(None)
+	
+	def change_dom_focus_next(self):
+		index = self.tabindex
+		#print("change_dom_focus_next: current tabindex:", index, self.tabindex_list)
+		found = False
+		for i in self.tabindex_list:
+			#print("change_dom_focus_next:  iter", i)
+			if found:
+				index = i
+				#print("change_dom_focus_next:  break")
+				break
+			elif i == index:
+				#print("change_dom_focus_next:  found")
+				found = True
+		else:
+			#print("change_dom_focus_next:  else")
+			index = self.tabindex_list[0]
+		#print("change_dom_focus_next: next tabindex:", index)
+		glib.idle_add(lambda: self.change_dom_focus_tabindex(index))
 	
 	def change_dom_focus_prev(self):
-		iterator = (i for i in self.subtree(self.document.getroot()) if self.is_element_focusable(i))
-		previous_element = next(iterator)
-		focused_id = id(self.element_in_focus)
-		for item in iterator:
-			actual_id = id(item)
-			if actual_id == focused_id:
-				glib.idle_add(lambda: self.set_dom_focus(previous_element))
+		index = self.tabindex
+		found = False
+		for i in reversed(self.tabindex_list):
+			if found:
+				index = i
 				break
-			else:
-				previous_element = item
+			elif i == index:
+				found = True
 		else:
-			glib.idle_add(lambda: self.set_dom_focus(previous_element))
+			index = self.tabindex_list[-1]
+		glib.idle_add(lambda: self.change_dom_focus_tabindex(index))
+	
+	def get_element_tabindex(self, element):
+		index = element.get(f'{{{self.ExtSVGRender.xmlns_svg}}}tabindex', None)
+		if index != None: return int(index)
+		#index = element.get(f'{{{self.ExtSVGRender.xmlns_xforms}}}navindex', None)
+		#if index != None: return int(index)
+		index = element.get('tabindex', None) if element.tag.startswith(f'{{{self.ExtSVGRender.xmlns_svg}}}') else None
+		if index != None: return int(index)
+		#index = element.get('navindex', None) if element.tag.startswith(f'{{{self.ExtSVGRender.xmlns_xforms}}}') else None
+		#if index != None: return int(index)
+		return None
 	
 	def is_element_focusable(self, element):
-		return True
+		if element == None:
+			return False
+		else:
+			return self.get_element_tabindex(element) != None
 	
 	def is_focused(self, element):
 		return self.element_in_focus == element
 	
-	def render(self):
-		if self.pointer:
+	def render(self, update_nodes_under_pointer=True):
+		if update_nodes_under_pointer and self.pointer:
 			self.previous_nodes_under_pointer = self.nodes_under_pointer[:]
 		
 		rect = self.get_allocation()
@@ -307,7 +381,7 @@ class SVGWidget(gtk.DrawingArea):
 		
 		nodes_under_pointer = self.svgrender.render(context, (0, 0, rect.width, rect.height), pointer=self.pointer)
 		
-		if self.pointer:
+		if update_nodes_under_pointer and self.pointer:
 			self.nodes_under_pointer = nodes_under_pointer
 		assert self.nodes_under_pointer != None
 		
@@ -599,7 +673,7 @@ class SVGWidget(gtk.DrawingArea):
 		located = self.get_key_location(keyval_name)
 		focused = self.element_in_focus
 		kb_ev = KeyboardEvent(	"keydown", target=focused, \
-								key=gdk.keyval_name(event.keyval), code=str(event.keyval), \
+								key=event.string, code=gdk.keyval_name(event.keyval), \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								location=located, repeat=repeated)
@@ -615,7 +689,7 @@ class SVGWidget(gtk.DrawingArea):
 		located = self.get_key_location(keyval_name)
 		focused = self.element_in_focus
 		kb_ev = KeyboardEvent(	"keyup", target=focused, \
-								key=gdk.keyval_name(event.keyval), code=str(event.keyval), \
+								key=event.string, code=gdk.keyval_name(event.keyval), \
 								shiftKey=keys[self.Keys.SHIFT], ctrlKey=keys[self.Keys.CTRL], \
 								altKey=keys[self.Keys.ALT], metaKey=keys[self.Keys.META], \
 								location=located)
@@ -643,6 +717,7 @@ class SVGWidget(gtk.DrawingArea):
 		if __debug__: self.check_dom_events("scrolled_event")
 		
 	def emit_dom_event(self, handler, event):
+		print("emit_dom_event", handler, event)
 		self.emit('dom_event', handler, event)
 		
 		if __debug__:
@@ -670,7 +745,7 @@ class SVGWidget(gtk.DrawingArea):
 			assert all(pnup and (_ms_ev.target in pnup) for _ms_ev in self.emitted_dom_events if (_ms_ev.type_ == "mouseleave")), "For events of type `mouseleave`, event target should be in `previous_nodes_under_pointer` elements"
 			assert all(nup and (_ms_ev.target == nup[-1]) for _ms_ev in self.emitted_dom_events if _ms_ev.type_ in ("mousedown", "click", "dblclick")), "For event of types `mousedown`, `mouseup`, `click` and `dblclick, event target should be top `nodes_under_pointer` element"
 			assert all(_ms_ev.target == nup[-1] for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseup") if nup else all(_ms_ev.target == None for _ms_ev in self.emitted_dom_events if _ms_ev.type_ == "mouseup"), "For event of type `mouseup` event target should be None if fired out of window border, otherwise target should be top `nodes_under_pointer` if it is over element."
-			assert all(_kb_ev.target == self.element_in_focus for _kb_ev in self.emitted_dom_events if _kb_ev.type_ in ("keydown", "keyup")), "For events of type `keydown` or `keyup`, event target should be self.document if no one element is focused."
+			assert all(_kb_ev.target == self.element_in_focus for _kb_ev in self.emitted_dom_events if _kb_ev.type_ in ("keydown", "keyup")), "For events of type `keydown` or `keyup`, event target should be `self.document.getroot()` if no element is focused."
 			assert all(_wh_ev.target == nup[-1] for _wh_ev in self.emitted_dom_events if _wh_ev.type_ == "wheel") if nup else True, "For events of type `wheel`, event target should be top node under pointer."
 			assert all(self.is_element_focusable(_fc_ev.target) for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focusin"), "Focus Event target of type `focusin` should be focusable"
 			assert all(self.is_element_focusable(_fc_ev.target) for _fc_ev in self.emitted_dom_events if _fc_ev.type_ == "focusout"), "Focus Event target of type `focusout` should be focusable"
@@ -812,12 +887,25 @@ if __name__ == '__main__':
 	css.load_from_path('gfx/style.css')
 	gtk.StyleContext.add_provider_for_screen(gdk.Screen.get_default(), css, gtk.STYLE_PROVIDER_PRIORITY_USER)
 	
-	window = gtk.Window(gtk.WindowType.TOPLEVEL)
+	window = gtk.Window(type=gtk.WindowType.TOPLEVEL)
 	window.set_name('main_window')
 	
 	svgwidget = SVGWidget()
 	svgwidget.connect('request_url', SVGWidget.default_request_url)
-	#svgwidget.show_svg('gfx/acid1.svg')
+	
+	#def xforms_event(widget, handler, event):
+	#	if event.target == None:
+	#		pass
+	#	elif hasattr(event, 'code'):
+	#		return widget.svgrender.xforms_event(event.target, event.type_, None, None, event.code)
+	#	elif hasattr(event, 'clientX') and hasattr(event, 'clientY'):
+	#		return widget.svgrender.xforms_event(event.target, event.type_, event.clientX, event.clientY, None)
+	#	else:
+	#		return widget.svgrender.xforms_event(event.target, event.type_, None, None, None)
+	#
+	#svgwidget.connect('dom_event', xforms_event)
+	
+	svgwidget.show_svg('gfx/acid1.svg')
 	#svgwidget.show_svg('gfx/arcs_0.svg') # OK
 	#svgwidget.show_svg('gfx/arcs_1.svg') # OK
 	#svgwidget.show_svg('gfx/arcs_2.svg') # text
@@ -828,18 +916,18 @@ if __name__ == '__main__':
 	#svgwidget.show_svg('gfx/drawing.svg') # OK
 	#svgwidget.show_svg('gfx/drawing_no_white_BG.svg') # OK
 	#svgwidget.show_svg('gfx/ECB_encryption.svg') # OK
-	#svgwidget.show_svg('gfx/espresso.svg')
+	#svgwidget.show_svg('gfx/espresso.svg') # filters
 	#svgwidget.show_svg('gfx/epicyclic gearing animation.svg') # text anchor
 	#svgwidget.show_svg('gfx/fcGold Token.svg') # bezier
 	#svgwidget.show_svg('gfx/genesis_pepe.svg') # OK
-	#svgwidget.show_svg('gfx/Glutamic_acid_test.svg') # clipPath
+	#svgwidget.show_svg('gfx/Glutamic_acid_test.svg') # OK
 	#svgwidget.show_svg('gfx/gradient_france.svg') # OK
 	#svgwidget.show_svg('gfx/gradient_linear.svg') # OK
 	#svgwidget.show_svg('gfx/gradient_radial.svg') # OK
 	#svgwidget.show_svg('gfx/gradient_rainbow.svg') # OK
 	#svgwidget.show_svg('gfx/Hamming(7,4)_example_1100.svg') # OK
 	#svgwidget.show_svg('gfx/History_of_the_Universe-zh-hant.svg')
-	#svgwidget.show_svg('gfx/Homo_sapiens_lineage.svg') # text
+	#svgwidget.show_svg('gfx/Homo_sapiens_lineage.svg') # OK
 	#svgwidget.show_svg('gfx/Letters_SVG.svg') # OK
 	#svgwidget.show_svg('gfx/logo_nocss.svg') # OK
 	#svgwidget.show_svg('gfx/Morphing SMIL.svg') # blur
@@ -847,20 +935,21 @@ if __name__ == '__main__':
 	#svgwidget.show_svg('gfx/Phonetics Guide.svg') # OK
 	#svgwidget.show_svg('gfx/status_icons.svg') # OK
 	#svgwidget.show_svg('gfx/Steering_wheel_1.svg') # OK
-	#svgwidget.show_svg('gfx/Steering_wheel_2.svg') # OK
+	#svgwidget.show_svg('gfx/Steering_wheel_2.svg')
 	#svgwidget.show_svg('gfx/SVG_Blur_sample.svg') # blur
 	#svgwidget.show_svg('gfx/SVG_logo.svg') # OK
 	#svgwidget.show_svg('gfx/targets.svg') # OK
 	#svgwidget.show_svg('gfx/Text_background_edge.svg')
-	#svgwidget.show_svg('gfx/typographer_caps.svg') # bezier
+	#svgwidget.show_svg('gfx/typographer_caps.svg') # OK
 	#svgwidget.show_svg('gfx/Vector-based_example.svg') # OK
-	svgwidget.show_svg('gfx/xforms_sample.svg')
+	#svgwidget.show_svg('gfx/xforms_sample.svg')
+	#svgwidget.show_svg('gfx/Farris_1_7_-17.svg') # OK
 	
 	window.add(svgwidget)
 	
 	window.show_all()
 	
-	mainloop = gobject.MainLoop()
+	mainloop = glib.MainLoop()
 	signal.signal(signal.SIGTERM, lambda signum, frame: mainloop.quit())
 	
 	def exception_hook(exception, y, z):
