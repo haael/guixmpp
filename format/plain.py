@@ -2,13 +2,13 @@
 #-*- coding:utf-8 -*-
 
 
-__all__ = 'PlainModel',
+__all__ = 'PlainFormat',
 
 
 from io import BytesIO
 
 
-class PlainModel:
+class PlainFormat:
 	def create_document(self, data:bytes, mime_type):
 		if mime_type == 'text/plain':
 			return data.decode('utf-8')
@@ -41,9 +41,9 @@ class PlainModel:
 
 
 if __debug__ and __name__ == '__main__':
-	print("plain model")
+	print("plain format")
 	
-	model = PlainModel()
+	model = PlainFormat()
 	
 	a = model.create_document(b'hello,void', 'text/plain')
 	assert model.save_document(a).getvalue() == b'hello,void'

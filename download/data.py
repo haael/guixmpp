@@ -1,11 +1,15 @@
-#!/usr/bin/python3.11
+#!/usr/bin/python3
 #-*- coding:utf-8 -*-
 
 
-__all__ = 'InlineDownload',
+__all__ = 'DataDownload',
 
 
-class InlineDownload:
+from base64 import b64decode
+from urllib.parse import unquote
+
+
+class DataDownload:
 	def download_document(self, url) -> bytes:
 		if url.startswith('data:'):
 			headers = url[url.index(':') + 1 : url.index(',')].split(';')
@@ -24,10 +28,8 @@ class InlineDownload:
 			
 			raw_data = url[url.index(',') + 1 :]
 			if encoding == 'base64':
-				from base64 import b64decode
 				data = b64decode(raw_data)
 			elif encoding == '':
-				from urllib.parse import unquote
 				data = unquote(raw_data).encode('utf-8')
 			
 			return data, mime_type
@@ -37,7 +39,9 @@ class InlineDownload:
 
 
 if __debug__ and __name__ == '__main__':
-	model = InlineDownload()
-	assert model.download_document('data:,hello,void') == "hello,void"
+	print("data download")
+	
+	model = DataDownload()
+	assert model.download_document('data:,hello,void') == (b"hello,void", 'text/plain')
 
 
