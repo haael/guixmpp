@@ -21,6 +21,10 @@ from collections import namedtuple
 if __debug__:
 	from collections import Counter
 	import itertools
+	from time import clock_gettime, CLOCK_MONOTONIC
+	
+	def time():
+		return clock_gettime(CLOCK_MONOTONIC)
 
 
 def schedule(old_callback):
@@ -145,12 +149,10 @@ class DOMWidget(Gtk.DrawingArea):
 			self.synthesize_enter_events()
 		self.queue_draw()
 	
-	def render(self, ctx=None):
-		if ctx is None:
-			surface = cairo.RecordingSurface(cairo.Content.COLOR_ALPHA, None)
-			context = cairo.Context(surface)
-		else:
-			context = ctx
+	def render(self):
+		tt = time()
+		surface = cairo.RecordingSurface(cairo.Content.COLOR_ALPHA, None)
+		context = cairo.Context(surface)
 		context.set_source_rgb(1, 1, 1)
 		context.paint() # background
 		
@@ -167,10 +169,8 @@ class DOMWidget(Gtk.DrawingArea):
 		else:
 			nodes_under_pointer = []
 		
-		if ctx:
-			return None, nodes_under_pointer
-		else:
-			return surface, nodes_under_pointer
+		print("rendering time:", (time() - tt) * 1000)
+		return surface, nodes_under_pointer
 	
 	@classmethod
 	def check_dblclick_hysteresis(cls, press_event, event):
@@ -369,7 +369,9 @@ class DOMWidget(Gtk.DrawingArea):
 		
 		self.pointer = event.x, event.y
 		self.previous_nodes_under_pointer = self.nodes_under_pointer
+		self.dont_draw = True
 		_, self.nodes_under_pointer = self.render()
+		self.dont_draw = False
 		if self.previous_nodes_under_pointer != self.nodes_under_pointer:
 			surface, _ = self.render()
 			self.rendered_surface.finish()
@@ -809,7 +811,8 @@ class DOMWidget(Gtk.DrawingArea):
 
 if __debug__ and __name__ == '__main__':
 	import sys, signal
-	from asyncio import run
+	from asyncio import run, set_event_loop_policy
+	from asyncio_glib import GLibEventLoopPolicy
 	from aiopath import AsyncPath as Path
 	
 	from document import Model
@@ -823,6 +826,8 @@ if __debug__ and __name__ == '__main__':
 	
 	from download.data import DataDownload
 	from download.file import FileDownload
+	
+	set_event_loop_policy(GLibEventLoopPolicy())
 	
 	model = Model.features('TestWidgetModel', SVGFormat, PNGFormat, ImageFormat, XMLFormat, CSSFormat, PlainFormat, DataDownload, FileDownload)()
 	
@@ -846,7 +851,7 @@ if __debug__ and __name__ == '__main__':
 	#sys.excepthook = lambda *args: exception_hook(*args)
 	
 	def dom_event(widget, name, event):
-		print(event)
+		#print(event)
 		global images, image_index
 		
 		if name == 'key_event':
@@ -867,7 +872,7 @@ if __debug__ and __name__ == '__main__':
 			if event.type_ == 'opening':
 				widget.main_url = event.detail
 				schedule(widget.set_image)(None)
-			elif event.type_ in ['beforeload', 'load', 'open']:
+			elif event.type_ in ['open']:
 				if event.detail == widget.main_url:
 					schedule(widget.set_image)(event.target)
 					schedule(widget.queue_draw)()

@@ -6,7 +6,7 @@ __all__ = 'DocumentModel',
 
 
 from collections import defaultdict
-from asyncio import gather
+from asyncio import gather, create_task
 
 from domevents import UIEvent, CustomEvent
 
@@ -123,7 +123,7 @@ class Model:
 				continue
 			absurl = self.resolve_url(link, url)
 			view.__referenced[absurl].add(url)
-			load = self.__load_document(view, absurl)
+			load = create_task(self.__load_document(view, absurl))
 			loads.append(load)
 		await gather(*loads)
 		view.emit_dom_event('content_changed', UIEvent('load', target=document, view=view, detail=url))

@@ -37,6 +37,15 @@ class OverlayElement(list):
 	
 	def __repr__(self):
 		return f"<OverlayElement {self.tag}>"
+	
+	def __eq__(self, other):
+		try:
+			return self.tag == other.tag and self.attrib == other.attrib
+		except AttributeError:
+			return NotImplemented
+	
+	def __hash__(self):
+		return hash((self.tag, tuple(sorted(self.attrib.items()))))
 
 
 class SVGFormat:
@@ -278,7 +287,7 @@ class SVGFormat:
 		
 		if not self.is_svg_document(document):
 			return NotImplemented
-		return self.__render_xml(view, ctx, box, document.getroot(), [document], self.get_document_url(document), 0, True)
+		return self.__render_xml(view, ctx, box, document.getroot(), [document], self.get_document_url(document), 0, (not view.dont_draw if hasattr(view, 'dont_draw') else True))
 	
 	def image_dimensions(self, view, document):
 		"Return the SVG dimensions, that might depend on the view state."
@@ -531,7 +540,7 @@ class SVGFormat:
 				ctx.save()
 				ctx.translate(x, y)
 		
-		if hasattr(node, 'fromsymbol'):
+		if hasattr(node, 'fromsymbol') and node.fromsymbol:
 			ctx.rectangle(0, 0, width - left, height - top) # TODO: width and height attributes, box attribute
 			if view.pointer:
 				px, py = ctx.device_to_user(*view.pointer)
@@ -580,17 +589,33 @@ class SVGFormat:
 		
 		left, top, width, height = box
 		
+		document = ancestors[0]
+		
+		params_found = False
+		is_visible, has_stroke, has_fill, pointer_events = None, None, None, None
+		try:
+			is_visible, has_stroke, has_fill, pointer_events = document.__rendering_params_cache[node]
+		except AttributeError:
+			document.__rendering_params_cache = dict()
+		except KeyError:
+			pass
+		else:
+			params_found = True
+		
+		all_params_found = not any(_p is None for _p in [is_visible, has_stroke, has_fill, pointer_events])
+		
 		try:
 			filter_ = node.attrib['filter']
 		except KeyError:
 			filter_ = None
 		
-		try:
-			visibility = self.__search_attrib(view, node, ancestors, 'visibility')
-		except KeyError:
-			visibility = 'visible'
-		
-		is_visible = visibility not in ('hidden', 'collapse')
+		if not params_found or is_visible is None:
+			try:
+				visibility = self.__search_attrib(view, node, ancestors, 'visibility')
+			except KeyError:
+				visibility = 'visible'
+			
+			is_visible = visibility not in ('hidden', 'collapse')
 		
 		# TODO: filters
 		
@@ -673,23 +698,25 @@ class SVGFormat:
 			self.__draw_path(view, ctx, box, node, ancestors, level)
 		
 		elif node.tag == f'{{{self.xmlns_svg}}}text':
-			self.__draw_text(view, ctx, box, node, ancestors, level)
+			self.__draw_text(view, ctx, box, node, ancestors, level, draw)
 		
 		else:
 			self.emit_warning(view, f"tag {node.tag} not supported by this method", node.tag, node)
-				
-		has_fill, has_stroke = self.__apply_paint(view, ctx, box, node, ancestors, current_url, draw and is_visible)
+		
+		if (not params_found or has_fill is None or has_stroke is None) or draw:
+			has_fill, has_stroke = self.__apply_paint(view, ctx, box, node, ancestors, current_url, draw and is_visible)
 		
 		nodes_under_pointer = []
 		pointer = view.pointer
 		if pointer:
-			try:
-				pointer_events = self.__search_attrib(view, node, ancestors, 'pointer-events')
-			except KeyError:
-				pointer_events = 'visiblePainted'
-			else:
-				if pointer_events in ('auto', 'inherit', 'initial', 'unset'):
+			if not params_found or pointer_events is None:
+				try:
+					pointer_events = self.__search_attrib(view, node, ancestors, 'pointer-events')
+				except KeyError:
 					pointer_events = 'visiblePainted'
+				else:
+					if pointer_events in ('auto', 'inherit', 'initial', 'unset'):
+						pointer_events = 'visiblePainted'
 			
 			if pointer_events == 'visiblePainted':
 				check_fill = is_visible and has_fill
@@ -747,6 +774,13 @@ class SVGFormat:
 			ctx.rectangle(*box)
 			ctx.fill()
 			image.finish()
+		
+		if draw and not all_params_found:
+			try:
+				document.__rendering_params_cache[node] = is_visible, has_stroke, has_fill, pointer_events
+			except AttributeError:
+				document.__rendering_params_cache = dict()
+				document.__rendering_params_cache[node] = is_visible, has_stroke, has_fill, pointer_events
 		
 		return nodes_under_pointer
 	
@@ -1052,6 +1086,7 @@ class SVGFormat:
 	def __search_attrib(self, view, node, ancestors, attrib):
 		"Search for effective presentation attribute. This will either be an explicit XML attribute, or attribute of one of ancestors, or CSS value."
 		
+		#print("search_attrib", attrib)
 		assert len(ancestors) >= 1
 		assert self.is_xml_document(ancestors[0])
 		document = ancestors[0]
@@ -1558,65 +1593,92 @@ class SVGFormat:
 				raise
 				return
 	
-	def __apply_font(self, view, ctx, box, node, ancestors):
+	def __apply_font(self, view, ctx, box, node, ancestors, draw):
 		left, top, width, height = box
 		
-		try:
-			font_family = self.__search_attrib(view, node, ancestors, 'font-family')
-		except KeyError:
-			font_family = ''
+		document = ancestors[0]
 		
+		params_found = False
+		font_family, font_style, font_weight, text_anchor, font_size = None, None, None, None, None
 		try:
-			font_style_attrib = self.__search_attrib(view, node, ancestors, 'font-style')
+			font_family, font_style, font_weight, text_anchor, font_size = document.__font_params_cache[node]
+		except AttributeError:
+			document.__font_params_cache = dict()
 		except KeyError:
-			font_style = cairo.FontSlant.NORMAL
+			pass
 		else:
-			if font_style_attrib == 'normal':
-				font_style = cairo.FontSlant.NORMAL
-			elif font_style_attrib == 'italic':
-				font_style = cairo.FontSlant.ITALIC
-			elif font_style_attrib == 'oblique':
-				font_style = cairo.FontSlant.OBLIQUE
-			else:
-				self.emit_warning(view, f"Unsupported font style '{font_style_attrib}'", font_style_attrib, node)
-				font_style = cairo.FontSlant.NORMAL
+			params_found = True
 		
-		try:
-			font_weight_attrib = self.__search_attrib(view, node, ancestors, 'font-weight')
-		except KeyError:
-			font_weight = cairo.FontWeight.NORMAL
-		else:
-			if font_weight_attrib == 'normal':
-				font_weight = cairo.FontWeight.NORMAL
-			elif font_weight_attrib == 'bold':
-				font_weight = cairo.FontWeight.BOLD
+		all_params_found = not any(_p is None for _p in [font_family, font_style, font_weight, text_anchor, font_size])
+		
+		if not params_found or font_family is None:
+			try:
+				font_family = self.__search_attrib(view, node, ancestors, 'font-family')
+			except KeyError:
+				font_family = ''
+		
+		if not params_found or font_style is None:
+			try:
+				font_style_attrib = self.__search_attrib(view, node, ancestors, 'font-style')
+			except KeyError:
+				font_style = cairo.FontSlant.NORMAL
 			else:
-				try:
-					font_weight_number = int(font_weight_attrib)
-				except ValueError:
-					self.emit_warning(view, f"Unsupported font weight '{font_weight_attrib}'", font_weight_attrib, node)
-					font_weight = cairo.FontWeight.NORMAL
+				if font_style_attrib == 'normal':
+					font_style = cairo.FontSlant.NORMAL
+				elif font_style_attrib == 'italic':
+					font_style = cairo.FontSlant.ITALIC
+				elif font_style_attrib == 'oblique':
+					font_style = cairo.FontSlant.OBLIQUE
 				else:
-					if font_weight_number > 500:
-						font_weight = cairo.FontWeight.BOLD
-					else:
+					self.emit_warning(view, f"Unsupported font style '{font_style_attrib}'", font_style_attrib, node)
+					font_style = cairo.FontSlant.NORMAL
+		
+		if not params_found or font_weight is None:
+			try:
+				font_weight_attrib = self.__search_attrib(view, node, ancestors, 'font-weight')
+			except KeyError:
+				font_weight = cairo.FontWeight.NORMAL
+			else:
+				if font_weight_attrib == 'normal':
+					font_weight = cairo.FontWeight.NORMAL
+				elif font_weight_attrib == 'bold':
+					font_weight = cairo.FontWeight.BOLD
+				else:
+					try:
+						font_weight_number = int(font_weight_attrib)
+					except ValueError:
+						self.emit_warning(view, f"Unsupported font weight '{font_weight_attrib}'", font_weight_attrib, node)
 						font_weight = cairo.FontWeight.NORMAL
+					else:
+						if font_weight_number > 500:
+							font_weight = cairo.FontWeight.BOLD
+						else:
+							font_weight = cairo.FontWeight.NORMAL
 		
-		try:
-			text_anchor = self.__search_attrib(view, node, ancestors, 'text-anchor').strip()
-		except KeyError:
-			text_anchor = ''
+		if not params_found or text_anchor is None:
+			try:
+				text_anchor = self.__search_attrib(view, node, ancestors, 'text-anchor').strip()
+			except KeyError:
+				text_anchor = ''
 		
-		try:
-			font_size_attrib = self.__search_attrib(view, node, ancestors, 'font-size')
-		except KeyError:
-			font_size = 12
-		else:
-			font_size = self.__units(view, font_size_attrib, percentage=(width + height) / 2)
+		if not params_found or font_size is None:
+			try:
+				font_size_attrib = self.__search_attrib(view, node, ancestors, 'font-size')
+			except KeyError:
+				font_size = 12
+			else:
+				font_size = self.__units(view, font_size_attrib, percentage=(width + height) / 2)
 		
 		for family in font_family.split(','):
 			ctx.select_font_face(family, font_style, font_weight)
 		ctx.set_font_size(font_size)
+		
+		if not view.nodes_under_pointer and draw and not all_params_found:
+			try:
+				document.__font_params_cache[node] = font_family, font_style, font_weight, text_anchor, font_size
+			except AttributeError:
+				document.__font_params_cache = dict()
+				document.__font_params_cache[node] = font_family, font_style, font_weight, text_anchor, font_size
 		
 		return text_anchor
 	
@@ -1643,7 +1705,7 @@ class SVGFormat:
 		
 		return ' '.join(total_text)
 	
-	def __draw_tspan(self, view, ctx, box, node, ancestors, level, strip):
+	def __draw_tspan(self, view, ctx, box, node, ancestors, level, strip, draw):
 		left, top, width, height = box
 		ctx.save()
 		
@@ -1673,7 +1735,7 @@ class SVGFormat:
 		if dx or dy:
 			ctx.rel_move_to(dx, dy)
 		
-		text_anchor = self.__apply_font(view, ctx, box, node, ancestors)
+		text_anchor = self.__apply_font(view, ctx, box, node, ancestors, draw)
 		
 		if node.text:
 			txt = node.text
@@ -1696,7 +1758,7 @@ class SVGFormat:
 			if child.tag != f'{{{self.xmlns_svg}}}tspan':
 				self.emit_warning(view, "Unsupported tag %s" % child.tag, child.tag, child)
 				continue
-			self.__draw_tspan(view, ctx, box, child, ancestors + [node], level, strip)
+			self.__draw_tspan(view, ctx, box, child, ancestors + [node], level, strip, draw)
 			
 			if child.tail:
 				txt = child.tail
@@ -1717,7 +1779,7 @@ class SVGFormat:
 		
 		ctx.restore()
 	
-	def __draw_text(self, view, ctx, box, node, ancestors, level):
+	def __draw_text(self, view, ctx, box, node, ancestors, level, draw):
 		left, top, width, height = box
 		
 		try:
@@ -1737,7 +1799,7 @@ class SVGFormat:
 		except KeyError:
 			strip = True
 		
-		text_anchor = self.__apply_font(view, ctx, box, node, ancestors)
+		text_anchor = self.__apply_font(view, ctx, box, node, ancestors, draw)
 		
 		#total_text = self.__total_text(node, strip)
 		
@@ -1763,7 +1825,7 @@ class SVGFormat:
 			if child.tag != f'{{{self.xmlns_svg}}}tspan':
 				self.emit_warning(view, "Unsupported tag %s" % child.tag, child.tag, child)
 				continue
-			self.__draw_tspan(view, ctx, box, child, ancestors + [node], level, strip)
+			self.__draw_tspan(view, ctx, box, child, ancestors + [node], level, strip, draw)
 			
 			if child.tail:
 				txt = child.tail
