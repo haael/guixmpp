@@ -38,6 +38,13 @@ class PlainFormat:
 	
 	def is_binary_document(self, document):
 		return isinstance(document, bytes)
+	
+	def scan_document_links(self, document):
+		if self.is_text_document(document) or self.is_binary_document(document):
+			return []
+		else:
+			return NotImplemented
+
 
 
 if __debug__ and __name__ == '__main__':

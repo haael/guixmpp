@@ -6,6 +6,7 @@ __all__ = 'DocumentModel',
 
 
 from collections import defaultdict
+from asyncio import gather
 
 from domevents import UIEvent, CustomEvent
 
@@ -24,22 +25,29 @@ class Model:
 	def __init__(self):
 		self.documents = {}
 	
-	def open_document(self, view, url):
+	async def open_document(self, view, url):
+		#print("open document", url)
 		if hasattr(view, '_Model__document') and view.__document is not None:
 			raise ValueError("Close previous document first.")
 		
 		view.__referenced = defaultdict(set)
 		view.__location = url
-		view.__document = self.load_document(view, url)
+		view.emit_dom_event('content_changed', CustomEvent('opening', target=None, view=view, detail=url))
+		await self.begin_downloads()
+		view.__document = await self.__load_document(view, url)
+		await self.end_downloads()
 		view.emit_dom_event('content_changed', CustomEvent('open', target=view.__document, view=view, detail=url))
+		return view.__document
 	
 	def close_document(self, view):
-		if not hasattr(view, '_Model__document') and view.__document is not None:
+		#print("close document")
+		if not (hasattr(view, '_Model__document') and view.__document is not None):
 			raise ValueError("No document is open.")
 		
 		url = view.__location
-		view.emit_dom_event('content_changed', CustomEvent('close', target=view.__document, view=view, detail=url))
-		self.unload_document(view, url)
+		view.emit_dom_event('content_changed', CustomEvent('closing', target=view.__document, view=view, detail=url))
+		self.__unload_document(view, url)
+		view.emit_dom_event('content_changed', CustomEvent('close', target=None, view=view, detail=url))
 		view.__location = None
 		view.__document = None
 	
@@ -74,9 +82,25 @@ class Model:
 			if result != NotImplemented:
 				return result
 		else:
-			raise NotImplementedError(f"Could not find implementation for method {method_name}.")
+			raise NotImplementedError(f"Could not find implementation for method {method_name}. Arguments: {args}")
 	
-	def load_document(self, view, url):
+	async def __find_impl_async(self, method_name, args, kwargs={}):
+		for cls in self.__class__.mro():
+			if issubclass(cls, Model):
+				continue
+			
+			try:
+				method = getattr(cls, method_name)
+			except AttributeError:
+				continue
+			
+			result = await method(self, *args, **kwargs)
+			if result != NotImplemented:
+				return result
+		else:
+			raise NotImplementedError(f"Could not find implementation for method {method_name}. Arguments: {args}")
+	
+	async def __load_document(self, view, url):
 		try:
 			return self.get_document(url)
 		except URLNotFound:
@@ -87,33 +111,36 @@ class Model:
 			shurl = '#'.join(url.split('#')[:-1])
 		else:
 			shurl = url
-		data, mime_type = self.download_document(shurl)
+		data, mime_type = await self.download_document(shurl)
 		self.documents[shurl] = self.create_document(data, mime_type)
 		document = self.get_document(url)
 		
 		view.emit_dom_event('content_changed', CustomEvent('beforeload', target=document, view=view, detail=url))
+		loads = []
 		for link in self.scan_document_links(document):
 			if link.startswith('data:'):
-				self.get_document(link)
+				self.documents[link] = self.create_document(*(await self.download_document(link)))
 				continue
 			absurl = self.resolve_url(link, url)
 			view.__referenced[absurl].add(url)
-			self.load_document(view, absurl)
+			load = self.__load_document(view, absurl)
+			loads.append(load)
+		await gather(*loads)
 		view.emit_dom_event('content_changed', UIEvent('load', target=document, view=view, detail=url))
 		return document
 	
-	def unload_document(self, view, url):
+	def __unload_document(self, view, url):
 		document = self.get_document(url)
 		view.emit_dom_event('content_changed', CustomEvent('beforeunload', target=document, view=view, detail=url))
 		for link in self.scan_document_links(document):
 			if link.startswith('data:'):
-				self.get_document(link)
+				#del self.documents[link]
 				continue
 			absurl = self.resolve_url(link, url)
 			if url in view.__referenced[absurl]:
 				view.__referenced[absurl].remove(url)
 				if not view.__referenced[absurl]:
-					self.unload_document(view, absurl)
+					self.__unload_document(view, absurl)
 		view.emit_dom_event('content_changed', UIEvent('unload', target=document, view=view, detail=url))
 	
 	def get_document_url(self, document):
@@ -124,14 +151,14 @@ class Model:
 	
 	def get_base_document(self, url):
 		try:
-			return self.documents[url] # TODO: error
+			return self.documents[url]
 		except KeyError:
 			pass
 		
-		if url.startswith('data:'):
-			#print("create document from data url", url)
-			self.documents[url] = self.create_document(*self.download_document(url))
-			return self.documents[url]
+		#if url.startswith('data:'):
+		#	#print("create document from data url", url)
+		#	self.documents[url] = self.create_document(*self.download_document(url))
+		#	return self.documents[url]
 		
 		raise URLNotFound(f"No document found for the provided url: {url}")
 	
@@ -145,9 +172,41 @@ class Model:
 		else:
 			return self.get_base_document(url)
 	
-	def download_document(self, url) -> bytes:
+	async def begin_downloads(self):
+		gens = []
+		
+		for cls in self.__class__.mro():
+			if issubclass(cls, Model):
+				continue
+			
+			try:
+				method = getattr(cls, 'begin_downloads')
+			except AttributeError:
+				continue
+			
+			gens.append(method(self))
+		
+		await gather(*gens)
+	
+	async def end_downloads(self):
+		gens = []
+		
+		for cls in self.__class__.mro():
+			if issubclass(cls, Model):
+				continue
+			
+			try:
+				method = getattr(cls, 'end_downloads')
+			except AttributeError:
+				continue
+			
+			gens.append(method(self,))
+		
+		await gather(*gens)
+	
+	async def download_document(self, url) -> (bytes, str):
 		"download"
-		return self.__find_impl('download_document', [url])
+		return await self.__find_impl_async('download_document', [url])
 	
 	def create_document(self, data:bytes, mime_type:str):
 		"model/format"
@@ -180,11 +239,9 @@ if __debug__ and __name__ == '__main__':
 	import gi
 	gi.require_version('Gdk', '3.0')
 	gi.require_version('GdkPixbuf', '2.0')
-	
-	from mimetypes import init as init_mimetypes
-	init_mimetypes()
-	
-	from pathlib import Path
+		
+	from asyncio import run
+	from aiopath import AsyncPath as Path
 	
 	from format.plain import PlainFormat
 	from format.xml import XMLFormat
@@ -192,9 +249,11 @@ if __debug__ and __name__ == '__main__':
 	from format.svg import SVGFormat
 	from format.png import PNGFormat
 	from format.image import ImageFormat
+	from format.null import NullFormat
 	
 	from download.data import DataDownload
 	from download.file import FileDownload
+	from download.chrome import ChromeDownload
 	
 	class PseudoView:
 		def __init__(self):
@@ -204,20 +263,24 @@ if __debug__ and __name__ == '__main__':
 			self.screen_dpi = 96
 	
 		def emit_dom_event(self, handler, event):
-			print(handler)
-	
-	view = PseudoView()
-	TestModel = Model.features('TestModel', SVGFormat, CSSFormat, PNGFormat, ImageFormat, DataDownload, FileDownload, XMLFormat, PlainFormat)
-	model = TestModel()
-	for filepath in (Path.cwd() / 'gfx').iterdir():
-		#if filepath.suffix in ['.css']: continue
-		print(filepath)
-		document = model.open_document(view, filepath.as_uri())
-		print("   ", type(document))
-		try:
-			print("   ", model.image_dimensions(view, document))
-		except NotImplementedError:
+			#print(handler)
 			pass
-		model.close_document(view)
-
+	
+	async def test_main():
+		view = PseudoView()
+		TestModel = Model.features('TestModel', SVGFormat, CSSFormat, PNGFormat, ImageFormat, DataDownload, FileDownload, ChromeDownload, XMLFormat, PlainFormat, NullFormat)
+		model = TestModel()
+		async for filepath in (Path.cwd() / 'gfx').iterdir():
+			#if filepath.suffix in ['.css']: continue
+			#print(filepath.as_uri())
+			document = await model.open_document(view, filepath.as_uri())
+			#print(" type:", type(document))
+			try:
+				dimensions = model.image_dimensions(view, document)
+				#print(" dimensions:", dimensions)
+			except NotImplementedError:
+				pass
+			model.close_document(view)
+	
+	run(test_main())
 

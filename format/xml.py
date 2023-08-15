@@ -19,7 +19,7 @@ class XMLFormat:
 	xmlns_xlink = 'http://www.w3.org/1999/xlink'
 	
 	def create_document(self, data:bytes, mime:str):
-		if mime == 'text/xml' or mime == 'application/xml':
+		if mime == 'text/xml' or mime == 'application/xml' or mime.endswith('+xml'):
 			document = XMLDocument(fromstring(data))
 			return document
 		else:

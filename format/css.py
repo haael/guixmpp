@@ -36,8 +36,18 @@ class StyleNode(namedtuple('_StyleNode', ['name', 'args'])):
 
 
 class CSSDocument:
-	def __init__(self, css_tree):
-		self.css_tree = css_tree
+	def __init__(self, arg):
+		try:
+			self.css_tree = arg.css_tree
+			return
+		except AttributeError:
+			pass
+		
+		if hasattr(arg, 'name') and hasattr(arg, 'args'):
+			self.css_tree = arg
+			return
+		
+		self.css_tree = CSSParser().parse_css(arg.decode('utf-8'))
 	
 	def traverse(self, node, param, pre_function, post_function):
 		if pre_function != None:
@@ -150,7 +160,10 @@ class CSSDocument:
 			elif node.name == 'path-operator':
 				return args[0]
 			elif node.name == 'selector-tag':
-				return lambda _node: _node.tag == f"{namespace}{args[0]}"
+				if args[0] == '*':
+					return lambda _node: True
+				else:
+					return lambda _node: _node.tag == f"{namespace}{args[0]}"
 			elif node.name == 'selector-class':
 				return lambda _node: ('class' in _node.attrib) and (_node.attrib['class'] == args[0])
 			elif node.name == 'selector-pseudo-class':
@@ -853,8 +866,14 @@ class CSSParser:
 					pass # warning
 			elif hasattr(token, 'name') and token.name == self.ParserSymbol.square:
 				args = list(token.args)
-				args[2] = self.__remove_optional_quotes(args[2])
-				result.append(StyleNode('selector-attr', args))
+				#assert len(args) == 3 or len(args) == 1
+				if len(args) == 1:
+					result.append(StyleNode('selector-attr-present', args))
+				elif len(args) == 3:
+					args[2] = self.__remove_optional_quotes(args[2])
+					result.append(StyleNode('selector-attr', args))
+				else:
+					pass # warning
 			elif not past:
 				result.append(StyleNode('selector-tag', [token]))
 			elif token == '*':

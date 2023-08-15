@@ -23,73 +23,6 @@ except AttributeError:
 		return math.sqrt(sum((_a - _b)**2 for (_a, _b) in zip(a, b)))
 
 
-class Epsilon:
-	def __init__(self, value=0, accuracy=0):
-		if accuracy < 0:
-			raise ValueError("Accuracy must be nonnegative.")
-		self.value = value
-		self.accuracy = accuracy
-	
-	@staticmethod
-	def __value(x):
-		try:
-			return x.value
-		except AttributeError:
-			return x
-	
-	@staticmethod
-	def __accuracy(x):
-		try:
-			return x.accuracy
-		except AttributeError:
-			return 0
-	
-	def __add__(self, other):
-		return self.__class__(self.value + self.__value(other), self.accuracy + self.__accuracy(other))
-	
-	def __radd__(self, other):
-		return self.__class__(self.__value(other) + self.value, self.accuracy + self.__accuracy(other))
-	
-	def __sub__(self, other):
-		return self.__class__(self.value - self.__value(other), self.accuracy + self.__accuracy(other))
-	
-	def __rsub__(self, other):
-		return self.__class__(self.__value(other) - self.value, self.accuracy + self.__accuracy(other))
-	
-	def __mul__(self, other):
-		return self.__class__(self.value * self.__value(other), self.accuracy * (abs(self.__value(other)) + self.__accuracy(other)))
-	
-	def __rmul__(self, other):
-		return self.__class__(self.__value(other) * self.value, (abs(self.__value(other)) + self.__accuracy(other)) * self.accuracy)
-	
-	def __truediv__(self, other):
-		if abs(self.__value(other)) <= self.__accuracy(other):
-			raise ArithmeticError("Error is infinite. You divided epsilon by a value close to zero.")
-		return self.__class__(self.value / self.__value(other), (abs(self.value) + self.accuracy) / (abs(self.__value(other)) - self.__accuracy(other)))
-	
-	def __rtruediv__(self, other):
-		if abs(self.value) <= self.accuracy:
-			raise ArithmeticError("Error is infinite. You divided epsilon by a value close to zero.")
-		return self.__class__(self.__value(other) / self.value, (abs(self.__value(other)) + self.__accuracy(other)) / (abs(self.value) - self.accuracy))
-	
-	def __pow__(self, exponent):
-		return self.__class__(self.value**exponent, self.accuracy**exponent if self.accuracy else 0)
-	
-	def __bool__(self):
-		return bool(self.value)
-	
-	def __int__(self):
-		return int(self.value)
-	
-	def __float__(self):
-		return self.__parse_float(self.value)
-	
-	def __eq__(self, other):
-		return self.value - self.accuracy <= self.__parse_float(other) <= self.value + self.accuracy
-
-epsilon = Epsilon(accuracy=0.002)
-
-
 class NotANumber(BaseException):
 	def __init__(self, original):
 		self.original = original
@@ -280,9 +213,12 @@ class SVGFormat:
 		return self.is_xml_document(document) and document.getroot().tag == f'{{{self.xmlns_svg}}}svg'
 	
 	def scan_document_links(self, document):
+		"Yield all links referenced by the SVG document, including `data:` links."
+		
 		if self.is_svg_document(document):
 			def links():
 				yield from document.scan_stylesheets()
+				yield from self.__xlink_hrefs(document)
 				yield from self.__data_internal_links(self.__style_attrs(document))
 				yield from self.__data_internal_links(self.__style_tags(document))
 			return links()
@@ -306,7 +242,8 @@ class SVGFormat:
 	
 	def __style_attrs(self, document):
 		for styledtag in document.findall('.//*[@style]'):
-			style = styledtag.tag.split('}')[-1] + ' {' + styledtag.attrib['style'] + '}'
+			style = '* {' + styledtag.attrib['style'] + '}'
+			#print("link:", style)
 			yield 'data:text/css,' + url_quote(style)
 	
 	def __style_tags(self, document):
@@ -317,6 +254,12 @@ class SVGFormat:
 				mime = 'text/css'
 			style = styletag.text
 			yield f'data:{mime},' + url_quote(style)
+	
+	def __xlink_hrefs(self, document):
+		for linkedtag in document.findall(f'.//*[@{{{self.xmlns_xlink}}}href]'):
+			if linkedtag.tag == f'{{{self.xmlns_svg}}}a': continue
+			href = linkedtag.attrib[f'{{{self.xmlns_xlink}}}href']
+			yield href
 	
 	def __data_internal_links(self, urls):
 		for url in urls:
@@ -331,11 +274,15 @@ class SVGFormat:
 			return NotImplemented
 	
 	def draw_image(self, view, document, ctx, box):
+		"Perform SVG rendering."
+		
 		if not self.is_svg_document(document):
 			return NotImplemented
 		return self.__render_xml(view, ctx, box, document.getroot(), [document], self.get_document_url(document), 0, True)
 	
 	def image_dimensions(self, view, document):
+		"Return the SVG dimensions, that might depend on the view state."
+		
 		if not self.is_svg_document(document):
 			return NotImplemented
 		
@@ -354,6 +301,8 @@ class SVGFormat:
 		return svg_width, svg_height
 	
 	def __render_xml(self, view, ctx, box, node, ancestors, current_url, level, draw):
+		"Generic dispatcher for rendering an XML node."
+		
 		if not isinstance(node.tag, str):
 			pass
 		elif node.tag in [f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in ('defs', 'title', 'desc', 'metadata', 'style', 'linearGradient', 'radialGradient', 'script', 'symbol', 'animate', 'filter')]:
@@ -382,6 +331,8 @@ class SVGFormat:
 		return []
 	
 	def __render_use(self, view, ctx, box, node, ancestors, current_url, level, draw):
+		"Render a <use/> element, referencing another one."
+		
 		href = self.resolve_url(node.attrib[f'{{{self.xmlns_xlink}}}href'], current_url)
 		original = self.get_document(href)
 		if original == None:
@@ -394,6 +345,7 @@ class SVGFormat:
 		target.original = original
 		if original.tag == f'{{{self.xmlns_svg}}}symbol':
 			target.tag = f'{{{self.xmlns_svg}}}g'
+			target.fromsymbol = True
 		else:
 			target.tag = original.tag
 		target.attrib = dict(original.attrib)
@@ -418,6 +370,8 @@ class SVGFormat:
 		return []
 	
 	def __render_anchor(self, view, ctx, box, node, ancestors, current_url, level, draw):
+		"Render a link. Emits tag_begin()/tag_end() calls on the context."
+		
 		try:
 			href = node.attrib[f'{{{self.xmlns_xlink}}}href']
 			ctx.tag_begin('a', f'href=\'{href}\'')
@@ -434,6 +388,8 @@ class SVGFormat:
 		return nodes_under_pointer
 	
 	def __render_image(self, view, ctx, box, node, ancestors, current_url, level, draw):
+		"Render external image."
+		
 		href = node.attrib[f'{{{self.xmlns_xlink}}}href']
 		url = self.resolve_url(href, current_url)
 		
@@ -471,6 +427,8 @@ class SVGFormat:
 		return nodes_under_pointer
 	
 	def __render_foreign_object(self, view, ctx, box, node, ancestors, current_url, level, draw):
+		"Render <foreignObject/>. Rendering of the child node must be implemented separately."
+		
 		nodes_under_pointer = []
 		
 		left, top, width, height = box
@@ -495,6 +453,8 @@ class SVGFormat:
 		return nodes_under_pointer
 	
 	def __render_svg(self, view, ctx, box, node, ancestors, current_url, level, draw):
+		"Render <svg/> element and its subelements, toplevel or nested."
+		
 		assert not any(isinstance(_element, list) for _element in ancestors)
 		
 		if node.tag != f'{{{self.xmlns_svg}}}svg':
@@ -538,11 +498,8 @@ class SVGFormat:
 		ctx.scale(x_scale, y_scale)
 		ctx.translate(-viewbox_x, -viewbox_y)
 		
-		#ctx.set_source_rgb(0, 0, 1)
-		#ctx.set_line_width(10)
 		ctx.rectangle(viewbox_x, viewbox_y, viewbox_w, viewbox_h)
 		ctx.clip()
-		#ctx.clip()
 		
 		nodes_under_pointer = self.__render_group(view, ctx, (viewbox_x, viewbox_y, viewbox_w, viewbox_h), node, ancestors, current_url, level, draw)
 		
@@ -551,7 +508,13 @@ class SVGFormat:
 		return nodes_under_pointer
 	
 	def __render_group(self, view, ctx, box, node, ancestors, current_url, level, draw):
+		"Render SVG <g/> element and its subelements."
+		
 		left, top, width, height = box
+
+		if 'transform' in node.attrib:
+			ctx.save()
+			self.__apply_transform(view, ctx, box, node, ancestors)
 		
 		if level:
 			try:
@@ -568,14 +531,24 @@ class SVGFormat:
 				ctx.save()
 				ctx.translate(x, y)
 		
-		if 'transform' in node.attrib:
-			ctx.save()
-			self.__apply_transform(view, ctx, box, node, ancestors)
+		if hasattr(node, 'fromsymbol'):
+			ctx.rectangle(0, 0, width - left, height - top) # TODO: width and height attributes, box attribute
+			if view.pointer:
+				px, py = ctx.device_to_user(*view.pointer)
+				pointer_yes = ctx.in_fill(px, py)
+			else:
+				pointer_yes = False
+			ctx.clip()
+		else:
+			pointer_yes = True
 		
 		nodes_under_pointer = []
 		ancestors = ancestors + [node]
 		for child in node:
 			nodes_under_pointer += self.__render_xml(view, ctx, box, child, ancestors, current_url, level+1, draw)
+		
+		if not pointer_yes:
+			nodes_under_pointer = []
 		
 		if 'transform' in node.attrib:
 			ctx.restore()
@@ -603,6 +576,8 @@ class SVGFormat:
 		ctx.close_path()
 	
 	def __render_shape(self, view, ctx, box, node, ancestors, current_url, level, draw):
+		"Render one of SVG shape elements: polygon, line, ellipse, circle, rect, path, text."
+		
 		left, top, width, height = box
 		
 		try:
@@ -776,6 +751,8 @@ class SVGFormat:
 		return nodes_under_pointer
 	
 	def __apply_paint(self, view, ctx, box, node, ancestors, current_url, draw):
+		"Draw the current shape, applying fill and stroke. The path is preserved. Returns a pair of bool, indicating whether fill and stroke was non-transparent."
+		
 		has_fill = False
 		ctx.save()
 		if self.__apply_fill(view, ctx, box, node, ancestors, current_url):
@@ -795,6 +772,8 @@ class SVGFormat:
 		return has_fill, has_stroke
 	
 	def __apply_pattern_from_url(self, view, ctx, box, node, ancestors, current_url, url):
+		"Set painting source to a pattern, i.e. a gradient, identified by url."
+		
 		href = url.strip()[4:-1]
 		if href[0] == '"' and href[-1] == '"': href = href[1:-1]
 		href = self.resolve_url(href, current_url)
@@ -1087,7 +1066,7 @@ class SVGFormat:
 			except (KeyError, AttributeError):
 				pass
 			else:
-				css = self.get_document('data:text/css,' + url_quote(node.tag.split('}')[-1] + ' {' + style + '}'))
+				css = self.get_document('data:text/css,' + url_quote('* {' + style + '}'))
 				if css is not None:
 					css_attrib = css.match_element([node], (lambda *args: False), (lambda *args: False), self.xmlns_svg)
 					if attrib in css_attrib:
@@ -1117,6 +1096,8 @@ class SVGFormat:
 			raise KeyError(f"Attribute {attrib} not found in any of ancestors")
 	
 	def __apply_color(self, view, ctx, box, node, ancestors, current_url, color_attr, opacity_attr, default_color):
+		"Set painting source to the color identified by provided parameters."
+		
 		#style = self.__process_style(node)
 		
 		try:
@@ -1254,6 +1235,8 @@ class SVGFormat:
 			return float(f)
 	
 	def __apply_fill(self, view, ctx, box, node, ancestors, current_url):
+		"Prepares the context to fill() operation, including setting color and fill rules."
+		
 		if not self.__apply_color(view, ctx, box, node, ancestors, current_url, 'fill', 'fill-opacity', 'black'):
 			return False
 		
@@ -1276,6 +1259,8 @@ class SVGFormat:
 		return True
 	
 	def __apply_stroke(self, view, ctx, box, node, ancestors, current_url):
+		"Prepares the context to stroke() operation, including setting color and line parameters."
+		
 		if not self.__apply_color(view, ctx, box, node, ancestors, current_url, 'stroke', 'stroke-opacity', 'none'):
 			return False
 		
@@ -1359,6 +1344,8 @@ class SVGFormat:
 	__re_tokens = re.compile(fr'({__p_number}|[a-zA-Z])')
 	
 	def __draw_path(self, view, ctx, box, node, ancestors, level):
+		"Create path in the context, with parameters taken from the `d` attribute of the provided node."
+		
 		left, top, width, height = box
 		
 		text = node.attrib['d']
@@ -1636,10 +1623,12 @@ class SVGFormat:
 	@classmethod
 	def __total_text(cls, node, strip):
 		total_text = []
+		
 		if node.text:
 			txt = node.text
 			if strip: txt = txt.strip()
 			total_text.append(txt)
+		
 		for child in node:
 			if child.tag != f'{{{cls.xmlns_svg}}}tspan': continue
 			
@@ -1651,6 +1640,7 @@ class SVGFormat:
 				txt = child.tail
 				if strip: txt = txt.strip()
 				total_text.append(txt)
+		
 		return ' '.join(total_text)
 	
 	def __draw_tspan(self, view, ctx, box, node, ancestors, level, strip):
@@ -1688,7 +1678,7 @@ class SVGFormat:
 		if node.text:
 			txt = node.text
 			if strip: txt = txt.strip()
-
+			
 			extents = ctx.text_extents(txt)
 			if text_anchor == 'end':
 				anchor_shift = -extents.width
@@ -1696,7 +1686,7 @@ class SVGFormat:
 				anchor_shift = -extents.width / 2
 			else:
 				anchor_shift = 0
-
+			
 			ctx.save()
 			ctx.rel_move_to(anchor_shift, 0)
 			ctx.text_path(txt)
@@ -1754,7 +1744,7 @@ class SVGFormat:
 		if node.text:
 			txt = node.text
 			if strip: txt = txt.strip()
-
+			
 			extents = ctx.text_extents(txt)
 			if text_anchor == 'end':
 				anchor_shift = -extents.width
@@ -1778,7 +1768,7 @@ class SVGFormat:
 			if child.tail:
 				txt = child.tail
 				if strip: txt = txt.strip()
-
+				
 				extents = ctx.text_extents(txt)
 				if text_anchor == 'end':
 					anchor_shift = -extents.width
@@ -1786,7 +1776,7 @@ class SVGFormat:
 					anchor_shift = -extents.width / 2
 				else:
 					anchor_shift = 0
-
+				
 				ctx.save()
 				ctx.rel_move_to(anchor_shift, 0)
 				ctx.text_path(txt)
@@ -2069,7 +2059,9 @@ class SVGFormat:
 if __debug__ and __name__ == '__main__':
 	from pathlib import Path
 	from format.xml import XMLFormat, XMLDocument
-	from format.css import CSSFormat
+	from format.css import CSSFormat, CSSDocument
+	from format.null import NullFormat
+	from download.data import DataDownload
 	
 	class PseudoContext:
 		def __init__(self, name):
@@ -2106,7 +2098,7 @@ if __debug__ and __name__ == '__main__':
 			#return lambda *args: print(self.__name + '.' + attr + str(args))
 			return lambda *args: None
 	
-	class SVGRenderModel(SVGFormat, CSSFormat, XMLFormat):
+	class SVGRenderModel(SVGFormat, CSSFormat, XMLFormat, DataDownload, NullFormat):
 		def scan_document_links(self, document):
 			if SVGFormat.is_svg_document(self, document):
 				return SVGFormat.scan_document_links(self, document)
@@ -2114,8 +2106,10 @@ if __debug__ and __name__ == '__main__':
 				return CSSFormat.scan_document_links(self, document)
 			elif XMLFormat.is_xml_document(self, document):
 				return XMLFormat.scan_document_links(self, document)
+			elif NullFormat.is_null_document(self, document):
+				return NullFormat.scan_document_links(self, document)
 			else:
-				return NotImplemented
+				raise NotImplementedError(f"Could not scan links in unsupported document type: {type(document)}")
 		
 		def create_document(self, data, mime_type):
 			if mime_type == 'application/xml':
@@ -2125,7 +2119,7 @@ if __debug__ and __name__ == '__main__':
 			elif mime_type == 'image/svg':
 				return SVGFormat.create_document(self, data, mime_type)
 			else:
-				return NotImplemented
+				raise NotImplementedError("Could not create unsupported document type.")
 		
 		def resolve_url(self, rel_url, base_url):
 			return rel_url
@@ -2136,16 +2130,16 @@ if __debug__ and __name__ == '__main__':
 		def is_svg_document(self, document):
 			return hasattr(document, 'getroot')
 		
-		def get_document(self, url):
-			return None
-		
 		def get_document_url(self, document):
 			return ''
 		
 		def get_document(self, url):
 			if url.startswith('#'):
 				return XMLDocument(self.tree.findall(f".//*[@id='{url[1:]}']")[0])
+			#elif url.startswith('data:text/css'):
+			#	return CSSDocument(self.get_document(url))
 			return None
+			#raise NotImplementedError("Could not fetch unsupported url scheme: " + url)
 		
 		def draw_image(self, view, document, ctx, box):
 			r = super().draw_image(view, document, ctx, box)
@@ -2158,18 +2152,19 @@ if __debug__ and __name__ == '__main__':
 			self.widget_width = 2000
 			self.widget_height = 1500
 			self.screen_dpi = 96
+			self.nodes_under_pointer = []
 	
 	
 	for filepath in Path('gfx').iterdir():
 		if filepath.suffix != '.svg': continue
-		print()
-		print(filepath)
+		#print()
+		#print(filepath)
 		ctx = PseudoContext(f'Context("{str(filepath)}")')
 		rnd = SVGRenderModel()
 		view = PseudoView()
 		
 		document = rnd.create_document(filepath.read_bytes(), 'image/svg')
-		print(list(rnd.scan_document_links(document)))
+		l = list(rnd.scan_document_links(document))
 		
 		rnd.tree = document
 		rnd.draw_image(view, document, ctx, (0, 0, 1024, 768))

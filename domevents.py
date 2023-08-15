@@ -28,7 +28,7 @@ class Event:
 
 	def __init__(self, type_, **kwargs):
 		if type(self) == Event:
-			raise ValueError("Direct instantiation of class 'BaseEvent' is not allowed.")
+			raise ValueError("Direct instantiation of class 'Event' is not allowed.")
 		WriteAccess(self).target = kwargs.pop("target", None)
 		WriteAccess(self).isTrusted = False
 		WriteAccess(self).srcElement = None
@@ -98,6 +98,8 @@ class CustomEvent(Event):
 				"beforeunload":{},
 				"open":{},
 				"close":{},
+				"opening":{},
+				"closing":{},
 				"warning":{}}
 
 	def __init__(self, type_, **kwargs):
@@ -263,11 +265,11 @@ if __debug__ and __name__ == "__main__":
 
 	try: ui.composed = True;
 	except AccessError: pass;
-	else: assert False
+	else: assert False, "Setting attribute should raise AccessError"
 
 	try: fe.relatedTarget = None;
 	except AccessError: pass;
-	else: assert False
+	else: assert False, "Setting attribute should raise AccessError"
 
 	#print("timeStamp:", ui.timeStamp)
 	ui.timeStamp = 0
@@ -287,43 +289,54 @@ if __debug__ and __name__ == "__main__":
 
 
 	## constants tests
-	print("\n\tConstants tests")
-	print(we.DOM_DELTA_PIXEL)
+	#print("\n\tConstants tests")
+	we.DOM_DELTA_PIXEL
 	try: we.DOM_DELTA_PIXEL = 2;
-	except AccessError as exc: print(exc)
+	except AccessError as exc: pass;
+	else: assert False, "Setting attribute should raise AccessError"
 
 	try: del(we.DOM_DELTA_LINE);
-	except AccessError as exc: print(exc)
+	except AccessError as exc: pass;
+	else: assert False, "Deleting attribute should raise AccessError"
 
 	try: we._EVENTS = { "nowy": {"bubbles":True, "composed":False, "cancelable":False}}
-	except AccessError as exc: print(exc);
+	except AccessError as exc: pass;
+	else: assert False, "Setting attribute should raise AccessError"
 
 	try: del(we._EVENTS);
-	except AccessError as exc: print(exc);
+	except AccessError as exc: pass;
+	else: assert False, "Deleting attribute should raise AccessError"
 
-	try: we._EVENTS["nowy"] = {"bubbles":True, "composed":False, "cancelable":False};
-	except AttributeError as exc: print(exc);
+	#try: we._EVENTS["nowy"] = {"bubbles":True, "composed":False, "cancelable":False};
+	#except AttributeError as exc: pass;
+	#else: assert False, "Atrribute should not be present in that object"
 
 
 	## declaration tests
-	print("\n\tDeclaration tests")
+	#print("\n\tDeclaration tests")
 	try: Event(); #Empty Event
-	except TypeError as exc: print(exc);
+	except TypeError as exc: pass;
+	else: assert False
 
 	try: Event("load"); #Event declaration
-	except ValueError as exc: print(exc);
+	except ValueError as exc: pass;
+	else: assert False
 
 	try: UIEvent("blur"); #Wrong type
-	except ValueError as exc: print(exc);
+	except ValueError as exc: pass;
+	else: assert False
 
 	try: WheelEvent(); #Empty declaration
-	except TypeError as exc: print(exc);
+	except TypeError as exc: pass;
+	else: assert False
 
 	try: MouseEvent("click", test=True) #Not allowed kwargs
-	except TypeError as exc: print(exc);
+	except TypeError as exc: pass;
+	else: assert False
 
 	try: KeyboardEvent("load") #Parent type
-	except ValueError as exc: print(exc);
+	except ValueError as exc: pass;
+	else: assert False
 
 	print("\n\tKontruktory repr:")
 	print(repr(we), end="\n\n")

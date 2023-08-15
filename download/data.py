@@ -10,7 +10,7 @@ from urllib.parse import unquote
 
 
 class DataDownload:
-	def download_document(self, url) -> bytes:
+	async def download_document(self, url) -> (bytes, str):
 		if url.startswith('data:'):
 			headers = url[url.index(':') + 1 : url.index(',')].split(';')
 			
@@ -39,9 +39,11 @@ class DataDownload:
 
 
 if __debug__ and __name__ == '__main__':
+	from asyncio import run
+	
 	print("data download")
 	
 	model = DataDownload()
-	assert model.download_document('data:,hello,void') == (b"hello,void", 'text/plain')
+	assert run(model.download_document('data:,hello,void')) == (b"hello,void", 'text/plain')
 
 

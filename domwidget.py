@@ -23,6 +23,17 @@ if __debug__:
 	import itertools
 
 
+def schedule(old_callback):
+	def false_callback(*args):
+		old_callback(*args)
+		return False
+	
+	def new_callback(*args):
+		GLib.idle_add(lambda: false_callback(*args))
+	
+	return new_callback
+
+
 class DOMWidget(Gtk.DrawingArea):
 	"Widget implementing Document Object Model."
 	
@@ -114,10 +125,9 @@ class DOMWidget(Gtk.DrawingArea):
 	def open_document(self, url):
 		#if self.image is not None:
 		#	self.model.close_document(self)
-		self.model.open_document(self, url)
+		schedule(run)(self.model.open_document(self, url))
 	
 	def close_document(self):
-		#if self.image is not None:
 		self.model.close_document(self)
 	
 	def set_image(self, image):
@@ -135,9 +145,12 @@ class DOMWidget(Gtk.DrawingArea):
 			self.synthesize_enter_events()
 		self.queue_draw()
 	
-	def render(self):
-		surface = cairo.RecordingSurface(cairo.Content.COLOR_ALPHA, None)
-		context = cairo.Context(surface)		
+	def render(self, ctx=None):
+		if ctx is None:
+			surface = cairo.RecordingSurface(cairo.Content.COLOR_ALPHA, None)
+			context = cairo.Context(surface)
+		else:
+			context = ctx
 		context.set_source_rgb(1, 1, 1)
 		context.paint() # background
 		
@@ -154,7 +167,10 @@ class DOMWidget(Gtk.DrawingArea):
 		else:
 			nodes_under_pointer = []
 		
-		return surface, nodes_under_pointer
+		if ctx:
+			return None, nodes_under_pointer
+		else:
+			return surface, nodes_under_pointer
 	
 	@classmethod
 	def check_dblclick_hysteresis(cls, press_event, event):
@@ -271,6 +287,8 @@ class DOMWidget(Gtk.DrawingArea):
 			self.emit_dom_event("focus_changed_event", fc_ev)
 		
 		if __debug__: self.check_dom_events("focus_changed_event")
+		
+		return False
 	
 	def change_dom_focus_tabindex(self, index):
 		#for item in self.subtree(self.document.getroot()):
@@ -279,7 +297,7 @@ class DOMWidget(Gtk.DrawingArea):
 		#		self.set_dom_focus(item)
 		#		break
 		#else:
-		#	self.set_dom_focus(None)
+		#	self.ide(None)
 		pass # TODO
 	
 	def change_dom_focus_next(self):
@@ -293,7 +311,7 @@ class DOMWidget(Gtk.DrawingArea):
 		#		found = True
 		#else:
 		#	index = self.tabindex_list[0]
-		#GLib.idle_add(lambda: self.change_dom_focus_tabindex(index))
+		#schedule(self.change_dom_focus_tabindex)(index)
 		pass # TODO
 	
 	def change_dom_focus_prev(self):
@@ -307,7 +325,7 @@ class DOMWidget(Gtk.DrawingArea):
 		#		found = True
 		#else:
 		#	index = self.tabindex_list[-1]
-		#GLib.idle_add(lambda: self.change_dom_focus_tabindex(index))
+		#schedule(self.change_dom_focus_tabindex)(index)
 		pass # TODO
 	
 	def get_element_tabindex(self, element):
@@ -482,7 +500,7 @@ class DOMWidget(Gtk.DrawingArea):
 	def handle_button_release_event(self, drawingarea, event):
 		if self.last_mousedown and self.last_mousedown.button.get_button().button == event.button and self.check_click_hysteresis(self.last_mousedown, event):
 			event_copy = event.copy()
-			GLib.idle_add(lambda: self.emit('clicked', event_copy) and False)
+			schedule(self.emit)('clicked', event_copy)
 		
 		if self.first_click and not self.check_count_hysteresis(self.first_click, event):
 			self.current_click_count = 0
@@ -513,7 +531,7 @@ class DOMWidget(Gtk.DrawingArea):
 	def handle_clicked(self, drawingarea, event):
 		if self.last_click and self.check_dblclick_hysteresis(self.last_click, event):
 			event_copy = event.copy()
-			GLib.idle_add(lambda: self.emit('clicked', event_copy) and False)
+			schedule(self.emit)('clicked', event_copy)
 			self.last_click = None
 		else:
 			self.last_click = event.copy()
@@ -525,7 +543,7 @@ class DOMWidget(Gtk.DrawingArea):
 			self.first_click = event.copy()
 		
 		if self.nodes_under_pointer and self.is_element_focusable(self.nodes_under_pointer[-1]) and not (self.is_focused(self.nodes_under_pointer[-1])):
-			GLib.idle_add(lambda: self.set_dom_focus(self.nodes_under_pointer[-1]))
+			schedule(self.set_dom_focus)(self.nodes_under_pointer[-1])
 		
 		if self.nodes_under_pointer:
 			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
@@ -551,7 +569,7 @@ class DOMWidget(Gtk.DrawingArea):
 			self.first_click = event.copy()
 		
 		#if self.nodes_under_pointer and self.is_element_focusable(self.nodes_under_pointer[-1]) and not (self.is_focused(self.nodes_under_pointer[-1])):
-		#	GLib.idle_add(lambda: self.set_dom_focus(self.nodes_under_pointer[-1]))
+		#	schedule(self.set_dom_focus)(self.nodes_under_pointer[-1])
 		
 		if self.nodes_under_pointer:
 			mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
@@ -592,9 +610,9 @@ class DOMWidget(Gtk.DrawingArea):
 		
 		if Gdk.keyval_name(event.keyval).endswith("Tab"):
 			if event.state & Gdk.ModifierType.SHIFT_MASK:
-				GLib.idle_add(lambda: self.change_dom_focus_prev())
+				schedule(self.change_dom_focus_prev)()
 			else:
-				GLib.idle_add(lambda: self.change_dom_focus_next())
+				schedule(self.change_dom_focus_next)()
 		
 		keyval_name = Gdk.keyval_name(event.keyval)
 		keys = self.get_keys(event)
@@ -645,7 +663,7 @@ class DOMWidget(Gtk.DrawingArea):
 		if __debug__: self.check_dom_events("scrolled_event")
 	
 	def emit_dom_event(self, handler, event):
-		self.emit('dom_event', handler, event)
+		schedule(self.emit)('dom_event', handler, event)
 		
 		if __debug__ and handler in ['motion_notify_event', 'button_event', 'key_event', 'clicked', 'scrolled_event', 'focus_changed_event']:
 			self.emitted_dom_events.append(event)
@@ -791,8 +809,8 @@ class DOMWidget(Gtk.DrawingArea):
 
 if __debug__ and __name__ == '__main__':
 	import sys, signal
-	import mimetypes
-	from pathlib import Path
+	from asyncio import run
+	from aiopath import AsyncPath as Path
 	
 	from document import Model
 	
@@ -805,8 +823,6 @@ if __debug__ and __name__ == '__main__':
 	
 	from download.data import DataDownload
 	from download.file import FileDownload
-	
-	mimetypes.init()
 	
 	model = Model.features('TestWidgetModel', SVGFormat, PNGFormat, ImageFormat, XMLFormat, CSSFormat, PlainFormat, DataDownload, FileDownload)()
 	
@@ -835,8 +851,8 @@ if __debug__ and __name__ == '__main__':
 		
 		if name == 'key_event':
 			if (event.type_ == 'keyup') and (event.target == None) and (event.code == 'Escape'):
-				GLib.idle_add(lambda: widget.close_document())
-				GLib.idle_add(lambda: window.close())
+				schedule(widget.close_document)()
+				schedule(window.close)()
 			if (event.type_ == 'keyup') and (event.target == None) and (event.code == 'Left'):
 				image_index -= 1
 				image_index %= len(images)
@@ -848,19 +864,38 @@ if __debug__ and __name__ == '__main__':
 				widget.close_document()
 				widget.open_document(images[image_index])
 		elif name == 'content_changed':
-			if event.type_ == 'open':
-				GLib.idle_add(lambda: widget.set_image(event.target))
+			if event.type_ == 'opening':
+				widget.main_url = event.detail
+				schedule(widget.set_image)(None)
+			elif event.type_ in ['beforeload', 'load', 'open']:
+				if event.detail == widget.main_url:
+					schedule(widget.set_image)(event.target)
+					schedule(widget.queue_draw)()
+				else:
+					schedule(widget.set_image)(widget.image)
+					schedule(widget.queue_draw)()
 			elif event.type_ == 'close':
-				GLib.idle_add(lambda: widget.set_image(None))
+				widget.main_url = None
+				schedule(widget.set_image)(None)
 			else:
-				GLib.idle_add(lambda: widget.queue_draw())
+				schedule(widget.queue_draw)()
 	
 	widget.connect('dom_event', dom_event)
 	
-	
-	images = sorted((_image.as_uri() for _image in (Path.cwd() / 'gfx').iterdir() if _image.suffix in ('.svg', '.png', '.jpeg')), key=(lambda x: x.lower()))
+	images = []
 	image_index = 0
-	widget.open_document(images[image_index])
+	
+	async def load_images():
+		global images, image_index
+		
+		async for image in (Path.cwd() / 'gfx').iterdir():
+			if image.suffix not in ('.svg', '.png', '.jpeg'): continue
+			images.append(image.as_uri())
+		
+		images.sort(key=(lambda x: x.lower()))
+		widget.open_document(images[image_index])
+	
+	schedule(run)(load_images())
 	
 	try:
 		mainloop.run()
