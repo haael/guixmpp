@@ -27,6 +27,12 @@ class PNGFormat:
 		else:
 			return NotImplemented
 	
+	#def transform_document(self, document):
+	#	if self.is_png_document(document):
+	#		return document
+	#	else:
+	#		return NotImplemented
+	
 	def image_dimensions(self, view, document):
 		if self.is_png_document(document):
 			return document.get_width(), document.get_height()
@@ -55,17 +61,6 @@ class PNGFormat:
 			ctx.restore()
 		
 		return []
-	
-	def hover_image(self, view, document, ctx, box, pointer):
-		if not self.is_png_document(document):
-			return NotImplemented
-		
-		x, y = ctx.device_to_user(*pointer)
-		left, top, width, height = box
-		if left <= x <= left + width and top <= y <= top + height:
-			return [self.get_document_url(document)]
-		else:
-			return []
 	
 	def element_tabindex(self, document, element):
 		if self.is_png_document(document):

@@ -139,18 +139,18 @@ class DOMWidget(Gtk.DrawingArea):
 			self.synthesize_leave_events()
 		
 		self.image = image
-		self.rendered_surface.finish()
 		
 		self.reset_state()
 		
-		self.rendered_surface, _ = self.render()
+		surface = self.render()
+		self.rendered_surface.finish()
+		self.rendered_surface = surface
 		
 		if self.image is not None:
 			self.synthesize_enter_events()
 		self.queue_draw()
 	
 	def render(self):
-		tt = time()
 		surface = cairo.RecordingSurface(cairo.Content.COLOR_ALPHA, None)
 		context = cairo.Context(surface)
 		context.set_source_rgb(1, 1, 1)
@@ -165,12 +165,23 @@ class DOMWidget(Gtk.DrawingArea):
 				bw = self.widget_width
 				bh = (h / w) * self.widget_width
 			
-			nodes_under_pointer = self.model.draw_image(self, self.image, context, ((self.widget_width - bw) / 2, (self.widget_height - bh) / 2, bw, bh))
-		else:
-			nodes_under_pointer = []
+			self.model.draw_image(self, self.image, context, ((self.widget_width - bw) / 2, (self.widget_height - bh) / 2, bw, bh))
 		
-		print("rendering time:", (time() - tt) * 1000)
-		return surface, nodes_under_pointer
+		return surface
+	
+	def hover(self, px, py):
+		if (self.image is not None) and (self.widget_width > 0) and (self.widget_height > 0):			
+			w, h = self.model.image_dimensions(self, self.image)
+			if w / h <= self.widget_width / self.widget_height:
+				bw = (w / h) * self.widget_height
+				bh = self.widget_height
+			else:
+				bw = self.widget_width
+				bh = (h / w) * self.widget_width
+			
+			return self.model.pointer_event(self, self.image, ((self.widget_width - bw) / 2, (self.widget_height - bh) / 2, bw, bh), (px, py))
+		else:
+			return []
 	
 	@classmethod
 	def check_dblclick_hysteresis(cls, press_event, event):
@@ -352,7 +363,11 @@ class DOMWidget(Gtk.DrawingArea):
 		
 		self.rendered_surface.finish()
 		self.previous_nodes_under_pointer = self.nodes_under_pointer
-		self.rendered_surface, self.nodes_under_pointer = self.render()
+		if self.pointer:
+			self.nodes_under_pointer = self.hover(*self.pointer)
+		else:
+			self.nodes_under_pointer = []
+		self.rendered_surface = self.render()
 		self.queue_draw()
 	
 	def handle_draw(self, drawingarea, ctx):
@@ -369,13 +384,12 @@ class DOMWidget(Gtk.DrawingArea):
 		
 		self.pointer = event.x, event.y
 		self.previous_nodes_under_pointer = self.nodes_under_pointer
-		self.dont_draw = True
-		_, self.nodes_under_pointer = self.render()
-		self.dont_draw = False
+		print("motion hover")
+		self.nodes_under_pointer = self.hover(event.x, event.y)
 		if self.previous_nodes_under_pointer != self.nodes_under_pointer:
-			surface, _ = self.render()
+			print("motion render")
 			self.rendered_surface.finish()
-			self.rendered_surface = surface
+			self.rendered_surface = self.render()
 			self.queue_draw()
 		
 		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
@@ -900,7 +914,7 @@ if __debug__ and __name__ == '__main__':
 		images.sort(key=(lambda x: x.lower()))
 		widget.open_document(images[image_index])
 	
-	schedule(run)(load_images())
+	schedule(run)(load_images()) # FIXME: race condition
 	
 	try:
 		mainloop.run()

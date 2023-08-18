@@ -155,11 +155,6 @@ class Model:
 		except KeyError:
 			pass
 		
-		#if url.startswith('data:'):
-		#	#print("create document from data url", url)
-		#	self.documents[url] = self.create_document(*self.download_document(url))
-		#	return self.documents[url]
-		
 		raise URLNotFound(f"No document found for the provided url: {url}")
 	
 	def get_document(self, url):

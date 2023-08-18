@@ -144,7 +144,7 @@ class CSSDocument:
 			except (AttributeError, IndexError):
 				pass
 	
-	def match_element(self, xml_elements, media_test, pseudoclass_test, default_namespace): # TODO
+	def match_element(self, xml_element, media_test, pseudoclass_test, default_namespace): # TODO
 		if default_namespace is None:
 			namespace = ''
 		else:
@@ -180,7 +180,16 @@ class CSSDocument:
 				return lambda _node: all(_check(_node) for _check in args)
 			elif node.name == 'selector-seq':
 				if len(args) == 1:
-					return args[0](xml_elements[-1])
+					return args[0](xml_element)
+				elif len(args) == 3 and args[1] == ' ':
+					if not args[2](xml_element):
+						return False
+					target = xml_element.getparent()
+					while target is not None:
+						if args[0](target):
+							return True
+						target = target.getparent()
+					return False
 				#raise NotImplementedError("Implement path operators. {args}")
 				print("Implement path operators", args)
 				return False

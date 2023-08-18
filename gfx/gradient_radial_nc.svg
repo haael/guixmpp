@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="230" height="230">
+<title>An example of a radial gradient</title>
+
+<radialGradient id="rg1" cx="20%" cy="20%" r="40%" fx="30%" fy="30%" fr="10%">
+<stop stop-color="green" offset="0"/>
+<stop stop-color="yellow" offset="0.5"/>
+<stop stop-color="blue" offset="0.6"/>
+</radialGradient>
+
+<radialGradient id="rg2" cx="0.4" cy="0.6" r="0.6" fx="0.5" fy="0.5" fr="0.1">
+<stop stop-color="green" offset="0"/>
+<stop stop-color="yellow" offset="0.5"/>
+<stop stop-color="blue" offset="0.6"/>
+</radialGradient>
+
+<radialGradient id="rg3" cx="60%" cy="40%" r="100%" fx="0%" fy="100%" fr="10%" gradientUnits="userSpaceOnUse">
+<stop stop-color="green" offset="0"/>
+<stop stop-color="yellow" offset="0.5"/>
+<stop stop-color="blue" offset="0.6"/>
+</radialGradient>
+
+<radialGradient id="rg4" cx="130" cy="140" r="80" fx="150" fy="160" fr="15" gradientUnits="userSpaceOnUse">
+<stop stop-color="green" offset="0"/>
+<stop stop-color="yellow" offset="0.5"/>
+<stop stop-color="blue" offset="0.6"/>
+</radialGradient>
+
+<rect fill="url(#rg1)" x="10" y="10" width="100" height="100" stroke="black"/>
+<rect fill="url(#rg2)" x="10" y="120" width="100" height="100" stroke="black"/>
+<rect fill="url(#rg3)" x="120" y="10" width="100" height="100" stroke="black"/>
+<rect fill="url(#rg4)" x="120" y="120" width="100" height="100" stroke="black"/>
+
+</svg>
