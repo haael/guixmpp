@@ -76,8 +76,8 @@ class DOMWidget(Gtk.DrawingArea):
 		self.image = None
 		self.rendered_surface = cairo.RecordingSurface(cairo.Content.COLOR_ALPHA, None)
 		self.pointer = None
-		self.widget_width = 0
-		self.widget_height = 0
+		self.viewport_width = 0
+		self.viewport_height = 0
 		self.screen_dpi = 96
 		self.reset_state()
 		
@@ -122,9 +122,9 @@ class DOMWidget(Gtk.DrawingArea):
 		self.tabindex = None
 		self.tabindex_list = []
 		self.previous_focus = None
-		#self.pointer = None
-		#self.widget_width = 0
-		#self.widget_height = 0
+		self.pointer = None
+		#self.viewport_width = 0
+		#self.viewport_height = 0
 	
 	def open_document(self, url):
 		#if self.image is not None:
@@ -142,9 +142,12 @@ class DOMWidget(Gtk.DrawingArea):
 		
 		self.reset_state()
 		
-		surface = self.render()
+		#pointer = self.pointer
+		#self.pointer = None
+		surface, _ = self.render()
 		self.rendered_surface.finish()
 		self.rendered_surface = surface
+		#self.pointer = pointer
 		
 		if self.image is not None:
 			self.synthesize_enter_events()
@@ -156,32 +159,21 @@ class DOMWidget(Gtk.DrawingArea):
 		context.set_source_rgb(1, 1, 1)
 		context.paint() # background
 		
-		if (self.image is not None) and (self.widget_width > 0) and (self.widget_height > 0):			
+		if (self.image is not None) and (self.viewport_width > 0) and (self.viewport_height > 0):			
 			w, h = self.model.image_dimensions(self, self.image)
-			if w / h <= self.widget_width / self.widget_height:
-				bw = (w / h) * self.widget_height
-				bh = self.widget_height
+			if w / h <= self.viewport_width / self.viewport_height:
+				bw = (w / h) * self.viewport_height
+				bh = self.viewport_height
 			else:
-				bw = self.widget_width
-				bh = (h / w) * self.widget_width
+				bw = self.viewport_width
+				bh = (h / w) * self.viewport_width
 			
-			self.model.draw_image(self, self.image, context, ((self.widget_width - bw) / 2, (self.widget_height - bh) / 2, bw, bh))
+			nop = self.model.draw_image(self, self.image, context, ((self.viewport_width - bw) / 2, (self.viewport_height - bh) / 2, bw, bh))
 		
-		return surface
-	
-	def hover(self, px, py):
-		if (self.image is not None) and (self.widget_width > 0) and (self.widget_height > 0):			
-			w, h = self.model.image_dimensions(self, self.image)
-			if w / h <= self.widget_width / self.widget_height:
-				bw = (w / h) * self.widget_height
-				bh = self.widget_height
-			else:
-				bw = self.widget_width
-				bh = (h / w) * self.widget_width
-			
-			return self.model.pointer_event(self, self.image, ((self.widget_width - bw) / 2, (self.widget_height - bh) / 2, bw, bh), (px, py))
 		else:
-			return []
+			nop = []
+		
+		return surface, nop
 	
 	@classmethod
 	def check_dblclick_hysteresis(cls, press_event, event):
@@ -356,18 +348,18 @@ class DOMWidget(Gtk.DrawingArea):
 	
 	def handle_configure_event(self, drawingarea, event):
 		rect = self.get_allocation()
-		self.widget_width = rect.width
-		self.widget_height = rect.height
+		self.viewport_width = rect.width
+		self.viewport_height = rect.height
 		
 		#self.pointer = event.x, event.y # TODO: update pointer w.r.t. new rectangle
 		
 		self.rendered_surface.finish()
 		self.previous_nodes_under_pointer = self.nodes_under_pointer
 		if self.pointer:
-			self.nodes_under_pointer = self.hover(*self.pointer)
+			_, self.nodes_under_pointer = self.render()
 		else:
 			self.nodes_under_pointer = []
-		self.rendered_surface = self.render()
+		self.rendered_surface, _ = self.render()
 		self.queue_draw()
 	
 	def handle_draw(self, drawingarea, ctx):
@@ -384,12 +376,10 @@ class DOMWidget(Gtk.DrawingArea):
 		
 		self.pointer = event.x, event.y
 		self.previous_nodes_under_pointer = self.nodes_under_pointer
-		print("motion hover")
-		self.nodes_under_pointer = self.hover(event.x, event.y)
+		_, self.nodes_under_pointer = self.render()
 		if self.previous_nodes_under_pointer != self.nodes_under_pointer:
-			print("motion render")
 			self.rendered_surface.finish()
-			self.rendered_surface = self.render()
+			self.rendered_surface, _ = self.render()
 			self.queue_draw()
 		
 		mouse_buttons = self.get_pressed_mouse_buttons_mask(event)
@@ -868,7 +858,9 @@ if __debug__ and __name__ == '__main__':
 		#print(event)
 		global images, image_index
 		
-		if name == 'key_event':
+		if name == 'warning':
+			print(event)
+		elif name == 'key_event':
 			if (event.type_ == 'keyup') and (event.target == None) and (event.code == 'Escape'):
 				schedule(widget.close_document)()
 				schedule(window.close)()
@@ -914,7 +906,7 @@ if __debug__ and __name__ == '__main__':
 		images.sort(key=(lambda x: x.lower()))
 		widget.open_document(images[image_index])
 	
-	schedule(run)(load_images()) # FIXME: race condition
+	GLib.idle_add(lambda: run(load_images()))
 	
 	try:
 		mainloop.run()

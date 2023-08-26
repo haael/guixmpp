@@ -231,9 +231,9 @@ class Model:
 
 
 if __debug__ and __name__ == '__main__':
-	import gi
-	gi.require_version('Gdk', '3.0')
-	gi.require_version('GdkPixbuf', '2.0')
+	#import gi
+	#gi.require_version('Gdk', '3.0')
+	#gi.require_version('GdkPixbuf', '2.0')
 		
 	from asyncio import run
 	from aiopath import AsyncPath as Path
@@ -253,8 +253,8 @@ if __debug__ and __name__ == '__main__':
 	class PseudoView:
 		def __init__(self):
 			self.pointer = 10, 10
-			self.widget_width = 2000
-			self.widget_height = 1500
+			self.viewport_width = 2000
+			self.viewport_height = 1500
 			self.screen_dpi = 96
 	
 		def emit_dom_event(self, handler, event):

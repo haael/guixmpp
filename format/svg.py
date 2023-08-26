@@ -63,10 +63,23 @@ class OverlayElement:
 			a = dict()
 			a.update(self.__two.attrib)
 			a.update(self.__one.attrib)
+			
+			try:
+				a[f'{{{SVGFormat.xmlns_xlink}}}href'] = self.__two.attrib[f'{{{SVGFormat.xmlns_xlink}}}href']
+			except KeyError:
+				pass
+			
+			try:
+				a['href'] = self.__two.attrib['href']
+			except KeyError:
+				pass
+			
 			if 'transform' in self.__one.attrib:
 				a['transform'] = self.__one.attrib['transform'] + self.__two.attrib.get('transform', '')
+			
 			if 'gradientTransform' in self.__one.attrib:
 				a['gradientTransform'] = self.__one.attrib['gradientTransform'] + self.__two.attrib.get('gradientTransform', '')
+			
 			return a
 		else:
 			return self.__two.attrib
@@ -330,7 +343,7 @@ class SVGFormat:
 		if not self.is_svg_document(document):
 			return NotImplemented
 		
-		self.__render_group(view, document, ctx, box, document.getroot())
+		return self.__render_group(view, document, ctx, box, document.getroot())
 	
 	__presentation_attributes = frozenset([
 		'alignment-baseline',
@@ -407,16 +420,19 @@ class SVGFormat:
 		return False
 	
 	def __pseudoclass_test(self, view, pseudoclass, node):
-		if pseudoclass in ['hover', 'active', 'focus', 'focus-visible', 'focus-within', 'default', 'fullscreen']:
-			return node in view.hover_elements
-		elif pseudoclass in ['any-link', 'local-link', 'link', 'visited']:
-			return node in view.link_elements
-		elif pseudoclass in ['current', 'buffering', 'muted', 'paused', 'picture-in-picture', 'playing', 'seeking', 'stalled', 'volume-locked']:
-			return node in view.link_elements
-		elif pseudoclass in ['autofill', 'blank', 'checked', 'disabled', 'enabled', 'in-range', 'indeterminate', 'invalid', 'modal', 'optional', 'out-of-range', 'placeholder-shown', 'read-only', 'read-write', 'required', 'user-invalid', 'user-valid', 'valid']:
-			return node in view.link_elements
-		elif pseudoclass in ['empty', 'first', 'first-child', 'first-of-type', 'left', 'last-child', 'last-of-type', 'right', 'root', 'target', 'target-within']:
-			return node in view.link_elements
+		#print("pseudoclass test", pseudoclass, node.tag, [_node.tag for _node in view.nodes_under_pointer])
+		if pseudoclass == 'hover':
+			return node in view.nodes_under_pointer
+		#if pseudoclass in ['hover', 'active', 'focus', 'focus-visible', 'focus-within', 'default', 'fullscreen']:
+		#	return node in view.hover_elements
+		#elif pseudoclass in ['any-link', 'local-link', 'link', 'visited']:
+		#	return node in view.link_elements
+		#elif pseudoclass in ['current', 'buffering', 'muted', 'paused', 'picture-in-picture', 'playing', 'seeking', 'stalled', 'volume-locked']:
+		#	return node in view.link_elements
+		#elif pseudoclass in ['autofill', 'blank', 'checked', 'disabled', 'enabled', 'in-range', 'indeterminate', 'invalid', 'modal', 'optional', 'out-of-range', 'placeholder-shown', 'read-only', 'read-write', 'required', 'user-invalid', 'user-valid', 'valid']:
+		#	return node in view.link_elements
+		#elif pseudoclass in ['empty', 'first', 'first-child', 'first-of-type', 'left', 'last-child', 'last-of-type', 'right', 'root', 'target', 'target-within']:
+		#	return node in view.link_elements
 		return False
 	
 	def __get_attribute(self, view, document, ctx, box, node, attr, default):
@@ -480,7 +496,7 @@ class SVGFormat:
 		visibility = self.__get_attribute(view, document, ctx, box, node, 'visibility', 'visible').lower()
 		
 		if visibility == 'collapse' or display == 'none':
-			return
+			return []
 		
 		left, top, width, height = box
 		
@@ -534,7 +550,6 @@ class SVGFormat:
 			ctx.translate(x, y)
 		
 		if node.tag == f'{{{self.xmlns_svg}}}symbol':
-			#print("clip", node)
 			ctx.rectangle(0, 0, width - left, height - top) # TODO: width and height attributes, box attribute
 			ctx.clip()
 			pass
@@ -546,6 +561,8 @@ class SVGFormat:
 				href = node.attrib['href']
 			if hasattr(ctx, 'tag_begin'):
 				ctx.tag_begin('a', f'href=\'{href}\'')
+		
+		hover_nodes = []
 		
 		for n, child in enumerate(node):
 			if not isinstance(child.tag, str) or child.tag == f'{{{self.xmlns_svg}}}symbol' or child.tag == f'{{{self.xmlns_sodipodi}}}namedview':
@@ -561,19 +578,27 @@ class SVGFormat:
 						required_extensions = frozenset(subchild.attrib.get('requiredExtensions', '').strip().split())
 						if required_features <= self.supported_svg_features and required_extensions <= self.supported_svg_extensions:
 							child = subchild
-							print("switch child found", child)
 							break
 					else:
-						print("required features not satisfied")
+						self.emit_warning(view, f"Fequired features not satisfied.", child.tag, child)
 			
 			if any(child.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__skip_tags):
 				pass
 			elif any(child.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__shape_tags):
-				self.__render_shape(view, document, ctx, box, child)
+				hover_subnodes = self.__render_shape(view, document, ctx, box, child)
+				hover_nodes.extend(hover_subnodes)
 			elif any(child.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__group_tags):
-				self.__render_group(view, document, ctx, box, child)
+				hover_subnodes = self.__render_group(view, document, ctx, box, child)
+				hover_nodes.extend(hover_subnodes)
+			elif child.tag == f'{{{self.xmlns_svg}}}image':
+				hover_subnodes = self.__render_image(view, document, ctx, box, child)
+				hover_nodes.extend(hover_subnodes)
+			elif child.tag == f'{{{self.xmlns_svg}}}foreignObject':
+				hover_subnodes = self.__render_foreign_object(view, document, ctx, box, child)
+				hover_nodes.extend(hover_subnodes)
+			
 			else:
-				print("Unsupported node:", child.tag)
+				self.emit_warning(view, f"Unsupported node: {child.tag}", child.tag, child)
 		
 		if node.tag == f'{{{self.xmlns_svg}}}a':
 			if hasattr(ctx, 'tag_end'):
@@ -581,6 +606,10 @@ class SVGFormat:
 		
 		if transform or ((node.getparent() is not None) and (x or y)) or node.tag == f'{{{self.xmlns_svg}}}svg' or node.tag == f'{{{self.xmlns_svg}}}symbol':
 			ctx.restore()
+		
+		if hover_nodes:
+			hover_nodes.insert(0, node)
+		return hover_nodes
 	
 	def __render_shape(self, view, document, ctx, box, node):
 		left, top, width, height = box
@@ -589,7 +618,7 @@ class SVGFormat:
 		visibility = self.__get_attribute(view, document, ctx, box, node, 'visibility', 'visible').lower()
 		
 		if visibility == 'collapse' or display == 'none':
-			return
+			return []
 		
 		#transform = self.__get_attribute(view, document, ctx, box, node, 'transform', None)
 		transform = node.attrib.get('transform', None)
@@ -609,7 +638,7 @@ class SVGFormat:
 			image = cairo.ImageSurface(cairo.FORMAT_ARGB32, int(box[2] + 2 * margin + 1), int(box[3] + 2 * margin + 1))
 			image_ctx = cairo.Context(image)
 			#image_ctx.set_matrix(ctx.get_matrix())
-			image_ctx.translate(-box[0] + margin, -box[1] + margin)
+			image_ctx.translate(-left + margin, -top + margin)
 			old_ctx = ctx
 			ctx = image_ctx
 		
@@ -678,26 +707,35 @@ class SVGFormat:
 		
 		has_fill, has_stroke = self.__apply_paint(view, document, ctx, box, node, (visibility != 'hidden'))
 		
-		#px, py = ctx.device_to_user()
+		hover_nodes = []
+		if view.pointer:
+			px, py = ctx.device_to_user(*view.pointer)
+			if ctx.in_clip(px, py):
+				if ctx.in_fill(px, py) or ctx.in_stroke(px, py): # TODO: pointer events
+					hover_nodes.append(node)
 		
 		ctx.new_path()
 		
 		if filter_:
 			image.flush()
 			
-			pil_filter = PIL.ImageFilter.GaussianBlur(10) # TODO: other filters
+			#pil_filter = PIL.ImageFilter.GaussianBlur(10) # TODO: other filters
 			
-			data = PIL.Image.frombytes('RGBa', (image.get_width(), image.get_height()), bytes(image.get_data())).filter(pil_filter).tobytes()
-			image = cairo.ImageSurface.create_for_data(bytearray(data), cairo.FORMAT_ARGB32, image.get_width(), image.get_height())
+			#data = PIL.Image.frombytes('RGBa', (image.get_width(), image.get_height()), bytes(image.get_data())).filter(pil_filter).tobytes()
+			#image = cairo.ImageSurface.create_for_data(bytearray(data), cairo.FORMAT_ARGB32, image.get_width(), image.get_height())
 			
 			ctx = old_ctx
 			ctx.set_source_surface(image, -margin, -margin)
 			ctx.rectangle(*box)
-			ctx.fill()
+			ctx.fill_preserve()
+			ctx.set_source_rgb(0, 0, 0)
+			ctx.stroke()
 			image.finish()
 		
 		if transform:
 			ctx.restore()
+		
+		return hover_nodes
 	
 	def __construct_use(self, document, node):
 		"Render a <use/> element, referencing another one."
@@ -719,16 +757,6 @@ class SVGFormat:
 		
 		return target
 	
-	def hover_image(self, view, document, ctx, box, pointer):
-		if not self.is_svg_document(document):
-			return NotImplemented
-		
-		surface = cairo.RecordingSurface(cairo.Content.COLOR_ALPHA, None)
-		ctx = cairo.Context(surface)
-		result = self.__render_xml(view, ctx, box, document.getroot(), [document], self.get_document_url(document), 0, pointer)
-		assert isinstance(result, list)
-		return result
-	
 	def image_dimensions(self, view, document):
 		"Return the SVG dimensions, that might depend on the view state."
 		
@@ -743,9 +771,9 @@ class SVGFormat:
 			svg_width = view.viewport_width
 		
 		try:
-			svg_height = self.__units(view, node.attrib['height'], percentage=view.widget_height)
+			svg_height = self.__units(view, node.attrib['height'], percentage=view.viewport_height)
 		except KeyError:
-			svg_height = view.widget_height
+			svg_height = view.viewport_height
 		
 		return svg_width, svg_height
 	
@@ -1112,12 +1140,11 @@ class SVGFormat:
 				orig_target = target
 				next_gradient_doc = self.get_document(href)
 				if next_gradient_doc == None:
-					self.emit_warning(view, "Ref not found: %s" % href, href, node)
+					self.emit_warning(view, f"Ref not found: {href}", href, node)
 					return False
 				else:
 					next_gradient = next_gradient_doc.getroot()
 					target = OverlayElement(orig_target, next_gradient, orig_target.getparent(), orig_target.tag)
-					print("replaced with", target)
 			
 			if target.tag == f'{{{self.xmlns_svg}}}linearGradient':					
 				try:
@@ -1169,7 +1196,6 @@ class SVGFormat:
 					y2 = 0
 				
 				gradient = cairo.LinearGradient(x1 + gleft, y1 + gtop, x2 + gleft, y2 + gtop)
-				print("linear gradient", x1, y1, x2, y2)
 			
 			elif target.tag == f'{{{self.xmlns_svg}}}radialGradient':
 				try:
@@ -1718,7 +1744,7 @@ class SVGFormat:
 	
 	@staticmethod
 	def __draw_rounded_rectangle(ctx, x, y, w, h, rx, ry):
-		r = (rx + ry) / 2 # TODO
+		r = (rx + ry) / 2 # TODO: non-symmetric rounded corners
 		ctx.new_sub_path()
 		ctx.arc(x + r, y + r, r, radians(180), radians(270))
 		ctx.line_to(x + w - r, y)
@@ -1788,8 +1814,92 @@ class SVGFormat:
 		else:
 			ctx.arc_negative(center_x, center_y, 1, start_angle, end_angle)
 		ctx.restore()
+	
+	def __render_image(self, view, document, ctx, box, node):
+		"Render external image."
 		
+		try:
+			href = node.attrib[f'{{{self.xmlns_xlink}}}href']
+		except AttributeError:
+			href = node.attrib.get('href', None)
+		
+		if not href:
+			self.emit_warning(view, "Image without href.", node.tag, node)
+			return []
+		
+		url = self.resolve_url(href, self.get_document_url(document))
+		
+		left, top, width, height = box
+		x = self.__units(view, node.attrib.get('x', 0), percentage=width)
+		y = self.__units(view, node.attrib.get('y', 0), percentage=height)
+		w = self.__units(view, node.attrib.get('width', width), percentage=width)
+		h = self.__units(view, node.attrib.get('height', height), percentage=height)
+		box = x, y, w, h
+		
+		transform = node.attrib.get('transform', None)
+		if transform:
+			ctx.save()
+			self.__apply_transform(view, document, ctx, box, node, transform)
+		
+		try:
+			image = self.get_document(url)
+			nop = self.draw_image(view, image, ctx, box)
+		except (IndexError, KeyError):
+			self.emit_warning(view, f"Could not fetch url.", url, node)
+			nop = []
+		except NotImplementedError:
+			self.emit_warning(view, f"Unsupported image format.", type(image), node)
+			nop = []
+		finally:
+			if transform:
+				ctx.restore()
+		
+		if nop and view.pointer:
+			if ctx.in_clip(*ctx.device_to_user(*view.pointer)):
+				nop.insert(0, node)
+		return nop
+	
+	def __render_foreign_object(self, view, document, ctx, box, node):
+		"Render <foreignObject/>. Rendering of the child node must be implemented separately."
+		
+		left, top, width, height = box
+		x = self.__units(view, node.attrib.get('x', 0), percentage=width)
+		y = self.__units(view, node.attrib.get('y', 0), percentage=height)
+		w = self.__units(view, node.attrib.get('width', width), percentage=width)
+		h = self.__units(view, node.attrib.get('height', height), percentage=height)
+		box = x, y, w, h
+		
+		transform = node.attrib.get('transform', None)
+		if transform:
+			ctx.save()
+			self.__apply_transform(view, document, ctx, box, node, transform)
+		
+		hover_nodes = []
 
+		ctx.rectangle(x, y, w, h)
+		ctx.set_source_rgb(0, 0, 1)
+		ctx.set_line_width(1)
+		ctx.stroke()		
+		
+		try:
+			for child in node:
+				try:
+					ctx.save()
+					hover_subnodes = self.draw_image(view, child, ctx, box)
+					hover_nodes.extend(hover_subnodes)
+				except NotImplementedError:
+					self.emit_warning(view, f"Unsupported foreign object.", child.tag, child)
+				finally:
+					ctx.save()
+		finally:
+			if transform:
+				ctx.restore()
+		
+		if hover_nodes and view.pointer:
+			if ctx.in_clip(*ctx.device_to_user(*view.pointer)):
+				hover_nodes.insert(0, node)
+		
+		return hover_nodes
 
 
 
@@ -2536,10 +2646,11 @@ if __debug__ and __name__ == '__main__':
 			r = super().draw_image(view, document, ctx, box)
 			if r is NotImplemented:
 				return []
+			return r
 	
 	class PseudoView:
 		def __init__(self):
-			#self.pointer = 10, 10
+			self.pointer = 10, 10
 			self.viewport_width = 2000
 			self.viewport_height = 1500
 			self.screen_dpi = 96

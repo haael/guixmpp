@@ -45,8 +45,12 @@ class XMLFormat:
 	def get_document_fragment(self, document, href):
 		if not self.is_xml_document(document):
 			return NotImplemented
-		fragment = document.findall(f".//*[@id='{href}']")[0] # TODO: errors, escape
-		return XMLDocument(fragment)
+		fragment = document.findall(f".//*[@id='{href}']") # TODO: errors, escape
+		#print("fragment:", fragment[0].tag, fragment[0].attrib)
+		if fragment:
+			return XMLDocument(fragment[0])
+		else:
+			raise IndexError("Fragment not found")
 	
 	def scan_document_links(self, document):
 		if self.is_xml_document(document):
