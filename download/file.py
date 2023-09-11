@@ -23,12 +23,13 @@ class FileDownload:
 			raise RuntimeError("Run `mimetypes.init()` first.")
 		
 		if url.startswith('file:'):
+			print("open file", url)
 			path = Path(unquote(url[5:]))
 			mime_type, encoding = mimetypes.guess_type(str(path))
 			try:
 				return await path.read_bytes(), mime_type
 			except IOError as error:
-				print(error)
+				#print(error)
 				return None, 'application/x-null'
 		
 		else:

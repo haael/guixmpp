@@ -31,6 +31,11 @@ class DataDownload:
 				data = b64decode(raw_data)
 			elif encoding == '':
 				data = unquote(raw_data).encode('utf-8')
+			elif encoding.startswith('charset='):
+				data = unquote(raw_data).encode(encoding.split('=')[1])
+			else:
+				print("unknown encoding", encoding)
+				data = None
 			
 			return data, mime_type
 		

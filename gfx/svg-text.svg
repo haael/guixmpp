@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" height="100%" width="100%" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 795.7 479.7">
+	<defs>
+		<linearGradient id="lg1" gradientUnits="userSpaceOnUse" x1="0%" y1="0%" x2="100%" y2="0%">
+			<stop stop-color="hsl(90,50%,70%)" offset="0"/>
+			<stop stop-color="hsl(90,50%,70%)" offset="9%"/>
+			<stop stop-color="hsl(230,50%,70%)" offset="9%"/>
+			<stop stop-color="hsl(230,50%,70%)" offset="30%"/>
+			<stop stop-color="hsl(45,50%,70%)" offset="30%"/>
+			<stop stop-color="hsl(45,50%,70%)" offset="50%"/>
+			<stop stop-color="hsl(120,50%,70%)" offset="51%"/>
+			<stop stop-color="hsl(120,50%,70%)" offset="69%"/>
+			<stop stop-color="hsl(90,50%,70%)" offset="69%"/>
+			<stop stop-color="hsl(180,50%,70%)" offset="80"/>
+			<stop stop-color="hsl(290,50%,70%)" offset="80"/>
+			<stop stop-color="hsl(290,50%,70%)" offset="95"/>
+		</linearGradient>
+	</defs>
+	<text text-anchor="middle" font-weight="bold" font-size="138px" y="115" x="400" fill="url(#lg1)">SVGTEXT</text>
+	<text text-anchor="middle" font-weight="bold" font-size="60px" y="227" x="400" fill="#666">made of 100% pure</text>
+	<text text-anchor="middle" font-weight="bold" font-size="272px" y="485" x="400" fill="url(#lg1)">TEXT</text>
+</svg>

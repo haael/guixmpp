@@ -1,0 +1,160 @@
+/* Style sheet for the presentation slides */
+/** The slides should have a rectangle with the background colour of the slide.
+* This might be a temporary measure, but is currently necessary if one wants to print,
+* ie, generate PDF files, from the slides!!!
+*/
+
+rect.background { fill : white; stroke: none }
+
+
+/* *************** The names are just an indication for the way it looks on a dark blue background. That has historical roots...;-) **** */
+.yellowish      {stroke:black; fill:#fbfdae;    }
+.darkYellowish  {stroke:black; fill:#e96924;   }     /* sandybrown */
+.greenish       {stroke:black; fill:#044b04;   }     /* forestgreen */
+.lightGreenish  {stroke:black; fill:#51de51;   }     /* lightgreen */
+.limish         {stroke:black; fill:#bd010e;   }     /* crimson */
+.whitish        {stroke:black; fill:#909090;  }      /* silver */
+.reddish        {stroke:black; fill:red;      }
+.pinkish        {stroke:black; fill:#ff0aff;  }  /* ff33ff */
+.pinkish2       {stroke:black; fill:#ff285b;  }  /* ff6699 */
+.grayish        {stroke:black; fill:#909090;  } /* c0c0c0 */
+.blueish        {stroke:black; fill:#1dd8a8;  } /* 57ebcf */
+.darkBlueish    {stroke:black; fill:blue;     }
+
+line.yellowish,     path.yellowish     { stroke: #641a07; fill: #641a07 }
+line.darkYellowish, path.darkYellowish { stroke: #e96924; }
+line.greenish,      path.greenish      { stroke: #044b04; }
+line.limish,        path.limish        { stroke: #bd010e; }
+line.whitish,       path.whitish       { stroke: black; }
+line.reddish,       path.reddish       { stroke: red; }
+line.pinkish,       path.pinkish       { stroke: #ff0aff; }
+line.pinkish2,      path.pinkish2      { stroke: #ff285b; }
+line.grayish,       path.grayish       { stroke: #909090; }
+line.blueish,       path.blueish       { stroke: #57ebcf; }
+line.darkBlueish,   path.darkBlueish   { stroke: blue; }
+
+text.greenish,tspan.greenish            {stroke:none; }
+text.limish,tspan.limish                {stroke:none; }
+text.yellowish,tspan.yellowish          {stroke:none;  fill: #641a07 }
+text.darkYellowish,tspan.darkYellowish  {stroke:none;  fill: #400000 }
+text.whitish,tspan.whitish            {stroke:none;  fill: black }
+text.reddish,tspan.reddish            {stroke:none;  fill: #bd010e }
+text.pinkish,tspan.pinkish            {stroke:none; }
+text.pinkish2,tspan.pinkish2          {stroke:none; }
+text.grayish,tspan.grayish            {stroke:none; }
+text.blueish,tspan.blueish            {stroke:none; }
+text.darkBlueish,tspan.darkBlueish    {stroke:none; }
+
+tspan.special { stroke:none; text-decoration: underline; fill:#ff0aff }
+
+/* Various line styles */
+line            {stroke:red; stroke-width:3}
+path.arrow, polyline.arrow      {fill:red}
+path.arrowLine  {stroke:red;stroke-width:3;}
+line.arrow      {stroke:red;stroke-width:4;}
+path.greenarrow {fill:green }
+line.greenarrow {stroke:green;stroke-width:4;}
+path.line       { fill:none; stroke-width:2; stroke: red }
+.dashed     {stroke-dasharray: 10 4;}
+
+/* Ellipses */
+ellipse                {fill:black; stroke:white; stroke-width:3}
+ellipse.basic          {fill:#fff5a4; stroke:black; stroke-width:3}
+
+ellipse.emptyGray      {stroke:#909090;   stroke-width:2; fill:none }
+ellipse.emptyReddish   {stroke:red;       stroke-width:2; fill:none }
+ellipse.emptyBlueish   {stroke:#1dd8a8;   stroke-width:2; fill:none }
+ellipse.emptyYellowish {stroke:#641a07;    stroke-width:2; fill:none }
+ellipse.empty          {stroke:#084b1d;  stroke-width:2; fill:none }
+
+/* **************** Animation control circle ********************** */
+circle.animationControl { fill:#909090; stroke:none; }
+
+/* Various rectangle styles */
+
+rect                 {stroke:white; fill:#909090;}
+rect.table           {stroke:white; fill:#fff5a4}
+rect.membershipTable {fill:#89ff89; stroke:none}
+
+rect.ac    {stroke:none; fill:#fff1bd}
+rect.ui    {stroke:none; fill:#ff9292}
+rect.df    {stroke:none; fill:#ff9292}
+rect.id    {stroke:none; fill:#9292ff}
+rect.ts    {stroke:none; fill:#bdbdbd}
+rect.arc   {stroke:none; fill:#ffff92}
+rect.in    {stroke:none; fill:#fff1bd}
+rect.empty {fill:none; stroke:#084b1d; stroke-width:2 }
+
+.thinline { stroke-width: 0.5 }
+
+/* Membership table rectangles */
+rect.americas { fill:#ffb500   }
+rect.europe   { fill:#de42de }
+rect.pacific  { fill:#10c4a9  }
+
+rect.asia {fill:#ff0154}
+rect.france {fill:#008fff}
+rect.offices {fill:#404040}
+rect.resteurope {fill:#871cae}
+
+
+
+/* All kinds of texts... */
+text  {font-family: Arial, Helvetica, sans-serif; font-size:20;  fill:#00135f; stroke:none }
+text.general           {color:black} 
+
+/* Texts on the W3C Overview slide */
+text.centre,tspan.centre               {text-anchor:middle; stroke:none; fill:green}
+text.right,tspan.right                 {text-anchor:end;    stroke:none; fill:#000040}
+text.left                              {text-anchor:start;  stroke:none; fill:#084b1d}
+text.list                              {text-anchor:start;  stroke:none; fill:black}
+text.listMinor,tspan.listMinor         {font-size:24; font-weight:bold; stroke:none; fill:#400000}
+text.listMajor,tspan.listMajor         {font-size:32; font-weight:bold; stroke:none; fill:#400000}
+text.onTable,tspan.onTable             {color:blue; stroke:none; fill:red}
+
+text.major,tspan.major                         {font-size:32; }
+text.minor,tspan.minor                         {font-size:27; }
+text.majorT,tspan.majorT                         {font-size:40; }
+text.minorT,tspan.minorT                         {font-size:30; }
+text.onBackground,tspan.onBackground           {font-size:32;font-weight:bold; stroke:none; fill:#000040}
+text.onBackgroundMinor,tspan.onBackgroundMinor {font-size:24;font-weight:bold; stroke:none; fill:#000040}
+text.normal,tspan.normal                       {font-size:20; stroke:none; fill:#000040}
+text.note,tspan.note                           {text-anchor:middle; font-size:16; }   
+
+text.codeS,tspan.codeS              {font-family: Arial, Helvetica, sans-serif; stroke:none; fill:#400000;}                
+text.dt, tspan.dt                   {stroke:none; fill:#044b04;}
+text.em, tspan.em                   {font-style:italic}
+
+
+text.rec               {text-anchor:middle;}
+text.recOnBackground   {text-anchor:middle; stroke:none; fill:#400000}
+text.cprec             {text-anchor:middle;color:green; stroke:none; fill:green}
+text.wd                {text-anchor:middle;color:red; stroke:none; fill:red}
+text.cm                {text-anchor:middle;color:blue; stroke:none; fill:blue}
+
+text.signature         {font-family:Arial;  font-size:24;
+                        font-style:italic;  font-weight:bold; color:#00135f; stroke:none; fill:#00135f}
+text.ac                {text-anchor:middle; stroke:none; fill:#275798}
+text.ui                {text-anchor:middle; stroke:none; fill:lime}
+text.ts                {text-anchor:middle; stroke:none; fill:#641a07}
+text.arc               {text-anchor:middle; stroke:none; fill:red}
+text.year              {text-anchor:middle; stroke:none; fill:lime }
+
+/* ************* Some style settings are for specific figures ******************* */
+/* *** for the http 1.1 time diagram: http1p1.svg *** */
+
+.packets    {stroke:#FDFED3; fill:#FDFED3}
+.msecs      {stroke:rgb(100, 149, 197); fill:rgb(100, 149, 197)}
+
+/* *** for the overview slide in the Overview set *** */
+rect.demo { stroke:blue; stroke-opacity:0.1 }  /* The small demo rectangles, put on a rect of class 'yellowish' */
+
+/* *** for the world map *** */
+polyline.coastline {fill: none;   stroke:black;    stroke-opacity: 1; stroke-width:4}
+.host          {fill: red;    fill-opacity: 1; stroke: none;}
+text.host      { font-size:35pt;}
+.office        {fill: seagreen;   fill-opacity: 1; stroke: none;}
+text.office    {font-size:35pt}
+.residence     {fill: navy; fill-opacity: 1; stroke: none;}
+text.residence { font-size:35pt}
+

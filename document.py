@@ -24,6 +24,7 @@ class Model:
 	
 	def __init__(self):
 		self.documents = {}
+		self.emitted_warnings = set()
 	
 	async def open_document(self, view, url):
 		#print("open document", url)
@@ -32,11 +33,11 @@ class Model:
 		
 		view.__referenced = defaultdict(set)
 		view.__location = url
-		view.emit_dom_event('content_changed', CustomEvent('opening', target=None, view=view, detail=url))
+		view.emit('dom_event', CustomEvent('opening', target=None, view=view, detail=url))
 		await self.begin_downloads()
 		view.__document = await self.__load_document(view, url)
 		await self.end_downloads()
-		view.emit_dom_event('content_changed', CustomEvent('open', target=view.__document, view=view, detail=url))
+		view.emit('dom_event', CustomEvent('open', target=view.__document, view=view, detail=url))
 		return view.__document
 	
 	def close_document(self, view):
@@ -45,11 +46,23 @@ class Model:
 			raise ValueError("No document is open.")
 		
 		url = view.__location
-		view.emit_dom_event('content_changed', CustomEvent('closing', target=view.__document, view=view, detail=url))
+		view.emit('dom_event', CustomEvent('closing', target=view.__document, view=view, detail=url))
 		self.__unload_document(view, url)
-		view.emit_dom_event('content_changed', CustomEvent('close', target=None, view=view, detail=url))
+		view.emit('dom_event', CustomEvent('close', target=None, view=view, detail=url))
 		view.__location = None
 		view.__document = None
+	
+	def current_location(self, view):
+		try:
+			return view.__location
+		except AttributeError:
+			return None
+	
+	def current_document(self, view):
+		try:
+			return view.__document
+		except AttributeError:
+			return None
 	
 	@staticmethod
 	def resolve_url(rel_url, base_url):
@@ -100,6 +113,35 @@ class Model:
 		else:
 			raise NotImplementedError(f"Could not find implementation for method {method_name}. Arguments: {args}")
 	
+	def __chain_impl(self, method_name, args, kwargs={}):
+		for cls in self.__class__.mro():
+			if issubclass(cls, Model):
+				continue
+			
+			try:
+				method = getattr(cls, method_name)
+			except AttributeError:
+				continue
+			
+			method(self, *args, **kwargs)
+	
+	async def __chain_impl_async(self, method_name, args, kwargs={}):
+		gens = []
+		
+		for cls in self.__class__.mro():
+			if issubclass(cls, Model):
+				continue
+			
+			try:
+				method = getattr(cls, method_name)
+			except AttributeError:
+				continue
+			
+			result = method(self, *args, **kwargs)
+			gens.append(result)
+		
+		await gather(*gens)
+	
 	async def __load_document(self, view, url):
 		try:
 			return self.get_document(url)
@@ -115,7 +157,7 @@ class Model:
 		self.documents[shurl] = self.create_document(data, mime_type)
 		document = self.get_document(url)
 		
-		view.emit_dom_event('content_changed', CustomEvent('beforeload', target=document, view=view, detail=url))
+		view.emit('dom_event', CustomEvent('beforeload', target=document, view=view, detail=url))
 		loads = []
 		for link in self.scan_document_links(document):
 			if link.startswith('data:'):
@@ -126,12 +168,12 @@ class Model:
 			load = create_task(self.__load_document(view, absurl))
 			loads.append(load)
 		await gather(*loads)
-		view.emit_dom_event('content_changed', UIEvent('load', target=document, view=view, detail=url))
+		view.emit('dom_event', UIEvent('load', target=document, view=view, detail=url))
 		return document
 	
 	def __unload_document(self, view, url):
 		document = self.get_document(url)
-		view.emit_dom_event('content_changed', CustomEvent('beforeunload', target=document, view=view, detail=url))
+		view.emit('dom_event', CustomEvent('beforeunload', target=document, view=view, detail=url))
 		for link in self.scan_document_links(document):
 			if link.startswith('data:'):
 				#del self.documents[link]
@@ -141,10 +183,10 @@ class Model:
 				view.__referenced[absurl].remove(url)
 				if not view.__referenced[absurl]:
 					self.__unload_document(view, absurl)
-		view.emit_dom_event('content_changed', UIEvent('unload', target=document, view=view, detail=url))
+		view.emit('dom_event', UIEvent('unload', target=document, view=view, detail=url))
 	
 	def get_document_url(self, document):
-		return [_url for (_url, _document) in self.documents.items() if _document is document][0] # TODO: error
+		return [_url for (_url, _document) in self.documents.items() if _document == document][0] # TODO: raise proper error
 	
 	def get_document_fragment(self, document, href):
 		return self.__find_impl('get_document_fragment', [document, href])
@@ -167,103 +209,87 @@ class Model:
 		else:
 			return self.get_base_document(url)
 	
+	def are_nodes_ordered(self, ancestor, descendant):
+		return self.__find_impl('are_nodes_ordered', [ancestor, descendant])
+	
 	async def begin_downloads(self):
-		gens = []
-		
-		for cls in self.__class__.mro():
-			if issubclass(cls, Model):
-				continue
-			
-			try:
-				method = getattr(cls, 'begin_downloads')
-			except AttributeError:
-				continue
-			
-			gens.append(method(self))
-		
-		await gather(*gens)
+		await self.__chain_impl_async('begin_downloads', ())
 	
 	async def end_downloads(self):
-		gens = []
-		
-		for cls in self.__class__.mro():
-			if issubclass(cls, Model):
-				continue
-			
-			try:
-				method = getattr(cls, 'end_downloads')
-			except AttributeError:
-				continue
-			
-			gens.append(method(self,))
-		
-		await gather(*gens)
+		await self.__chain_impl_async('end_downloads', ())
+	
+	def handle_event(self, widget, event, name):
+		self.__chain_impl('handle_event', (widget, event, name))
+	
+	def set_image(self, widget, image):
+		self.__chain_impl('set_image', (widget, image))
 	
 	async def download_document(self, url) -> (bytes, str):
-		"download"
 		return await self.__find_impl_async('download_document', [url])
 	
 	def create_document(self, data:bytes, mime_type:str):
-		"model/format"
 		return self.__find_impl('create_document', [data, mime_type])
 	
 	def save_document(self, document, fileobj=None):
-		"model/format"
 		return self.__find_impl('save_document', [document, fileobj])
 	
 	def scan_document_links(self, document):
-		"format"
 		return self.__find_impl('scan_document_links', [document])
 	
 	def image_dimensions(self, view, document):
-		"render"
 		return self.__find_impl('image_dimensions', [view, document])
 	
 	def draw_image(self, view, document, ctx, box):
-		"render"
 		return self.__find_impl('draw_image', [view, document, ctx, box])
+	
+	def poke_image(self, view, document, ctx, box, px, py):
+		return self.__find_impl('poke_image', [view, document, ctx, box, px, py])
 	
 	def element_tabindex(self, document, element):
 		return self.__find_impl('element_tabindex', [document, element])
 	
 	def emit_warning(self, view, message, url, node):
-		view.emit_dom_event('warning', CustomEvent('warning', target=node, detail=message))
+		if message not in self.emitted_warnings:
+			view.emit('dom_event', CustomEvent('warning', target=node, detail=message))
+			self.emitted_warnings.add(message)
 
 
 if __debug__ and __name__ == '__main__':
-	#import gi
-	#gi.require_version('Gdk', '3.0')
-	#gi.require_version('GdkPixbuf', '2.0')
-		
 	from asyncio import run
 	from aiopath import AsyncPath as Path
 	
 	from format.plain import PlainFormat
 	from format.xml import XMLFormat
 	from format.css import CSSFormat
-	from format.svg import SVGFormat
-	from format.png import PNGFormat
-	from format.image import ImageFormat
 	from format.null import NullFormat
+	
+	from font.woff import WOFFFont
+	
+	from image.svg import SVGImage
+	from image.png import PNGImage
+	from image.pixbuf import PixbufImage
 	
 	from download.data import DataDownload
 	from download.file import FileDownload
 	from download.chrome import ChromeDownload
 	
 	class PseudoView:
-		def __init__(self):
-			self.pointer = 10, 10
-			self.viewport_width = 2000
-			self.viewport_height = 1500
-			self.screen_dpi = 96
-	
-		def emit_dom_event(self, handler, event):
+		def emit(self, handler, event):
 			#print(handler)
 			pass
+		
+		def get_viewport_width(self, widget):
+			return 2500
+		
+		def get_viewport_height(self, widget):
+			return 1000
+		
+		def get_dpi(self, widget):
+			return 96
 	
 	async def test_main():
 		view = PseudoView()
-		TestModel = Model.features('TestModel', SVGFormat, CSSFormat, PNGFormat, ImageFormat, DataDownload, FileDownload, ChromeDownload, XMLFormat, PlainFormat, NullFormat)
+		TestModel = Model.features('TestModel', SVGImage, CSSFormat, PNGImage, PixbufImage, WOFFFont, DataDownload, FileDownload, ChromeDownload, XMLFormat, PlainFormat, NullFormat)
 		model = TestModel()
 		async for filepath in (Path.cwd() / 'gfx').iterdir():
 			#if filepath.suffix in ['.css']: continue

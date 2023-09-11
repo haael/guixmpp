@@ -1,0 +1,265 @@
+/*
+   Stylesheet to be used the SVG Slides in W3C style
+   I. Herman
+   $Date: 2004/11/11 12:21:39 $
+*/   
+
+
+/* 
+   In the case of SVG files: the background is rendered by a rect.Background, so by
+   setting its fill attribute one can conrol the bacgkround of the slide; the
+   real slide content is drawn on the top of a rect.slideContent (again, one
+   can control the background by a fill attribute). The border of the slide content
+   is controlled by xslt templates, see the desccription. The colours
+   used by the frame are controlled by path.frameLight and path.frameDark; one
+   can set the colour of these, too.
+*/
+
+/* An extra control over content: */
+
+.htmlOnly { display : none }
+
+/* Not really necessary; if there is no logo setting, than this element is not
+generated into the slides. It is here if the user forgets doing that...
+*/
+g[id~="SlideLogo"] {
+    visibility: hidden;
+}
+
+/*
+rect.w3clogoBackground {
+    fill: white; 
+    stroke: none;
+}
+*/
+
+rect[id~="Background"] {
+    fill: none; 
+    stroke: none;
+}
+
+rect[id~="TitleArea"] {
+    fill: #048;
+    stroke: none;
+}
+
+rect.slideContent {
+    fill: none; 
+    stroke: none;
+}
+
+rect.tocItem {
+    fill: white;
+    stroke: black;
+}
+
+path.frameLight { 
+    stroke: none; 
+    fill: none;
+}
+path.frameDark { 
+    stroke: none; 
+    fill: none;
+}
+
+/* ===================================================================================== */
+
+text, tspan {
+    fill: #048;
+}
+
+/* SVG Slides may use all kinds of fonts for themselves, and we do not know that in
+   advance. It is safer to list the font families explicitly for the generated
+   text types, instead of setting a global value.
+*/
+.p, .li-1, .li-2, .dt, .q, .blockquote, .acronym, .abbr, .strong,
+.h1, .h2, .h3, .h4, .h5, .h6, .dt, .dd, .td, .th {
+    font-family: Arial Unicode MS, Arial, Helvetica, sans-serif;
+}
+
+/* ============================================================= */
+/* The XHTML-like classes (eg, .h2, .h3, etc) are used by the    */
+/* generated SVG                                                */
+/* ============================================================= */
+
+.p, .li-1, .dt, .q, .blockquote, .td, .th { font-size: 36px; }
+
+.i                      { font-style: italic; }
+.b                      { font-weight: bold; }
+.acronym, .abbr         { font-variant: small-caps; }
+.strong                 { font-weight: bold; fill: maroon; }
+.kbd, .var              { font-family: "Courier New", courier, monospace; }
+
+.blockquote, .q         { color: #aa4444; fill: #aa4444; font-style: italic; }
+
+/* Headers: in general, h1 is used for the slide title, and is treated later.
+   Having said that, it is probably not a good idea to use these in a slide
+   anyway!
+*/
+.h2 { font-size: 46px; font-weight: bold; }
+.h3 { font-size: 42px; font-weight: bold; }
+.h4 { font-size: 38px; font-weight: bold; }
+.h5 { font-size: 38px; font-style: italic; }
+.h6 { font-size: 38px; }
+
+/* Lists */
+.dt { font-weight: bold; color:darkGreen; fill: darkGreen; } 
+.dd    { font-size: 32px; }
+.li-2  { font-size: 32px; }
+.li-3  { font-size: 28px; }
+
+tspan.smiley, text.smiley {
+	font-family: Smiley;
+}
+
+/* These are for CS slides ;-) controlling the code type text is important... */
+.pre,.samp  { 
+          color: maroon; fill:maroon; 
+          font-weight: bold; 
+          font-family: "Courier New", courier, monospace;
+          font-size-adjust: 0.4;
+}
+.code { 
+          color: maroon; fill: maroon; 
+          font-weight: bold; 
+          font-family: "Courier New", courier, monospace;
+          font-size-adjust: 0.4;
+}
+.pre, .samp { font-size: 28px;  }
+
+
+/* Emphasis */
+.em { font-style:italic; fill: maroon }
+
+/* Various emphasis colours. */
+.emph1 { fill: blue; stroke: none; }
+.emph2 { fill: #006400; stroke: none;  }
+.emph3 { fill: #cc0066; stroke: none; } 
+.emph4 { fill: #ff00cc; stroke: none;  }
+.emph5 { fill: red; stroke: none; }
+
+.a { fill: green } /* #006699; */
+
+/* I always mix up the British and US spelling... */
+.center, .centre { text-anchor: middle; }
+        
+/* The text used for the title in the middle of the title area */
+text.slideTitle{
+    text-anchor: middle;
+    font-size:50px; 
+    font-weight:bold;      
+    stroke:none;
+    fill: white;
+    font-family: Arial Unicode MS, Arial, Helvetica, sans-serif;
+}
+
+feSpecularLighting.arrow {
+    lighting-color: lightGray;
+}
+
+feSpecularLighting.title {
+    lighting-color: gray;
+}
+
+
+/* =================== */
+
+/* The link arrows */
+.linkArrow  { 
+    stroke:none; 
+    fill:#0b02ff;
+    opacity: 0.8;
+}
+
+text.authorSig { 
+    text-anchor: start;
+    font-style: italic;
+    font-size: 15px;
+    fill:#048; 
+    stroke:none;
+    font-family: Arial Unicode MS, Arial, Helvetica, sans-serif;
+    visibility: hidden;
+}
+
+text.dateSig { 
+    text-anchor: middle;
+    font-style: italic;
+    font-size: 15px;
+    fill:#048; 
+    stroke:none;
+    font-family: Arial Unicode MS, Arial, Helvetica, sans-serif;
+    visibility: hidden;
+}
+
+text.slideNumberSig { 
+    text-anchor: end;
+    font-style: italic;
+    font-size: 15px;
+    fill:#048; 
+    stroke:none;
+    font-family: Arial Unicode MS, Arial, Helvetica, sans-serif;
+}
+
+/* Tooltip colour and text control */
+text.tooltip { 
+    text-anchor: start;
+    font-style: italic;
+    font-size: 15px;
+    fill:white; 
+    stroke:none;
+}
+
+stop[id~="tooltip-forward-c1"] {
+    stop-color:darkolivegreen;
+    stop-opacity:1
+}
+
+stop[id~="tooltip-forward-c2"] {
+    stop-color:darkseagreen;
+    stop-opacity:1
+}
+stop[id~="tooltip-forward-c3"] {
+    stop-color:lightgreen;
+    stop-opacity:1
+}
+
+stop[id~="tooltip-back-c1"] {
+    stop-color:darkmagenta;
+    stop-opacity:1
+}
+
+stop[id~="tooltip-back-c2"] {
+    stop-color:magenta;
+    stop-opacity:1
+}
+
+stop[id~="tooltip-back-c3"] {
+    stop-color:plum;
+    stop-opacity:1
+}
+
+/* ================================================================ */
+/*      Styles for the title page of the presentation (if used)     */  
+/* ================================================================ */
+text.TitleMajor {
+    text-anchor: middle;
+    font-size:55px; 
+    font-weight:bold;      
+    stroke:none;
+}
+
+text.TitleMinor, tspan.TitleMinor {
+    text-anchor: middle;
+    font-size:40px; 
+    font-weight:bold; 
+    font-style: italic;     
+    stroke:none;
+}
+
+text.TitleMinor2, tspan.TitleMinor2 {
+    text-anchor: middle;
+    font-size:25px; 
+    font-weight:bold;      
+    stroke:none;
+}
+

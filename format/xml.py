@@ -15,8 +15,8 @@ from lxml.etree import _ElementTree, fromstring, tostring
 
 
 class XMLFormat:
-	xmlns_xml = 'http://www.w3.org/XML/1998/namespace'
-	xmlns_xlink = 'http://www.w3.org/1999/xlink'
+	#xmlns_xml = 'http://www.w3.org/XML/1998/namespace'
+	#xmlns_xlink = 'http://www.w3.org/1999/xlink'
 	
 	def create_document(self, data:bytes, mime:str):
 		if mime == 'text/xml' or mime == 'application/xml' or mime.endswith('+xml'):
@@ -57,11 +57,32 @@ class XMLFormat:
 			return document.scan_stylesheets()
 		else:
 			return NotImplemented
+	
+	def are_nodes_ordered(self, ancestor, descendant):
+		if not (hasattr(ancestor, 'getparent') and hasattr(descendant, 'getparent')):
+			return NotImplemented
+		
+		parent = descendant
+		while parent != None:
+			if parent == ancestor:
+				return True
+			parent = parent.getparent()
+		
+		return False
 
 
 class XMLDocument(_ElementTree):
 	def __init__(self, element):
 		self._setroot(element)
+	
+	def __eq__(self, other):
+		if hasattr(other, 'getroot'):
+			return self.getroot() == other.getroot()
+		else:
+			return False
+	
+	def __hash__(self):
+		return hash(self.getroot().getroottree())
 	
 	def scan_stylesheets(self):
 		el = self.getroot().getprevious()

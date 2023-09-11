@@ -1,6 +1,17 @@
 <?xml version="1.0"?>
 <svg width="640" height="480" xmlns="http://www.w3.org/2000/svg" xmlns:xforms="http://www.w3.org/2002/xforms">
  <!-- Created with SVG-edit - https://github.com/SVG-Edit/svgedit-->
+
+ <xforms:model>
+  <xforms:instance>
+   <root xmlns="">
+    <a/>
+    <b/>
+   </root>
+  </xforms:instance>
+  <xforms:submission id="submit1" method="set" resource="jid:example.net/some/resource" includenamespaceprefixes=""/>
+ </xforms:model>
+
  <g class="layer">
   <title>Layer 1</title>
 
@@ -26,7 +37,7 @@
 
   <xforms:input ref="b">
    <xforms:label>Dial</xforms:label>
-   <svg>
+   <g transform="rotate(95)" transform-origin="490 167">
     <circle cx="490" cy="167" fill="#ffaaaa" id="svg_21" r="125.94" stroke="#000000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null"/>
     <circle cx="491" cy="69" fill="#ffffff" fill-opacity="null" id="svg_22" r="21.4" stroke="#000000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" transform="matrix(1, 0, 0, 1, 0, 0)"/>
     <circle cx="537" cy="79.5" fill="#ffffff" fill-opacity="null" id="svg_28" r="21.4" stroke="#000000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null"/>
@@ -38,7 +49,6 @@
     <circle cx="424" cy="244.5" fill="#ffffff" fill-opacity="null" id="svg_34" r="21.4" stroke="#000000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" transform="matrix(1, 0, 0, 1, 0, 0)"/>
     <circle cx="468" cy="264.5" fill="#ffffff" fill-opacity="null" id="svg_35" r="21.4" stroke="#000000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" transform="matrix(1, 0, 0, 1, 0, 0)"/>
     <circle cx="515" cy="261.5" fill="#ffffff" fill-opacity="null" id="svg_36" r="21.4" stroke="#000000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" transform="matrix(1, 0, 0, 1, 0, 0)"/>
-    <polygon cx="559" cy="168" fill="#00ffff" id="svg_37" orient="point" point="3" points="602.4637809026226,231.52345074791128 574.9087802402264,252.12097030774885 556.9732438587471,280.9029497818774 552.897851766933,248.07418888728898 536.430918258553,219.38306792482763 568.0613448172426,231.61436231971447 602.4637809026226,231.52345074791128 574.9087802402264,252.12097030774885 " r="20.92" r2="6.97" radialshift="0" shape="star" starRadiusMultiplier="3" stroke="#000000" stroke-width="NaN"/>
     <circle cx="490" cy="166.5" fill="#bf0000" id="svg_38" r="61.27" stroke="#000000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" transform="matrix(1, 0, 0, 1, 0, 0)"/>
     <text fill="#000000" fill-opacity="null" font-family="Sans-serif" font-size="12" id="svg_39" stroke="#000000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="0" text-anchor="middle" transform="matrix(1, 0, 0, 1, 0, 0)" x="572" xml:space="preserve" y="114">1</text>
     <text fill="#000000" fill-opacity="null" font-family="Sans-serif" font-size="12" id="svg_40" stroke="#000000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="0" text-anchor="middle" transform="matrix(1, 0, 0, 1, 0, 0)" x="537" xml:space="preserve" y="84">2</text>
@@ -50,12 +60,14 @@
     <text fill="#000000" fill-opacity="null" font-family="Sans-serif" font-size="12" id="svg_46" stroke="#000000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="0" text-anchor="middle" transform="matrix(1, 0, 0, 1, 0, 0)" x="422" xml:space="preserve" y="249">8</text>
     <text fill="#000000" fill-opacity="null" font-family="Sans-serif" font-size="12" id="svg_47" stroke="#000000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="0" text-anchor="middle" transform="matrix(1, 0, 0, 1, 0, 0)" x="467" xml:space="preserve" y="268">9</text>
     <text fill="#000000" fill-opacity="null" font-family="Sans-serif" font-size="12" id="svg_48" stroke="#000000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="0" text-anchor="middle" transform="matrix(1, 0, 0, 1, 0, 0)" x="514" xml:space="preserve" y="266">0</text>
-    <rect fill="#ffffff" height="43" id="svg_49" stroke="#000000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" width="98" x="443" y="146"/>
-
+    <rect fill="#ffffff" height="43" id="svg_49" stroke="#000000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" width="98" x="443" y="146"/> 
     <text fill="#000000" font-family="Sans-serif" font-size="16" id="svg_50" stroke="#000000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="0" text-anchor="middle" transform="matrix(1, 0, 0, 1, 0, 0)" x="492" xml:space="preserve" y="174">
      <smilText begin="xforms-value-changed"><xforms:value value="context()"/></smilText>
     </text>
-   </svg>
+   </g>
+
+   <polygon cx="559" cy="168" fill="#00ffff" id="svg_37" orient="point" point="3" points="602.4637809026226,231.52345074791128 574.9087802402264,252.12097030774885 556.9732438587471,280.9029497818774 552.897851766933,248.07418888728898 536.430918258553,219.38306792482763 568.0613448172426,231.61436231971447 602.4637809026226,231.52345074791128 574.9087802402264,252.12097030774885 " r="20.92" r2="6.97" radialshift="0" shape="star" starRadiusMultiplier="3" stroke="#000000" stroke-width="NaN"/>
+
   </xforms:input>
  </g>
 </svg>

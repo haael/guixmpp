@@ -13,7 +13,7 @@ from itertools import chain
 class CSSFormat:
 	def create_document(self, data, mime):
 		if mime == 'text/css':
-			return CSSDocument(CSSParser().parse_css(data.decode('utf-8')))
+			return CSSDocument(CSSParser().parse_css(data.decode('utf-8'))) # TODO: parse encoding indicator from the file
 		else:
 			return NotImplemented
 	
@@ -24,13 +24,26 @@ class CSSFormat:
 		if self.is_css_document(document):
 			return chain(
 				document.scan_imports(),
-				document.scan_urls()
+				document.scan_urls(),
+				document.scan_fonts()
 			)
 		else:
 			return NotImplemented
 
 
-class StyleNode(namedtuple('_StyleNode', ['name', 'args'])):
+#class StyleNode(namedtuple('_StyleNode', ['name', 'args', 'cache'])):
+#	def __init__(self, name, args):
+#		super().__init__(name, args, None)
+#	
+#	def __repr__(self):
+#		return f"<{self.__class__.__qualname__} {repr(self.name)} @{hex(id(self))}>"
+
+
+class StyleNode:
+	def __init__(self, name, args):
+		self.name = name
+		self.args = args
+	
 	def __repr__(self):
 		return f"<{self.__class__.__qualname__} {repr(self.name)} @{hex(id(self))}>"
 
@@ -53,7 +66,7 @@ class CSSDocument:
 		if pre_function != None:
 			node, param = pre_function(node, param)
 		
-		if hasattr(node, 'args'):
+		if hasattr(node, 'args') and (not hasattr(node, 'cache') or not node.cache):
 			children = []
 			for child in node.args:
 				child = self.traverse(child, param, pre_function, post_function)
@@ -132,6 +145,8 @@ class CSSDocument:
 			yield node
 	
 	def scan_imports(self):
+		"Yield all @import urls."
+		
 		for node in self.css_tree.args:
 			try:
 				if all([
@@ -144,6 +159,24 @@ class CSSDocument:
 			except (AttributeError, IndexError):
 				pass
 	
+	def scan_fonts(self):
+		"Yield all urls pointing to web fonts."
+		
+		for node in self.css_tree.args:
+			try:
+				if node.name == 'atrule-style' and node.args[0] == 'font-face' and hasattr(node.args[2], 'name') and node.args[2].name == 'rules':
+					for subnode in node.args[2].args:
+						if subnode.name == 'rule' and subnode.args[0] == 'src':
+							for urlnode in subnode.args[1].args:
+								if urlnode.name == 'url':
+									yield urlnode.args[0]
+					#yield node.args[1].args[0].args[0]
+			except (AttributeError, IndexError):
+				pass
+		
+		return
+		yield None
+	
 	def match_element(self, xml_element, media_test, pseudoclass_test, default_namespace): # TODO
 		if default_namespace is None:
 			namespace = ''
@@ -154,7 +187,20 @@ class CSSDocument:
 			print(ancestors + [node.name if hasattr(node, 'name') else node])
 			return node, ancestors + [node.name if hasattr(node, 'name') else None]
 		
+		pseudoclasses = set()
+		def do_pseudoclass_test(pseudoclass, node):
+			pseudoclasses.add(pseudoclass)
+			return pseudoclass_test(pseudoclass, node)
+		
 		def walk_node(node, args):
+			try:
+				return node.cache
+			except AttributeError:
+				pass
+			
+			#if hasattr(node, 'name') and node.name.startswith('selector'): #(node.name != 'style' and node.name != 'stylesheet'):
+			#	print("walk_node", node, args)
+			
 			if isinstance(node, str):
 				return node
 			elif node.name == 'path-operator':
@@ -171,28 +217,36 @@ class CSSDocument:
 			elif node.name == 'selector-attr':
 				if args[1] == '=':
 					return lambda _node: (args[0] in _node.attrib) and (_node.attrib[args[0]] == args[2])
+				elif args[1] == '~=':
+					return lambda _node: (args[0] in _node.attrib) and (args[2] in _node.attrib[args[0]].split(' '))
 				else:
-					raise NotImplementedError("Attribute selector operator: " + repr(args[1]))
+					print("Implement attribute selector operator: " + repr(args[1]))
+					return lambda _node: False
+					#raise NotImplementedError("Attribute selector operator: " + repr(args[1]))
 			elif node.name == 'selector-id':
 				return lambda _node: ('id' in _node.attrib) and (_node.attrib['id'] == args[0])
 			elif node.name == 'selector-single':
 				assert all(callable(_check) for _check in args), str(args)
 				return lambda _node: all(_check(_node) for _check in args)
 			elif node.name == 'selector-seq':
-				if len(args) == 1:
-					return args[0](xml_element)
-				elif len(args) == 3 and args[1] == ' ':
-					if not args[2](xml_element):
+				def make_me(args):
+					def check_me(xml_element):
+						if len(args) == 1:
+							return args[0](xml_element)
+						elif len(args) == 3 and args[1] == ' ':
+							if not args[2](xml_element):
+								return False
+							target = xml_element.getparent()
+							while target is not None:
+								if args[0](target):
+									return True
+								target = target.getparent()
+							return False
+						#raise NotImplementedError("Implement path operators. {args}")
+						print("Implement path operators", args)
 						return False
-					target = xml_element.getparent()
-					while target is not None:
-						if args[0](target):
-							return True
-						target = target.getparent()
-					return False
-				#raise NotImplementedError("Implement path operators. {args}")
-				print("Implement path operators", args)
-				return False
+					return check_me
+				return make_me(args)
 			elif node.name == 'function':
 				return args[0] + '(' + ', '.join(args[1]) + ')'
 			elif node.name == 'url':
@@ -207,12 +261,16 @@ class CSSDocument:
 			elif node.name == 'rule':
 				return args
 			elif node.name == 'rules':
-				return dict(args)
+				rules = dict(_kv[:2] for _kv in args) # TODO: !important, _kv[2]
+				node.cache = rules
+				return rules
 			elif node.name == 'selector':
-				return any(args)
+				check = lambda _xml_element: any(_arg(_xml_element) for _arg in args)
+				node.cache = check
+				return check
 			elif node.name == 'style':
 				assert isinstance(args[1], dict)
-				if args[0]:
+				if args[0](xml_element):
 					return args[1]
 				else:
 					return {}
@@ -225,11 +283,14 @@ class CSSDocument:
 					result.update(style)
 				return result
 			else:
+				#print("Unimplemented CSS node:", node)
 				return node
 		
 		return self.traverse(self.css_tree, [], None, walk_node)
 	
 	def scan_urls(self):
+		"Yield all urls in style values."
+		
 		result = []
 		
 		def walk_node(node, ancestors):
@@ -878,10 +939,10 @@ class CSSParser:
 				#assert len(args) == 3 or len(args) == 1
 				if len(args) == 1:
 					result.append(StyleNode('selector-attr-present', args))
-				elif len(args) == 3:
-					args[2] = self.__remove_optional_quotes(args[2])
-					result.append(StyleNode('selector-attr', args))
+				elif len(args) >= 3:
+					result.append(StyleNode('selector-attr', [args[0], ''.join(args[1:-1]).strip(), self.__remove_optional_quotes(args[-1])]))
 				else:
+					print("Wrong attr selector:", args)
 					pass # warning
 			elif not past:
 				result.append(StyleNode('selector-tag', [token]))
