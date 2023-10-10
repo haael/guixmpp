@@ -11,7 +11,11 @@ from io import BytesIO
 class PlainFormat:
 	def create_document(self, data:bytes, mime_type):
 		if mime_type == 'text/plain':
-			return data.decode('utf-8')
+			try:
+				return data.decode('utf-8')
+			except UnicodeDecodeError:
+				print(data)
+				raise
 		
 		elif mime_type == 'application/octet-stream':
 			return data
@@ -23,7 +27,12 @@ class PlainFormat:
 		if self.is_text_document(document):
 			if fileobj == None:
 				fileobj = BytesIO()
-			fileobj.write(document.encode('utf-8'))
+			try:
+				decoded = document.encode('utf-8')
+			except UnicodeDecodeError:
+				print(document)
+				raise
+			fileobj.write(decoded)
 			return fileobj
 		elif self.is_binary_document(document):
 			if fileobj == None:
@@ -44,7 +53,6 @@ class PlainFormat:
 			return []
 		else:
 			return NotImplemented
-
 
 
 if __debug__ and __name__ == '__main__':

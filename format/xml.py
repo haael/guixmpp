@@ -95,6 +95,9 @@ class XMLDocument(_ElementTree):
 				pass
 			el = el.getprevious()
 		return reversed(links)
+	
+	def to_bytes(self):
+		return tostring(self)
 
 
 if __debug__ and __name__ == '__main__':
@@ -106,10 +109,12 @@ if __debug__ and __name__ == '__main__':
 	a = model.create_document(b'<?xml-stylesheet href="data:text/css,a{display:block;}"?><?xml-stylesheet href="data:text/css,a b{display:inline;}"?><a><b/><b><c/></b></a>', 'application/xml')
 	assert model.is_xml_document(a)
 	
-	for xmlfile in Path('gfx').iterdir():
-		if xmlfile.suffix not in ('.xml', '.svg'): continue
-		document = model.create_document(xmlfile.read_bytes(), 'application/xml')
-		assert model.is_xml_document(document)
+	for example in Path('examples').iterdir():
+		if not example.is_dir(): continue
+		for xmlfile in example.iterdir():
+			if xmlfile.suffix not in ('.xml', '.svg'): continue
+			document = model.create_document(xmlfile.read_bytes(), 'application/xml')
+			assert model.is_xml_document(document)
 	
 	#print(list(model.scan_xml_stylesheets(a)))
 	#print(model.save_document(a).getvalue())

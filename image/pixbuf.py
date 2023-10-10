@@ -15,7 +15,7 @@ from collections import defaultdict
 
 
 class PixbufImage:
-	"Supports many image formats using GdkPixbuf library."
+	"Supports many image formats through GdkPixbuf library."
 	
 	def create_document(self, data, mime_type):
 		try:
@@ -88,16 +88,18 @@ if __debug__ and __name__ == '__main__':
 	
 	model = PixbufImage()
 	
-	for filepath in Path('gfx').iterdir():
-		if filepath.suffix == '.png':
-			mime_type = 'image/png'
-		elif filepath.suffix in ['.jpg', '.jpeg']:
-			mime_type = 'image/jpeg'
-		elif filepath.suffix == '.svg':
-			mime_type = 'image/svg'
-		else:
-			continue
-		document = model.create_document(filepath.read_bytes(), mime_type)
-		#print(filepath, type(document))
-		assert model.is_image_document(document)
+	for example in Path('examples').iterdir():
+		if not example.is_dir(): continue
+		for filepath in example.iterdir():
+			if filepath.suffix == '.png':
+				mime_type = 'image/png'
+			elif filepath.suffix in ['.jpg', '.jpeg']:
+				mime_type = 'image/jpeg'
+			elif filepath.suffix == '.svg':
+				mime_type = 'image/svg'
+			else:
+				continue
+			document = model.create_document(filepath.read_bytes(), mime_type)
+			#print(filepath, type(document))
+			assert model.is_image_document(document)
 

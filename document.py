@@ -154,6 +154,7 @@ class Model:
 		else:
 			shurl = url
 		data, mime_type = await self.download_document(shurl)
+		print("create", shurl, mime_type)
 		self.documents[shurl] = self.create_document(data, mime_type)
 		document = self.get_document(url)
 		
@@ -262,8 +263,7 @@ if __debug__ and __name__ == '__main__':
 	from format.xml import XMLFormat
 	from format.css import CSSFormat
 	from format.null import NullFormat
-	
-	from font.woff import WOFFFont
+	from format.font import FontFormat
 	
 	from image.svg import SVGImage
 	from image.png import PNGImage
@@ -289,7 +289,7 @@ if __debug__ and __name__ == '__main__':
 	
 	async def test_main():
 		view = PseudoView()
-		TestModel = Model.features('TestModel', SVGImage, CSSFormat, PNGImage, PixbufImage, WOFFFont, DataDownload, FileDownload, ChromeDownload, XMLFormat, PlainFormat, NullFormat)
+		TestModel = Model.features('TestModel', SVGImage, CSSFormat, PNGImage, PixbufImage, FontFormat, DataDownload, FileDownload, ChromeDownload, XMLFormat, PlainFormat, NullFormat)
 		model = TestModel()
 		async for filepath in (Path.cwd() / 'gfx').iterdir():
 			#if filepath.suffix in ['.css']: continue

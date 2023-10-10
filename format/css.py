@@ -5,6 +5,11 @@
 __all__ = 'CSSFormat', 'CSSParser', 'CSSDocument'
 
 
+if __name__ == '__main__':
+	import sys
+	del sys.path[0] # needs to be removed because this module is called "xml"
+
+
 from collections import namedtuple, defaultdict
 from enum import Enum
 from itertools import chain
@@ -31,14 +36,6 @@ class CSSFormat:
 			return NotImplemented
 
 
-#class StyleNode(namedtuple('_StyleNode', ['name', 'args', 'cache'])):
-#	def __init__(self, name, args):
-#		super().__init__(name, args, None)
-#	
-#	def __repr__(self):
-#		return f"<{self.__class__.__qualname__} {repr(self.name)} @{hex(id(self))}>"
-
-
 class StyleNode:
 	def __init__(self, name, args):
 		self.name = name
@@ -62,14 +59,14 @@ class CSSDocument:
 		
 		self.css_tree = CSSParser().parse_css(arg.decode('utf-8'))
 	
-	def traverse(self, node, param, pre_function, post_function):
+	def traverse(self, node, param, pre_function, post_function, descend_function):
 		if pre_function != None:
 			node, param = pre_function(node, param)
 		
-		if hasattr(node, 'args') and (not hasattr(node, 'cache') or not node.cache):
+		if hasattr(node, 'args') and (descend_function == None or descend_function(node)):
 			children = []
 			for child in node.args:
-				child = self.traverse(child, param, pre_function, post_function)
+				child = self.traverse(child, param, pre_function, post_function, descend_function)
 				children.append(child)
 		else:
 			children = []
@@ -102,10 +99,10 @@ class CSSDocument:
 					print(" " * level, repr(node))
 				return node, level
 		
-		if node is None:
-			self.traverse(self.css_tree, level, print_node, None)
+		if tree is None:
+			self.traverse(self.css_tree, level, print_node, None, None)
 		else:
-			self.traverse(tree, level, print_node, None)
+			self.traverse(tree, level, print_node, None, None)
 	
 	def tree_contains(self, tree, target):
 		def catch(node, results):
@@ -114,7 +111,7 @@ class CSSDocument:
 			else:
 				return any(results)
 		
-		return self.traverse(tree, None, None, catch)
+		return self.traverse(tree, None, None, catch, None)
 	
 	def print_context(self, target, tree=None, level=0):
 		def print_node(node, level):
@@ -125,9 +122,9 @@ class CSSDocument:
 			return node, level + 1
 		
 		if tree is None:
-			self.traverse(self.css_tree, level, print_node, None)
+			self.traverse(self.css_tree, level, print_node, None, None)
 		else:
-			self.traverse(tree, level, print_node, None)			
+			self.traverse(tree, level, print_node, None, None)
 	
 	def scan_syntax_errors(self, node=None):
 		if node is None:
@@ -164,18 +161,75 @@ class CSSDocument:
 		
 		for node in self.css_tree.args:
 			try:
-				if node.name == 'atrule-style' and node.args[0] == 'font-face' and hasattr(node.args[2], 'name') and node.args[2].name == 'rules':
+				if node.name == 'atrule-style' and node.args[0] == 'font-face' and node.args[2].name == 'rules':
 					for subnode in node.args[2].args:
 						if subnode.name == 'rule' and subnode.args[0] == 'src':
 							for urlnode in subnode.args[1].args:
 								if urlnode.name == 'url':
 									yield urlnode.args[0]
-					#yield node.args[1].args[0].args[0]
 			except (AttributeError, IndexError):
 				pass
+	
+	def scan_font_faces(self): # TODO
+		for node in self.css_tree.args:
+			try:
+				if node.name == 'atrule-style' and node.args[0] == 'font-face' and node.args[2].name == 'rules':
+					for subnode in node.args[2].args:
+						if subnode.name != 'rule':
+							continue
+						elif subnode.args[0] == 'src':
+							for subnode2 in subnode.args[1].args:
+								if subnode2.name == 'url':
+									url = subnode2.args[0]
+								else:
+									print(subnode2)
+						elif subnode.args[0] == 'font-family':
+							...
+			except (AttributeError, IndexError):
+				pass
+	
+	def selector_priority(self, selector):
+		def walk_node(node, args):
+			if isinstance(node, str):
+				return node
+			elif hasattr(node, 'cache_selector_priority'):
+				return node.cache_selector_priority
+			elif node.name == 'selector-tag':
+				if args[0] == '*':
+					node.cache_selector_priority = 1
+					return 1
+				else:
+					node.cache_selector_priority = 2
+					return 2
+			elif node.name == 'selector-class':
+				return 10
+			elif node.name == 'selector-attr':
+				return 20
+			elif node.name == 'selector-id':
+				return 30
+			elif node.name == 'selector-pseudo-class':
+				return 40
+			elif node.name == 'selector-single':
+				node.cache_selector_priority = sum(args)
+				return node.cache_selector_priority
+			elif node.name == 'selector-seq':
+				node.cache_selector_priority = max(args)
+				return node.cache_selector_priority
+			else:
+				print("Implement selector priority:", node.name)
+				return 0
 		
-		return
-		yield None
+		def descend(node):
+			if isinstance(node, str):
+				return False
+			elif node.name in ['selector-class', 'selector-attr', 'selector-id', 'selector-pseudo-class']:
+				return False
+			elif hasattr(node, 'cache_selector_priority'):
+				return False
+			else:
+				return True
+		
+		return self.traverse(selector, [], None, walk_node, descend)
 	
 	def match_element(self, xml_element, media_test, pseudoclass_test, default_namespace): # TODO
 		if default_namespace is None:
@@ -193,16 +247,10 @@ class CSSDocument:
 			return pseudoclass_test(pseudoclass, node)
 		
 		def walk_node(node, args):
-			try:
-				return node.cache
-			except AttributeError:
-				pass
-			
-			#if hasattr(node, 'name') and node.name.startswith('selector'): #(node.name != 'style' and node.name != 'stylesheet'):
-			#	print("walk_node", node, args)
-			
 			if isinstance(node, str):
 				return node
+			elif hasattr(node, 'cache_match_element'):
+				return node.cache_match_element
 			elif node.name == 'path-operator':
 				return args[0]
 			elif node.name == 'selector-tag':
@@ -225,6 +273,8 @@ class CSSDocument:
 					#raise NotImplementedError("Attribute selector operator: " + repr(args[1]))
 			elif node.name == 'selector-id':
 				return lambda _node: ('id' in _node.attrib) and (_node.attrib['id'] == args[0])
+			elif node.name == 'selector-percentage': # TODO: keyframes
+				return lambda _node: False
 			elif node.name == 'selector-single':
 				assert all(callable(_check) for _check in args), str(args)
 				return lambda _node: all(_check(_node) for _check in args)
@@ -261,32 +311,69 @@ class CSSDocument:
 			elif node.name == 'rule':
 				return args
 			elif node.name == 'rules':
-				rules = dict(_kv[:2] for _kv in args) # TODO: !important, _kv[2]
-				node.cache = rules
+				rules = dict((_kv[0], _kv[1:]) for _kv in args)
+				node.cache_match_element = rules
 				return rules
 			elif node.name == 'selector':
-				check = lambda _xml_element: any(_arg(_xml_element) for _arg in args)
-				node.cache = check
+				check = lambda _xml_element: [_sel for (_sel, _tst) in zip(node.args, args) if _tst(_xml_element)]
+				node.cache_match_element = check
 				return check
 			elif node.name == 'style':
 				assert isinstance(args[1], dict)
-				if args[0](xml_element):
-					return args[1]
+				matched = args[0](xml_element)
+				if matched:
+					return matched, args[1]
 				else:
-					return {}
+					return None
 			elif node.name == 'stylesheet':
-				result = {}
-				for style in args:
-					if not isinstance(style, dict):
-						#print("unsupported style spec:", style)
+				values = {}
+				for matched in args:
+					if not (isinstance(matched, tuple) and len(matched) == 2 and isinstance(matched[1], dict)):
 						continue
-					result.update(style)
-				return result
+					
+					selectors = matched[0]
+					priority = max(self.selector_priority(_selector) for _selector in selectors)
+					style = matched[1]
+					
+					#if xml_element.tag.endswith('tspan') and xml_element.get('class', None) == 'reddish':
+					#	print("match priority:", xml_element.tag + (('.' + xml_element.attrib['class']) if 'class' in xml_element.attrib else ''), priority, style)
+					#	for s in selectors:
+					#		self.print_tree(s)
+					#	print()
+					
+					for key, value in style.items():
+						if key in values:
+							cur_priority = values[key][1]
+						else:
+							cur_priority = 0
+						
+						if priority >= cur_priority:
+							if len(value) == 2 and value[1] == '!important':
+								priority += 1000
+							values[key] = value[0], priority
+				
+				#result = {}
+				#for key, (value, priority) in values.items():
+				#	result[key] = value
+				
+				#if xml_element.tag.endswith('tspan') and xml_element.get('class', None) == 'reddish':
+				#	print("match result: ", xml_element.tag + (('.' + xml_element.attrib['class']) if 'class' in xml_element.attrib else ''), result)
+				
+				#return result
+				return values
 			else:
 				#print("Unimplemented CSS node:", node)
 				return node
 		
-		return self.traverse(self.css_tree, [], None, walk_node)
+		def descend(node):
+			if isinstance(node, str):
+				return False
+			elif hasattr(node, 'cache_match_element'):
+				return False
+			else:
+				return True
+		
+		return self.traverse(self.css_tree, [], None, walk_node, descend)
 	
 	def scan_urls(self):
 		"Yield all urls in style values."
@@ -299,7 +386,7 @@ class CSSDocument:
 			
 			return node, ancestors + [node.name if hasattr(node, 'name') else None]
 		
-		self.traverse(self.css_tree, [], walk_node, None)
+		self.traverse(self.css_tree, [], walk_node, None, None)
 		
 		return result
 
@@ -599,7 +686,7 @@ class CSSParser:
 					pass # warning
 			
 			else:
-				#print(child.args)
+				#print("build block", child.args)
 				if child.args[-1].name == self.ParserSymbol.curly:
 					children.append(StyleNode('style', [self.parse_selector(child.args[:-1]), self.build_rules(child.args[-1])]))
 				else:
@@ -988,6 +1075,9 @@ class CSSParser:
 
 
 if __debug__ and __name__ == '__main__':
+	from pycallgraph2 import PyCallGraph
+	from pycallgraph2.output.graphviz import GraphvizOutput
+	
 	from pathlib import Path
 	
 	print("css format")
@@ -1039,15 +1129,20 @@ if __debug__ and __name__ == '__main__':
 	assert model.is_css_document(tree)
 	assert tree.is_valid()
 	
-	for cssfile in Path('gfx').iterdir():
-		if cssfile.suffix != '.css': continue
-		print()
-		print(cssfile.name)
-		tree = model.create_document(cssfile.read_bytes(), 'text/css')
-		for node in tree.scan_syntax_errors():
-			tree.print_context(node)
-		#model.print_css_tree(tree)
-		assert model.is_css_document(tree)
-		assert tree.is_valid()
-		#print(list(model.scan_document_links(tree)))
+	for example in Path('examples').iterdir():
+		if not example.is_dir(): continue
+		for cssfile in example.iterdir():
+			if cssfile.suffix != '.css': continue
+			
+			profiler = PyCallGraph(output=GraphvizOutput(output_file=f'profile/css_{example.name}_{cssfile.name}.png'))
+			profiler.start()
+			
+			tree = model.create_document(cssfile.read_bytes(), 'text/css')
+			for node in tree.scan_syntax_errors():
+				tree.print_context(node)
+			#model.print_css_tree(tree)
+			assert model.is_css_document(tree)
+			assert tree.is_valid()
+			#print(list(model.scan_document_links(tree)))
 
+			profiler.done()

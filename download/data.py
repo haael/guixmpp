@@ -17,9 +17,9 @@ class DataDownload:
 			try:
 				mime_type = headers[0]
 				if mime_type == '':
-					mime_type = 'text/plain'
+					mime_type = 'application/octet-stream'
 			except IndexError:
-				mime_type = 'text/plain'
+				mime_type = 'application/octet-stream'
 			
 			try:
 				encoding = headers[1]

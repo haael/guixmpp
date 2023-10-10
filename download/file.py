@@ -45,7 +45,7 @@ if __debug__ and __name__ == '__main__':
 		download = FileDownload()
 		await download.begin_downloads()
 		
-		async for filepath in (Path.cwd() /'gfx').iterdir():
+		async for filepath in (Path.cwd() / 'examples/gfx').iterdir():
 			data, mime_type = await download.download_document(filepath.as_uri())
 			if filepath.suffix == '.xml':
 				assert mime_type == 'application/xml', mime_type

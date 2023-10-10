@@ -80,10 +80,12 @@ if __debug__ and __name__ == '__main__':
 	
 	model = PNGImage()
 	
-	for filepath in Path('gfx').iterdir():
-		if filepath.suffix == '.png':
-			mime_type = 'image/png'
-		else:
-			continue
-		document = model.create_document(filepath.read_bytes(), mime_type)
-		assert model.is_png_document(document)
+	for example in Path('examples').iterdir():
+		if not example.is_dir(): continue
+		for filepath in example.iterdir():
+			if filepath.suffix == '.png':
+				mime_type = 'image/png'
+			else:
+				continue
+			document = model.create_document(filepath.read_bytes(), mime_type)
+			assert model.is_png_document(document)

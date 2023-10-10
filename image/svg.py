@@ -21,16 +21,10 @@ from colorsys import hls_to_rgb
 
 import PIL.Image, PIL.ImageFilter
 
-use_pango = False
-
-if use_pango:
-	import gi
-	gi.require_version('Pango', '1.0')
-	gi.require_version('PangoCairo', '1.0')
-	from gi.repository import Pango, PangoCairo
-
-	from lxml.builder import ElementMaker
-	from lxml.etree import tostring
+import gi
+gi.require_version('Pango', '1.0')
+gi.require_version('PangoCairo', '1.0')
+from gi.repository import Pango, PangoCairo
 
 from format.xml import XMLDocument
 
@@ -49,6 +43,8 @@ class NotANumber(BaseException):
 
 class OverlayElement:
 	def __init__(self, one, two, parent, tag=None):
+		#if one is None: raise ValueError
+		if two is None: raise ValueError
 		self.__one = one
 		self.__two = two
 		self.__parent = parent
@@ -280,16 +276,36 @@ class SVGImage:
 		'white': '#FFFFFF',
 		'whitesmoke': '#F5F5F5',
 		'yellow': '#FFFF00',
-		'yellowgreen': '#9ACD32',
+		'yellowgreen': '#9ACD32'
 	}
 	
 	def create_document(self, data, mime_type):
 		if mime_type == 'image/svg+xml' or mime_type == 'image/svg':
 			document = self.create_document(data, 'application/xml')
+			
+			if document.getroot().tag == 'svg': # document without namespace
+				document.getroot().attrib['xmlns'] = self.xmlns_svg
+				document = self.create_document(document.to_bytes(), 'application/xml')
+			
 			if self.is_svg_document(document):
 				return document
 			else:
-				raise ValueError("Not an SVG document.")
+				msg = []
+				if self.is_xml_document(document):
+					try:
+						root = document.getroot()
+					except:
+						msg.append("root:no")
+					else:
+						msg.append("root:yes")
+						msg.append("tag:" + repr(root.tag))
+						if root.tag.startswith('{' + self.xmlns_svg + '}'):
+							msg.append("SVG:yes")
+						else:
+							msg.append("SVG:no")
+				else:
+					msg.append("XML:no")
+				raise ValueError("Not an SVG document. " + "; ".join(msg))
 		else:
 			return NotImplemented
 	
@@ -311,6 +327,7 @@ class SVGImage:
 				yield from self.__xlink_hrefs(document)
 				yield from self.__data_internal_links(self.__style_attrs(document))
 				yield from self.__data_internal_links(self.__style_tags(document))
+				#yield from self.__script_tags(document)
 			return links()
 		else:
 			return NotImplemented
@@ -331,6 +348,10 @@ class SVGImage:
 				yield doc
 	
 	def __style_attrs(self, document):
+		if 'style' in document.getroot().attrib:
+			style = '* {' + document.getroot().attrib['style'] + '}'
+			yield 'data:text/css,' + url_quote(style)
+		
 		for styledtag in document.findall('.//*[@style]'):
 			style = '* {' + styledtag.attrib['style'] + '}'
 			yield 'data:text/css,' + url_quote(style)
@@ -343,6 +364,15 @@ class SVGImage:
 				mime = 'text/css'
 			style = styletag.text
 			yield f'data:{mime},' + url_quote(style)
+	
+	def __script_tags(self, document):
+		for scripttag in document.findall(f'.//{{{self.xmlns_svg}}}script'):
+			try:
+				mime = styletag.attrib['type'].lower()
+			except KeyError:
+				mime = 'text/javascript'
+			script = scripttag.text
+			yield f'data:{mime},' + url_quote(script)
 	
 	def __xlink_hrefs(self, document):
 		for linkedtag in document.findall(f'.//*[@{{{self.xmlns_xlink}}}href]'):
@@ -387,6 +417,8 @@ class SVGImage:
 		
 		if any(node.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__shape_tags):
 			self.__render_shape(view, document, ctx, box, node, None)
+		elif node.tag == f'{{{self.xmlns_svg}}}text':
+			self.__render_text(view, document, ctx, box, node, None)
 		elif any(node.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__group_tags):
 			self.__render_group(view, document, ctx, box, node, None)
 		elif node.tag == f'{{{self.xmlns_svg}}}image':
@@ -408,6 +440,8 @@ class SVGImage:
 		
 		if any(node.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__shape_tags):
 			return self.__render_shape(view, document, ctx, box, node, (px, py))
+		elif node.tag == f'{{{self.xmlns_svg}}}text':
+			return self.__render_text(view, document, ctx, box, node, (px, py))
 		elif any(node.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__group_tags):
 			return self.__render_group(view, document, ctx, box, node, (px, py))
 		elif node.tag == f'{{{self.xmlns_svg}}}image':
@@ -486,7 +520,7 @@ class SVGImage:
 	])
 	
 	__group_tags = frozenset(['svg', 'g', 'a', 'symbol'])
-	__shape_tags = frozenset(['polygon', 'line', 'ellipse', 'circle', 'rect', 'path', 'text'])
+	__shape_tags = frozenset(['polygon', 'line', 'ellipse', 'circle', 'rect', 'path', 'polyline'])
 	__skip_tags = frozenset(['defs', 'title', 'desc', 'metadata', 'style', 'linearGradient', 'radialGradient', 'script', 'animate', 'filter', 'switch'])
 	
 	def __media_test(self, view):
@@ -527,6 +561,9 @@ class SVGImage:
 	def __search_attribute(self, view, document, node, attr):
 		"Search for effective presentation attribute. This will either be an explicit XML attribute, or attribute of one of ancestors, or CSS value."
 		
+		#if node and node.tag == '{http://www.w3.org/2000/svg}tspan' and attr == 'fill':
+		#	print("search attribute", node.tag, node.attrib.get('class', None), attr)
+		
 		if node is not None:
 			try:
 				return view.__attr_cache[node][attr]
@@ -534,7 +571,7 @@ class SVGImage:
 				pass
 			except AttributeError:
 				view.__attr_cache = defaultdict(dict)
-			
+						
 			"inline style='...' attribute"
 			try:
 				style = node.attrib['style']
@@ -544,8 +581,8 @@ class SVGImage:
 				css = self.get_document('data:text/css,' + url_quote('* {' + style + '}'))
 				css_attrs = css.match_element(node, (lambda *args: False), (lambda *args: False), self.xmlns_svg)
 				if attr in css_attrs:
-					view.__attr_cache[node][attr] = css_attrs[attr]
-					return css_attrs[attr]
+					view.__attr_cache[node][attr] = css_attrs[attr][0]
+					return css_attrs[attr][0]
 			
 			"regular stylesheet (<style/> tag or external)"
 			try:
@@ -554,11 +591,21 @@ class SVGImage:
 				stylesheets = list(self.__stylesheets(document))
 				document.__stylesheets = stylesheets
 			
+			css_value = None
+			css_priority = 0
+			
 			for stylesheet in stylesheets:
 				css_attrs = stylesheet.match_element(node, (lambda *args: self.__media_test(view, *args)), (lambda *args: self.__pseudoclass_test(view, *args)), self.xmlns_svg)
 				if attr in css_attrs:
-					view.__attr_cache[node][attr] = css_attrs[attr]
-					return css_attrs[attr]
+					value, priority = css_attrs[attr]
+					if priority >= css_priority:
+						css_value = value
+				#	view.__attr_cache[node][attr] = css_attrs[attr]
+				#	return css_attrs[attr]
+			
+			if css_value is not None:
+				view.__attr_cache[node][attr] = css_value
+				return css_value
 			
 			"XML attribute"
 			try:
@@ -584,6 +631,8 @@ class SVGImage:
 	
 	def __render_group(self, view, document, ctx, box, node, pointer):
 		"Render SVG group element and its subelements."
+		
+		print("render_group", node.tag)
 		
 		display = self.__get_attribute(view, document, ctx, box, node, 'display', 'block').lower()
 		visibility = self.__get_attribute(view, document, ctx, box, node, 'visibility', 'visible').lower()
@@ -624,11 +673,23 @@ class SVGImage:
 			
 			if (node.getparent() is None):
 				x_scale = width / viewbox_w
-				y_scale = height / viewbox_h					
+				y_scale = height / viewbox_h
 				x_scale = y_scale = min(x_scale, y_scale)
 				
 				ctx.scale(x_scale, y_scale)
 				ctx.translate(-viewbox_x, -viewbox_y)
+			else:
+				if 'width' not in node.attrib:
+					svg_width = viewbox_w
+				if 'height' not in node.attrib:
+					svg_height = viewbox_h
+				
+				x_scale = svg_width / viewbox_w
+				y_scale = svg_height / viewbox_h					
+				x_scale = y_scale = min(x_scale, y_scale)
+				
+				ctx.scale(x_scale, y_scale)
+				#ctx.translate(-viewbox_x, -viewbox_y)
 			
 			box = viewbox_x, viewbox_y, viewbox_w, viewbox_h
 
@@ -680,6 +741,10 @@ class SVGImage:
 			
 			elif any(child.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__shape_tags):
 				hover_subnodes = self.__render_shape(view, document, ctx, box, child, pointer)
+				hover_nodes.extend(hover_subnodes)
+			
+			elif child.tag == f'{{{self.xmlns_svg}}}text':
+				hover_subnodes = self.__render_text(view, document, ctx, box, child, pointer)
 				hover_nodes.extend(hover_subnodes)
 			
 			elif any(child.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__group_tags):
@@ -773,8 +838,8 @@ class SVGImage:
 			ctx.arc(cx, cy, r, 0, 2 * math.pi)
 		
 		elif node.tag == f'{{{self.xmlns_svg}}}ellipse':
-			cx = self.__units(view, node.attrib['cx'], percentage=width)
-			cy = self.__units(view, node.attrib['cy'], percentage=height)
+			cx = self.__units(view, node.attrib.get('cx', 0), percentage=width)
+			cy = self.__units(view, node.attrib.get('cy', 0), percentage=height)
 			rx = self.__units(view, node.attrib['rx'], percentage=width)
 			ry = self.__units(view, node.attrib['ry'], percentage=height)
 			ctx.save()
@@ -791,14 +856,23 @@ class SVGImage:
 			ctx.move_to(x1, y1)
 			ctx.line_to(x2, y2)
 		
-		elif node.tag == f'{{{self.xmlns_svg}}}polygon':
+		elif node.tag == f'{{{self.xmlns_svg}}}polygon' or node.tag == f'{{{self.xmlns_svg}}}polyline':
 			x = self.__units(view, node.attrib.get('x', 0), percentage=width)
 			y = self.__units(view, node.attrib.get('y', 0), percentage=height)
 			
-			points = node.attrib['points'].split()
+			rpoints = node.attrib['points'].split()
+			points = []
+			for rp in rpoints:
+				for rpp in rp.split(','):
+					srpp = rpp.strip()
+					if srpp:
+						points.append(srpp)
 			first = True
-			for point in points:
-				xs, ys, *_ = point.split(',')
+			for n in range(len(points) // 2):
+			#for point in points:
+				#xs, ys, *_ = point.split(',')
+				xs = points[2 * n]
+				ys = points[2 * n + 1]
 				kx = self.__units(view, xs, percentage=width)
 				ky = self.__units(view, ys, percentage=height)
 				if first:
@@ -806,16 +880,15 @@ class SVGImage:
 					first = False
 				else:
 					ctx.line_to(x + kx, y + ky)
-			if not first:
+			
+			if node.tag == f'{{{self.xmlns_svg}}}polygon' and not first:
 				ctx.close_path()
 		
 		elif node.tag == f'{{{self.xmlns_svg}}}path':
 			self.__draw_path(view, document, ctx, box, node)
 		
-		elif node.tag == f'{{{self.xmlns_svg}}}text':
-			self.__draw_text(view, document, ctx, box, node)
-		
-		# TODO: polyline
+		#elif node.tag == f'{{{self.xmlns_svg}}}text':
+		#	self.__draw_text(view, document, ctx, box, node)
 		
 		else:
 			self.emit_warning(view, f"tag {node.tag} not supported by this method", node.tag, node)
@@ -835,17 +908,17 @@ class SVGImage:
 		if filter_:
 			image.flush()
 			
-			#pil_filter = PIL.ImageFilter.GaussianBlur(10) # TODO: other filters
+			pil_filter = PIL.ImageFilter.GaussianBlur(10) # TODO: other filters
 			
-			#data = PIL.Image.frombytes('RGBa', (image.get_width(), image.get_height()), bytes(image.get_data())).filter(pil_filter).tobytes()
-			#image = cairo.ImageSurface.create_for_data(bytearray(data), cairo.FORMAT_ARGB32, image.get_width(), image.get_height())
+			data = PIL.Image.frombytes('RGBa', (image.get_width(), image.get_height()), bytes(image.get_data())).filter(pil_filter).tobytes()
+			image = cairo.ImageSurface.create_for_data(bytearray(data), cairo.FORMAT_ARGB32, image.get_width(), image.get_height())
 			
 			ctx = old_ctx
 			ctx.set_source_surface(image, -margin, -margin)
 			ctx.rectangle(*box)
-			ctx.fill_preserve()
-			ctx.set_source_rgb(0, 0, 0)
-			ctx.stroke()
+			ctx.fill()
+			#ctx.set_source_rgb(0, 0, 0)
+			#ctx.stroke()
 			image.finish()
 		
 		if transform:
@@ -977,7 +1050,6 @@ class SVGImage:
 		origin_y = self.__units(view, origin[1], percentage=height)
 		
 		if origin_x or origin_y:
-			#ctx.save()
 			ctx.translate(origin_x, origin_y)
 		
 		text = transform_string
@@ -987,7 +1059,8 @@ class SVGImage:
 			if match and self.__transform_separators(text[n:match.start()]):
 				m0, m1, m2, m3, m4, m5 = map(self.__parse_float, list(match.groups()))
 				transformation = cairo.Matrix(m0, m1, m2, m3, m4, m5)
-				ctx.transform(transformation)
+				if (m0 or m1 or m2) and (m3 or m4 or m5): # TODO: hide view if matrix is singular
+					ctx.transform(transformation)
 				n = match.end()
 				continue
 			
@@ -1008,14 +1081,16 @@ class SVGImage:
 			match = self.__re_scale1.search(text, n)
 			if match and self.__transform_separators(text[n:match.start()]):
 				s, = map(self.__parse_float, list(match.groups()))
-				ctx.scale(s, s)
+				if s: # TODO: hide view if matrix is singular
+					ctx.scale(s, s)
 				n = match.end()
 				continue
 			
 			match = self.__re_scale2.search(text, n)
 			if match and self.__transform_separators(text[n:match.start()]):
 				sx, sy = map(self.__parse_float, list(match.groups()))
-				ctx.scale(sx, sy)
+				if sx and sy: # TODO: hide view if matrix is singular
+					ctx.scale(sx, sy)
 				n = match.end()
 				continue
 			
@@ -1055,7 +1130,6 @@ class SVGImage:
 			break
 		
 		if origin_x or origin_y:
-			#ctx.restore()
 			ctx.translate(-origin_x, -origin_y)
 		
 		return True
@@ -1094,7 +1168,8 @@ class SVGImage:
 		elif fill_rule == 'winding':
 			ctx.set_fill_rule(cairo.FillRule.WINDING)
 		elif fill_rule == 'nonzero':
-			self.emit_warning(view, f"Unsupported fill rule: {fill_rule}", fill_rule, node) # TODO
+			ctx.set_fill_rule(cairo.FillRule.WINDING)
+			#self.emit_warning(view, f"Unsupported fill rule: {fill_rule}", fill_rule, node) # TODO
 		elif fill_rule == None:
 			pass
 		else:
@@ -1150,25 +1225,28 @@ class SVGImage:
 					dashes = [_x * pathScale for _x in map(self.__parse_float, dasharray.split(','))]
 				ctx.set_dash(dashes, dashoffset)
 		
-		'''
-		try:
-			linejoin = self.__search_attrib(view, node, 'stroke-linejoin')
-		except KeyError:
-			pass
-		else:
-			pass # TODO
 		
-		try:
-			mitterlimit = self.__search_attrib(view, node, 'stroke-mitterlimit')
-		except KeyError:
-			pass
+		linejoin = self.__get_attribute(view, document, ctx, box, node, 'stroke-linejoin', 'miter')
+		if linejoin == 'miter':
+			ctx.set_line_join(cairo.LineJoin.MITER)
+		elif linejoin == 'bevel':
+			ctx.set_line_join(cairo.LineJoin.BEVEL)
+		elif linejoin == 'round':
+			ctx.set_line_join(cairo.LineJoin.ROUND)
 		else:
-			pass # TODO
-		'''
+			self.emit_warning(view, f"Unsupported linejoin `{linejoin}`", linejoin, node)
+		
+		miterlimit = self.__get_attribute(view, document, ctx, box, node, 'stroke-miterlimit', '4')
+		try:
+			miterlimit = self.__parse_float(miterlimit)
+		except ValueError:
+			self.emit_warning(view, f"Miter limit float parse error `{miterlimit}`", miterlimit, node)
+		else:
+			ctx.set_miter_limit(miterlimit)
 		
 		return True
 	
-	def __parse_color(self, color):
+	def __parse_color(self, color, view, node):
 		if color[0] == '#' and len(color) == 4:
 			r, g, b = [int(_c, 16) / 15 for _c in color[1:]]
 		
@@ -1188,7 +1266,7 @@ class SVGImage:
 			r, g, b = hls_to_rgb(h, l, s)
 		
 		else:
-			self.emit_warning(view, f"Unsupported color specification in {color_attr}: {color}", color, node)
+			self.emit_warning(view, f"Unsupported color specification: {color}", color, node)
 			return None
 		
 		return r, g, b
@@ -1233,7 +1311,7 @@ class SVGImage:
 			return self.__apply_pattern(view, document, ctx, box, node, href)
 			# TODO: transparency
 		else:
-			cc = self.__parse_color(color)
+			cc = self.__parse_color(color, view, node)
 			if cc == None:
 				return False
 			else:
@@ -1458,7 +1536,7 @@ class SVGImage:
 				except KeyError:
 					pass
 				
-				cc = self.__parse_color(stop_color)
+				cc = self.__parse_color(stop_color, view, node)
 				if cc == None:
 					continue
 				else:
@@ -1518,244 +1596,328 @@ class SVGImage:
 		
 		return l
 	
-	def __create_gmarkup(self, builder, node, strip):
-
-		result = builder.span(*[self.__create_gmarkup(builder, _node, strip) for _node in node])
-
-		if strip:
-			try:
-				result.text = node.text.strip()
-			except AttributeError:
-				pass
-			
-			try:
-				result.tail = node.tail.strip()
-			except AttributeError:
-				pass
-		else:
-			result.text = node.text
-			result.tail = node.tail
+	@staticmethod
+	def __remove_whitespace(txt):
+		txt = txt.replace("\xA0", " ")
+		txt = txt.replace("\t", " ")
+		txt = txt.replace("\r", " ")
+		txt = txt.replace("\n", " ")
 		
-		return result
+		txtn = txt.replace("  ", " ")
+		while txtn != txt:
+			txt = txtn
+			txtn = txt.replace("  ", " ")
+		
+		#if txt != " ":
+		#	txt = txt.lstrip()
+		return txt.lstrip()
 	
-	if use_pango:
-		def __draw_text(self, view, document, ctx, box, node):
-			left, top, width, height = box
-			
-			builder = ElementMaker()
-			strip = node.attrib.get(f'{{{self.xmlns_xml}}}space', '') != 'preserve'
-			markup = builder.markup(*[self.__create_gmarkup(builder, _node, strip) for _node in node])
-			if strip:
-				try:
-					markup.text = node.text.strip()
-				except AttributeError:
-					pass
-			else:
-				markup.text = node.text
-
+	def __render_text(self, view, document, ctx, box, textnode, pointer):
+		pango_layout = PangoCairo.create_layout(ctx)
+		textspec = self.__produce_text(view, document, ctx, box, textnode, '', 0, 0, pango_layout)
+		return self.__render_text_spec(view, document, ctx, box, textspec, None, pango_layout, pointer)
+	
+	def __render_text_spec(self, view, document, ctx, box, textspec, ta_width, pango_layout, pointer):
+		node, txt_paths, tx, ty, extents = textspec
+		
+		display = self.__get_attribute(view, document, ctx, box, node, 'display', 'block').lower()
+		visibility = self.__get_attribute(view, document, ctx, box, node, 'visibility', 'visible').lower()
+		
+		if visibility == 'collapse' or display == 'none':
+			return []
+		
+		left, top, width, height = box
+		hover_nodes = []
+		
+		dsx = dsy = 0
+		
+		if (ta_width is None) or any((_attr in node.attrib) for _attr in ['text-anchor', 'x', 'dx']):
+			ta_width = extents.width
+		
+		text_anchor = self.__get_attribute(view, document, ctx, box, node, 'text-anchor', 'begin').strip()
+		if text_anchor == 'end':
+			dsx -= ta_width #extents.width
+		elif text_anchor == 'middle':
+			dsx -= ta_width / 2 #extents.width / 2
+		
+		baseline_shift = node.attrib.get('baseline-shift', 'baseline').strip()
+		#baseline_shift = self.__get_attribute(view, document, ctx, box, node, 'baseline-shift', 'baseline').strip()
+		if baseline_shift == 'sub':
 			font_size_attrib = self.__get_attribute(view, document, ctx, box, node, 'font-size', '12') # FIXME: default font size 12?
 			font_size = self.__units(view, font_size_attrib, percentage=(width + height) / 2)
-			x = self.__units(view, node.attrib.get('x', 0), percentage=width)
-			y = self.__units(view, node.attrib.get('y', 0), percentage=height)
-			text_anchor = self.__get_attribute(view, document, ctx, box, node, 'text-anchor', '').strip()
-			
-			try:
-				layout = PangoCairo.create_layout(ctx)
-			except TypeError:
-				if node.text:
-					txt = node.text
-					if strip: txt = txt.strip()
-					
-					extents = ctx.text_extents(txt)
-					if text_anchor == 'end':
-						anchor_shift = -extents.width
-					elif text_anchor == 'middle':
-						anchor_shift = -extents.width / 2
-					else:
-						anchor_shift = 0
-					
-					ctx.rel_move_to(anchor_shift, 0)
-					ctx.text_path(txt)
-				
-				return
-			
-			layout.set_font_description(Pango.FontDescription(f'Serif {font_size}px'))
-			layout.set_markup(tostring(markup).decode('utf-8'), -1)
-			
-			w, h = layout.get_pixel_size()
-			
-			if text_anchor == 'end':
-				anchor_shift = -w
-			elif text_anchor == 'middle':
-				anchor_shift = -w / 2
-			else:
-				anchor_shift = 0
-			
-			#ctx.rectangle(x + anchor_shift, y - font_size, w, h)
-			#ctx.set_source_rgb(0.2, 0.2, 1)
-			#ctx.stroke()
-			
-			ctx.move_to(x, y)
-			ctx.rel_move_to(anchor_shift, -font_size)
-			
-			PangoCairo.layout_path(ctx, layout)
-	
-	else:
-		def __draw_text(self, view, document, ctx, box, node):
-			left, top, width, height = box
-			
-			x = self.__units(view, node.attrib.get('x', 0), percentage=width)
-			y = self.__units(view, node.attrib.get('y', 0), percentage=height)
-			
-			ctx.move_to(x, y)
-			
-			strip = node.attrib.get(f'{{{self.xmlns_xml}}}space', '') != 'preserve'
-			
-			text_anchor = self.__apply_font(view, document, ctx, box, node)
-			
-			#total_text = self.__total_text(node, strip)
-			
-			if node.text:
-				txt = node.text
-				if strip: txt = txt.strip()
-				
-				extents = ctx.text_extents(txt)
-				if text_anchor == 'end':
-					anchor_shift = -extents.width
-				elif text_anchor == 'middle':
-					anchor_shift = -extents.width / 2
-				else:
-					anchor_shift = 0
-				#ctx.rel_move_to(anchor_shift, 0)
-				
-				#ctx.save()
-				ctx.rel_move_to(anchor_shift, 0)
-				ctx.text_path(txt)
-				#ctx.restore()
-			
-			for child in node:
-				if child.tag != f'{{{self.xmlns_svg}}}tspan':
-					self.emit_warning(view, "Unsupported tag %s" % child.tag, child.tag, child)
-					continue
-				self.__draw_tspan(view, document, ctx, box, child, strip)
-				
-				if child.tail:
-					txt = child.tail
-					if strip: txt = txt.strip()
-					
-					extents = ctx.text_extents(txt)
-					if text_anchor == 'end':
-						anchor_shift = -extents.width
-					elif text_anchor == 'middle':
-						anchor_shift = -extents.width / 2
-					else:
-						anchor_shift = 0
-					
-					#ctx.save()
-					ctx.rel_move_to(anchor_shift, 0)
-					ctx.text_path(txt)
-					#ctx.restore()
-		
-		def __apply_font(self, view, document, ctx, box, node):
-			left, top, width, height = box
-			
-			font_family = self.__get_attribute(view, document, ctx, box, node, 'font-family', '')
-			font_style_attrib = self.__get_attribute(view, document, ctx, box, node, 'font-style', 'normal')
-			font_weight_attrib = self.__get_attribute(view, document, ctx, box, node, 'font-weight', 'normal')
-			
-			if font_style_attrib == 'normal':
-				font_style = cairo.FontSlant.NORMAL
-			elif font_style_attrib == 'italic':
-				font_style = cairo.FontSlant.ITALIC
-			elif font_style_attrib == 'oblique':
-				font_style = cairo.FontSlant.OBLIQUE
-			else:
-				self.emit_warning(view, f"Unsupported font style '{font_style_attrib}'", font_style_attrib, node)
-				font_style = cairo.FontSlant.NORMAL
-			
-			if font_weight_attrib == 'normal':
-				font_weight = cairo.FontWeight.NORMAL
-			elif font_weight_attrib == 'bold':
-				font_weight = cairo.FontWeight.BOLD
-			else:
-				try:
-					font_weight_number = int(font_weight_attrib)
-				except ValueError:
-					self.emit_warning(view, f"Unsupported font weight '{font_weight_attrib}'", font_weight_attrib, node)
-					font_weight = cairo.FontWeight.NORMAL
-				else:
-					if font_weight_number > 500:
-						font_weight = cairo.FontWeight.BOLD
-					else:
-						font_weight = cairo.FontWeight.NORMAL
-			
-			for family in font_family.split(','):
-				ctx.select_font_face(family, font_style, font_weight)
-			
+			#print("font size", font_size)
+			dsy += font_size / 2
+		elif baseline_shift == 'super':
 			font_size_attrib = self.__get_attribute(view, document, ctx, box, node, 'font-size', '12') # FIXME: default font size 12?
 			font_size = self.__units(view, font_size_attrib, percentage=(width + height) / 2)
-			ctx.set_font_size(font_size)
-			
-			text_anchor = self.__get_attribute(view, document, ctx, box, node, 'text-anchor', '').strip()
-			return text_anchor
-
-		def __draw_tspan(self, view, document, ctx, box, node, strip):
-			left, top, width, height = box
+			dsy -= font_size / 2
+		
+		transform = node.attrib.get('transform', '')
+		
+		if transform:
 			ctx.save()
+			self.__apply_transform(view, document, ctx, box, node, transform)
+		
+		if visibility != 'hidden':
+			filter_ = self.__get_attribute(view, document, ctx, box, node, 'filter', None)
+			filter_ = None # TODO
+		else:
+			filter_ = None
+		
+		if filter_:
+			# TODO
+			margin = 10
+			image = cairo.ImageSurface(cairo.FORMAT_ARGB32, int(box[2] + 2 * margin + 1), int(box[3] + 2 * margin + 1))
+			image_ctx = cairo.Context(image)
+			#image_ctx.set_matrix(ctx.get_matrix())
+			image_ctx.translate(-left + margin, -top + margin)
+			old_ctx = ctx
+			ctx = image_ctx
+		
+		self.__apply_font(view, document, ctx, box, node, pango_layout)
+		
+		for spec in txt_paths:
+			if spec[0] is not None: continue
 			
-			x = self.__units(view, node.attrib.get('x', 0), percentage=width)
-			y = self.__units(view, node.attrib.get('y', 0), percentage=height)		
-			if x or y:
-				ctx.move_to(x, y)
+			_, txt, sx, sy, sextents = spec
+			sx += dsx
+			sy += dsy
 			
-			dx = self.__units(view, node.attrib.get('dx', 0), percentage=width)
-			dy = self.__units(view, node.attrib.get('dy', 0), percentage=height)
-			if dx or dy:
-				ctx.rel_move_to(dx, dy)
-			
-			text_anchor = self.__get_attribute(view, document, ctx, box, node, 'text-anchor', '').strip()
-			
-			if node.text:
-				txt = node.text
-				if strip: txt = txt.strip()
-				
-				extents = ctx.text_extents(txt)
-				if text_anchor == 'end':
-					anchor_shift = -extents.width
-				elif text_anchor == 'middle':
-					anchor_shift = -extents.width / 2
-				else:
-					anchor_shift = 0
-				
-				#ctx.save()
-				ctx.rel_move_to(anchor_shift, 0)
+			if pango_layout is not None:
+				pango_layout.set_text(txt)
+				ctx.move_to(sx, sy - pango_layout.get_baseline() / Pango.SCALE)
+				PangoCairo.layout_path(ctx, pango_layout)
+			else:
+				ctx.move_to(sx, sy)
 				ctx.text_path(txt)
-				#ctx.restore()
 			
-			for child in node:
-				if child.tag != f'{{{self.xmlns_svg}}}tspan':
-					self.emit_warning(view, "Unsupported tag %s" % child.tag, child.tag, child)
-					continue
-				self.__draw_tspan(view, document, ctx, box, child, strip)
-				
-				if child.tail:
-					txt = child.tail
-					if strip: txt = txt.strip()
-					
-					extents = ctx.text_extents(txt)
-					if text_anchor == 'end':
-						anchor_shift = -extents.width
-					elif text_anchor == 'middle':
-						anchor_shift = -extents.width / 2
-					else:
-						anchor_shift = 0
-					
-					#ctx.save()
-					ctx.rel_move_to(anchor_shift, 0)
-					ctx.text_path(txt)
-					#ctx.restore()
+			has_fill, has_stroke = self.__apply_paint(view, document, ctx, box, node, (visibility != 'hidden'))
 			
+			if pointer:
+				px, py = ctx.device_to_user(*pointer)
+				if ctx.in_clip(px, py):
+					if ctx.in_fill(px, py) or ctx.in_stroke(px, py): # TODO: pointer events
+						if node not in hover_nodes:
+							hover_nodes.append(node)
+			
+			ctx.new_path()
+		
+		for spec in txt_paths:
+			if spec[0] is None: continue
+			hover_nodes.extend(self.__render_text_spec(view, document, ctx, box, spec, ta_width, pango_layout, pointer))
+		
+		if filter_:
+			image.flush()
+			
+			#pil_filter = PIL.ImageFilter.GaussianBlur(10) # TODO: other filters
+			
+			#data = PIL.Image.frombytes('RGBa', (image.get_width(), image.get_height()), bytes(image.get_data())).filter(pil_filter).tobytes()
+			#image = cairo.ImageSurface.create_for_data(bytearray(data), cairo.FORMAT_ARGB32, image.get_width(), image.get_height())
+			
+			ctx = old_ctx
+			ctx.set_source_surface(image, -margin, -margin)
+			ctx.rectangle(*box)
+			ctx.fill_preserve()
+			ctx.set_source_rgb(0, 0, 0)
+			ctx.stroke()
+			image.finish()
+		
+		if transform:
 			ctx.restore()
+		
+		return hover_nodes
+	
+	def __produce_text(self, view, document, ctx, box, node, whitespace, x, y, pango_layout):
+		left, top, width, height = box
+		
+		x = self.__units(view, node.attrib.get('x', str(x)).split()[0], percentage=width) # TODO: support sequences
+		y = self.__units(view, node.attrib.get('y', str(y)).split()[0], percentage=height) # TODO: support sequences
+		dx = self.__units(view, node.attrib.get('dx', '0').split()[0], percentage=width) # TODO: support sequences
+		dy = self.__units(view, node.attrib.get('dy', '0').split()[0], percentage=height) # TODO: support sequences
+		
+		whitespace = node.attrib.get(f'{{{self.xmlns_xml}}}space', whitespace)
+		strip = whitespace != 'preserve'
+		
+		txt_paths = []
+		
+		text_left = None
+		text_right = None
+		text_top = None
+		text_bottom = None
+		x_advance = 0
+		y_advance = 0
+		
+		if node.text:
+			txt = self.__remove_whitespace(node.text) if strip else node.text
+			if txt:
+				node_x = x + dx + x_advance
+				node_y = y + dy + y_advance
+				
+				self.__apply_font(view, document, ctx, box, node, pango_layout)
+				if pango_layout is not None:
+					pango_layout.set_text(txt)
+					
+					ink_rect, logical_rect = pango_layout.get_pixel_extents()
+					pleft, ptop, pwidth, pheight = ink_rect.x, ink_rect.y, ink_rect.width, ink_rect.height
+					px_bearing = pleft
+					py_bearing = ptop
+					px_advance = logical_rect.x + logical_rect.width
+					py_advance = 0 #logical_rect.y + logical_rect.height
+					
+					extents = cairo.TextExtents(px_bearing, py_bearing, pwidth, pheight, px_advance, py_advance)
+				else:
+					extents = ctx.text_extents(txt)
+				
+				txt_paths.append((None, txt, node_x, node_y, extents))
+				
+				node_left = node_x + extents.x_bearing
+				node_right = node_x + extents.x_bearing + extents.width
+				node_top = node_y + extents.y_bearing
+				node_bottom = node_y + extents.y_bearing + extents.height
+				
+				x_advance += extents.x_advance
+				y_advance += extents.y_advance
+				
+				text_left = min(text_left, node_left) if text_left is not None else node_left
+				text_right = max(text_right, node_right) if text_right is not None else node_right
+				text_top = min(text_top, node_top) if text_top is not None else node_top
+				text_bottom = max(text_bottom, node_bottom) if text_bottom is not None else node_bottom
+		
+		for child in node:
+			if child.tag != f'{{{self.xmlns_svg}}}tspan':
+				self.emit_warning(view, "Unsupported tag %s" % child.tag, child.tag, child)
+				continue
+			
+			node_x = x + dx + x_advance
+			node_y = y + dy + y_advance
+			
+			subnode, subpaths, span_dx, span_dy, extents = self.__produce_text(view, document, ctx, box, child, whitespace, node_x, node_y, pango_layout)
+			txt_paths.append((subnode, subpaths, span_dx, span_dy, extents))
+			
+			node_left = node_x + extents.x_bearing + span_dx - node_x
+			node_right = node_x + extents.x_bearing + extents.width + span_dx - node_x
+			node_top = node_y + extents.y_bearing + span_dy - node_y
+			node_bottom = node_y + extents.y_bearing + extents.height + span_dy - node_y
+			
+			x_advance += extents.x_advance + span_dx - node_x
+			y_advance += extents.y_advance + span_dy - node_y
+			
+			text_left = min(text_left, node_left) if text_left is not None else node_left
+			text_right = max(text_right, node_right) if text_right is not None else node_right
+			text_top = min(text_top, node_top) if text_top is not None else node_top
+			text_bottom = max(text_bottom, node_bottom) if text_bottom is not None else node_bottom
+			
+			if child.tail:
+				txt = self.__remove_whitespace(child.tail) if strip else child.tail
+				if strip and child.tail and child.tail[0] in " \xA0\t\r\n":
+					txt = " " + txt
+				
+				node_x = x + dx + x_advance
+				node_y = y + dy + y_advance
+				
+				if txt == " ":
+					if pango_layout is not None:
+						space_width = 3.9 / 1.33333
+					else:
+						space_width = 3.4
+					node_right = node_x + space_width					
+					text_right = max(text_right, node_right) if text_right is not None else node_right
+					x_advance += space_width
+				elif txt:
+					self.__apply_font(view, document, ctx, box, node, pango_layout)
+					if pango_layout is not None:
+						pango_layout.set_text(txt)
+						
+						ink_rect, logical_rect = pango_layout.get_pixel_extents()
+						pleft, ptop, pwidth, pheight = ink_rect.x, ink_rect.y, ink_rect.width, ink_rect.height
+						px_bearing = pleft
+						py_bearing = ptop
+						px_advance = logical_rect.x + logical_rect.width
+						py_advance = 0 #logical_rect.y + logical_rect.height
+						
+						extents = cairo.TextExtents(px_bearing, py_bearing, pwidth, pheight, px_advance, py_advance)
+					else:
+						extents = ctx.text_extents(txt)
+					
+					txt_paths.append((None, txt, node_x, node_y, extents))
+					
+					node_left = node_x + extents.x_bearing
+					node_right = node_x + extents.x_bearing + extents.width
+					node_top = node_y + extents.y_bearing
+					node_bottom = node_y + extents.y_bearing + extents.height
+
+					x_advance += extents.x_advance
+					y_advance += extents.y_advance
+					
+					text_left = min(text_left, node_left) if text_left is not None else node_left
+					text_right = max(text_right, node_right) if text_right is not None else node_right
+					text_top = min(text_top, node_top) if text_top is not None else node_top
+					text_bottom = max(text_bottom, node_bottom) if text_bottom is not None else node_bottom
+		
+		if text_left is None: text_left = 0
+		if text_right is None: text_right = 0
+		if text_top is None: text_top = 0
+		if text_bottom is None: text_bottom = 0
+		extents = cairo.TextExtents(text_left - (x + dx), text_top - (y + dy), text_right - text_left, text_bottom - text_top, x_advance, y_advance)
+		
+		return node, txt_paths, x + dx, y + dy, extents
+	
+	def __apply_font(self, view, document, ctx, box, node, pango_layout):
+		left, top, width, height = box
+		
+		pango_font = Pango.FontDescription()
+		
+		font_family = self.__get_attribute(view, document, ctx, box, node, 'font-family', 'serif') # FIXME: default font family serif?
+		font_style_attrib = self.__get_attribute(view, document, ctx, box, node, 'font-style', 'normal')
+		font_weight_attrib = self.__get_attribute(view, document, ctx, box, node, 'font-weight', 'normal')
+		
+		if font_style_attrib == 'normal':
+			font_style = cairo.FontSlant.NORMAL
+			pango_font.set_style(Pango.Style.NORMAL)
+		elif font_style_attrib == 'italic':
+			font_style = cairo.FontSlant.ITALIC
+			pango_font.set_style(Pango.Style.ITALIC)
+		elif font_style_attrib == 'oblique':
+			font_style = cairo.FontSlant.OBLIQUE
+			pango_font.set_style(Pango.Style.OBLIQUE)
+		else:
+			self.emit_warning(view, f"Unsupported font style '{font_style_attrib}'", font_style_attrib, node)
+			font_style = cairo.FontSlant.NORMAL
+			pango_font.set_style(Pango.Style.NORMAL)
+		
+		if font_weight_attrib == 'normal':
+			font_weight = cairo.FontWeight.NORMAL
+			pango_font.set_weight(Pango.Weight.NORMAL)
+		elif font_weight_attrib == 'bold':
+			font_weight = cairo.FontWeight.BOLD
+			pango_font.set_weight(Pango.Weight.BOLD)
+		else:
+			try:
+				font_weight_number = int(font_weight_attrib)
+				pango_font.set_weight(font_weight_number)
+			except ValueError:
+				self.emit_warning(view, f"Unsupported font weight '{font_weight_attrib}'", font_weight_attrib, node)
+				font_weight = cairo.FontWeight.NORMAL
+				pango_font.set_weight(Pango.Weight.NORMAL)
+			else:
+				if font_weight_number > 500:
+					font_weight = cairo.FontWeight.BOLD
+					pango_font.set_weight(Pango.Weight.BOLD)
+				else:
+					font_weight = cairo.FontWeight.NORMAL
+					pango_font.set_weight(Pango.Weight.NORMAL)
+		
+		font_size_attrib = self.__get_attribute(view, document, ctx, box, node, 'font-size', '12') # FIXME: default font size 12?
+		# TODO: support "smaller", "bigger"
+		font_size = self.__units(view, font_size_attrib, percentage=(width + height) / 2)
+		ctx.set_font_size(font_size)
+		pango_font.set_size(font_size * Pango.SCALE / 1.33333)
+		
+		for family in reversed(font_family.split(',')):
+			ctx.select_font_face(family, font_style, font_weight)
+			pango_font.set_family(family)
+			if pango_layout is not None:
+				pango_layout.set_font_description(pango_font)
 	
 	def __draw_path(self, view, document, ctx, box, node):
 		"Create path in the context, with parameters taken from the `d` attribute of the provided node."
@@ -2136,6 +2298,9 @@ class SVGImage:
 
 
 if __debug__ and __name__ == '__main__':
+	from pycallgraph2 import PyCallGraph
+	from pycallgraph2.output.graphviz import GraphvizOutput
+	
 	from pathlib import Path
 	from format.xml import XMLFormat, XMLDocument
 	from format.css import CSSFormat, CSSDocument
@@ -2143,10 +2308,12 @@ if __debug__ and __name__ == '__main__':
 	from download.data import DataDownload
 	from urllib.parse import unquote as url_unquote
 	
+	print("svg image")
+	
 	class PseudoContext:
 		def __init__(self, name):
 			self.__name = name
-			self.print_out = True
+			self.print_out = False
 			self.balance = 0
 		
 		def save(self):
@@ -2245,47 +2412,36 @@ if __debug__ and __name__ == '__main__':
 			return None
 	
 	class PseudoView:
-		def __init__(self, drawing):
+		def __init__(self):
 			pass
 	
+	#nn = 0
+	for example in Path('examples').iterdir():
+		if not example.is_dir(): continue
 
-	from pycallgraph2 import PyCallGraph
-	from pycallgraph2.output.graphviz import GraphvizOutput
-	profiler = PyCallGraph(output=GraphvizOutput(output_file='svg_profile.png'))
-	profiler.start()
+		for filepath in example.iterdir():
+			if filepath.suffix != '.svg': continue
+			#nn += 1
+			#if nn > 1: break
+			
+			profiler = PyCallGraph(output=GraphvizOutput(output_file=f'profile/svg_{example.name}_{filepath.name}.png'))
+			profiler.start()
+			
+			ctx = PseudoContext(f'Context("{str(filepath)}")')
+			rnd = SVGRenderModel()
+			view = PseudoView()
+			
+			document = rnd.create_document(filepath.read_bytes(), 'image/svg')
+			l = list(rnd.scan_document_links(document))
+			
+			rnd.tree = document
+			try:
+				rnd.draw_image(view, document, ctx, (0, 0, 1024, 768))
+			except TypeError: # error from Pango
+				pass
+			else:	
+				assert ctx.balance == 0
+				
+			profiler.done()
 
-	nn = 0
-	for filepath in Path('gfx').iterdir():
-		if filepath.suffix != '.svg': continue
-		nn += 1
-		if nn > 1: break
-		
-		#print()
-		print(filepath)
-		ctx = PseudoContext(f'Context("{str(filepath)}")')
-		rnd = SVGRenderModel()
-		view = PseudoView(True)
-		
-		document = rnd.create_document(filepath.read_bytes(), 'image/svg')
-		l = list(rnd.scan_document_links(document))
-		
-		rnd.tree = document
-		rnd.draw_image(view, document, ctx, (0, 0, 1024, 768))
-		
-		assert ctx.balance == 0
-		
-		# non-drawing
-		ctx = PseudoContext(f'Context("{str(filepath)}")')
-		rnd = SVGRenderModel()
-		view = PseudoView(False)
-		
-		document = rnd.create_document(filepath.read_bytes(), 'image/svg')
-		l = list(rnd.scan_document_links(document))
-		
-		rnd.tree = document
-		rnd.draw_image(view, document, ctx, (0, 0, 1024, 768))
-		
-		assert ctx.balance == 0
-	
-	profiler.done()
 
