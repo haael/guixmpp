@@ -47,6 +47,7 @@ class DisplayView:
 	
 	def update(self, widget):
 		document = self.current_document(widget)
+		#print("update", widget, document)
 		if document is not None:
 			widget.__surface.finish()
 			widget.__surface = widget.draw_image(widget, self)

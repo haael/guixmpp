@@ -80,6 +80,76 @@
   <object class="GtkOffscreenWindow">
     <property name="can-focus">False</property>
     <child>
+      <object class="GtkBox" id="roster_server">
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <child>
+          <object class="GtkImage">
+            <property name="width-request">64</property>
+            <property name="height-request">64</property>
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="icon-name">server</property>
+            <property name="icon_size">6</property>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel" id="roster_server_name">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+          </object>
+          <packing>
+            <property name="expand">True</property>
+            <property name="fill">True</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+      </object>
+    </child>
+  </object>
+  <object class="GtkOffscreenWindow">
+    <property name="can-focus">False</property>
+    <child>
+      <object class="GtkBox" id="message_loading">
+        <property name="height-request">512</property>
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <property name="orientation">vertical</property>
+        <child>
+          <object class="GtkLabel">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+          </object>
+          <packing>
+            <property name="expand">True</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkSpinner">
+            <property name="height-request">64</property>
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="active">True</property>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+      </object>
+    </child>
+  </object>
+  <object class="GtkOffscreenWindow">
+    <property name="can-focus">False</property>
+    <child>
       <!-- n-columns=2 n-rows=4 -->
       <object class="GtkGrid" id="message_left">
         <property name="visible">True</property>
@@ -303,76 +373,6 @@
           </object>
           <packing>
             <property name="expand">True</property>
-            <property name="fill">True</property>
-            <property name="position">1</property>
-          </packing>
-        </child>
-      </object>
-    </child>
-  </object>
-  <object class="GtkOffscreenWindow">
-    <property name="can-focus">False</property>
-    <child>
-      <object class="GtkBox" id="roster_server">
-        <property name="visible">True</property>
-        <property name="can-focus">False</property>
-        <child>
-          <object class="GtkImage">
-            <property name="width-request">64</property>
-            <property name="height-request">64</property>
-            <property name="visible">True</property>
-            <property name="can-focus">False</property>
-            <property name="icon-name">server</property>
-            <property name="icon_size">6</property>
-          </object>
-          <packing>
-            <property name="expand">False</property>
-            <property name="fill">True</property>
-            <property name="position">0</property>
-          </packing>
-        </child>
-        <child>
-          <object class="GtkLabel" id="roster_server_name">
-            <property name="visible">True</property>
-            <property name="can-focus">False</property>
-          </object>
-          <packing>
-            <property name="expand">True</property>
-            <property name="fill">True</property>
-            <property name="position">1</property>
-          </packing>
-        </child>
-      </object>
-    </child>
-  </object>
-  <object class="GtkOffscreenWindow">
-    <property name="can-focus">False</property>
-    <child>
-      <object class="GtkBox" id="message_loading">
-        <property name="height-request">512</property>
-        <property name="visible">True</property>
-        <property name="can-focus">False</property>
-        <property name="orientation">vertical</property>
-        <child>
-          <object class="GtkLabel">
-            <property name="visible">True</property>
-            <property name="can-focus">False</property>
-          </object>
-          <packing>
-            <property name="expand">True</property>
-            <property name="fill">True</property>
-            <property name="position">0</property>
-          </packing>
-        </child>
-        <child>
-          <object class="GtkSpinner">
-            <property name="height-request">64</property>
-            <property name="visible">True</property>
-            <property name="can-focus">False</property>
-            <property name="active">True</property>
-          </object>
-          <packing>
-            <property name="expand">False</property>
             <property name="fill">True</property>
             <property name="position">1</property>
           </packing>
@@ -932,7 +932,7 @@
               </packing>
             </child>
             <child>
-              <object class="GtkIconView">
+              <object class="GtkIconView" id="services_iconview">
                 <property name="visible">True</property>
                 <property name="can-focus">True</property>
                 <property name="margin">6</property>

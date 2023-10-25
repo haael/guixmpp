@@ -9,8 +9,6 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk, GObject, GLib
 
-from domevents import *
-
 import cairo
 
 from enum import Enum
@@ -18,6 +16,29 @@ from math import hypot
 from itertools import zip_longest, chain
 from collections import namedtuple, defaultdict
 
+from domevents import *
+
+from document import Model
+
+from format.null import NullFormat
+from format.plain import PlainFormat
+from format.xml import XMLFormat
+from format.css import CSSFormat
+from format.xforms import XFormsFormat
+from format.font import FontFormat
+
+from image.svg import SVGImage
+from image.png import PNGImage
+from image.pixbuf import PixbufImage
+
+from download.data import DataDownload
+from download.file import FileDownload
+from download.http import HTTPDownload
+from download.chrome import ChromeDownload
+
+from view.display import DisplayView
+from view.keyboard import KeyboardView
+from view.pointer import PointerView
 
 
 class DOMWidget(Gtk.DrawingArea):
@@ -27,7 +48,7 @@ class DOMWidget(Gtk.DrawingArea):
 		'dom_event': (GObject.SignalFlags.RUN_FIRST, GObject.TYPE_NONE, (GObject.TYPE_PYOBJECT,))
 	}
 	
-	def __init__(self, model):
+	def __init__(self, keyboard_input=False, pointer_input=False, xforms=False, file_download=False, http_download=False, chrome=None):
 		super().__init__()
 		
 		self.set_can_focus(True)
@@ -39,8 +60,20 @@ class DOMWidget(Gtk.DrawingArea):
 		self.add_events(Gdk.EventMask.KEY_RELEASE_MASK)
 		self.add_events(Gdk.EventMask.SMOOTH_SCROLL_MASK)
 		
-		self.model = model
+		features = []
+		if keyboard_input: features.append(KeyboardView)
+		if pointer_input: features.append(PointerView)
+		if xforms: features.append(XFormsFormat)
+		if file_download: features.append(FileDownload)
+		if http_download: features.append(HTTPDownload)
+		if chrome:
+			features.append(chrome)
+		else:
+			features.append(ChromeDownload)
+		
+		self.model = Model.features('<local>.DOMWidgetModel', DisplayView, SVGImage, PNGImage, PixbufImage, FontFormat, *features, XMLFormat, CSSFormat, PlainFormat, NullFormat, DataDownload)()
 		self.model.set_image(self, None)
+		self.main_url = None
 		
 		self.connect('draw', self.model.draw)
 		self.connect('configure-event', self.model.handle_event, 'display')
@@ -81,17 +114,20 @@ class DOMWidget(Gtk.DrawingArea):
 		
 		image = model.get_image(self)
 		if (image is not None) and (viewport_width > 0) and (viewport_height > 0):
-			w, h = self.model.image_dimensions(self, image)
-			if w / h <= viewport_width / viewport_height:
-				bw = (w / h) * viewport_height
-				bh = viewport_height
+			try:
+				w, h = self.model.image_dimensions(self, image)
+				if w / h <= viewport_width / viewport_height:
+					bw = (w / h) * viewport_height
+					bh = viewport_height
+				else:
+					bw = viewport_width
+					bh = (h / w) * viewport_width
+			except NotImplementedError:
+				pass # draw placeholder for non-image formats
 			else:
-				bw = viewport_width
-				bh = (h / w) * viewport_width
-			
-			model.draw_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh))
+				model.draw_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh))
 		
-		#print("draw image")
+		#print("draw image", image)
 		return surface
 	
 	def poke_image(self, px, py):
@@ -126,65 +162,23 @@ class DOMWidget(Gtk.DrawingArea):
 
 if __debug__ and __name__ == '__main__':
 	import signal
-	from asyncio import run, set_event_loop_policy
-	from asyncio_glib import GLibEventLoopPolicy
+	from asyncio import run
 	from aiopath import AsyncPath as Path
 	
-	from document import Model
+	from mainloop import *
 	
-	from format.null import NullFormat
-	from format.plain import PlainFormat
-	from format.xml import XMLFormat
-	from format.css import CSSFormat
-	from format.xforms import XFormsFormat
-	from format.font import FontFormat
-	
-	from image.svg import SVGImage
-	from image.png import PNGImage
-	from image.pixbuf import PixbufImage
-	
-	from download.data import DataDownload
-	from download.file import FileDownload
-	from download.http import HTTPDownload
-	
-	from view.display import DisplayView
-	from view.keyboard import KeyboardView
-	from view.pointer import PointerView
-	
-	set_event_loop_policy(GLibEventLoopPolicy())
-	
-	model = Model.features('TestWidgetModel', DisplayView, KeyboardView, PointerView, SVGImage, PNGImage, PixbufImage, FontFormat, XFormsFormat, XMLFormat, CSSFormat, PlainFormat, NullFormat, DataDownload, FileDownload, HTTPDownload)()
+	loop_init()
 	
 	window = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
 	window.set_title('SVG test widget')
-	widget = DOMWidget(model)
+	widget = DOMWidget(keyboard_input=True, pointer_input=True, xforms=True, file_download=True, http_download=True)
 	window.add(widget)
-	window.show_all()
 	
-	mainloop = GLib.MainLoop()
-	window.connect('destroy', lambda window: mainloop.quit())
-	signal.signal(signal.SIGTERM, lambda signum, frame: mainloop.quit())
+	window.connect('destroy', lambda window: loop_quit())
+	signal.signal(signal.SIGTERM, lambda signum, frame: loop_quit())
 	
-	#def exception_hook(exception, y, z):
-	#	sys.__excepthook__(exception, y, z)
-	#	#errorbox = gtk.MessageDialog(window, gtk.DialogFlags.MODAL, gtk.MessageType.ERROR, gtk.ButtonsType.CLOSE, str(exception))
-	#	#errorbox.run()
-	#	#errorbox.destroy()
-	#	svgwidget.reset_after_exception()
-	#
-	#sys.excepthook = lambda *args: exception_hook(*args)
-	
-	def schedule(old_callback):
-		def false_callback(*args):
-			old_callback(*args)
-			return False
-		
-		def new_callback(*args):
-			GLib.idle_add(lambda: false_callback(*args))
-		
-		return new_callback
-	
-	def dom_event(widget, event):
+	@asynchandler
+	async def dom_event(widget, event):
 		print(event)
 		global images, image_index
 		
@@ -193,72 +187,66 @@ if __debug__ and __name__ == '__main__':
 		
 		elif event.type_ == 'keyup':
 			if (event.target == None) and (event.code == 'Escape'):
-				schedule(widget.close_document)()
-				schedule(window.close)()
+				widget.close_document()
+				window.close()
 			elif (event.target == None) and (event.code == 'Left') and images:
 				image_index -= 1
 				image_index %= len(images)
-				schedule(widget.close_document)()
-				schedule(run)(widget.open_document(images[image_index]))
+				widget.close_document()
+				await widget.open_document(images[image_index])
 			elif (event.target == None) and (event.code == 'Right') and images:
 				image_index += 1
 				image_index %= len(images)
-				schedule(widget.close_document)()
-				schedule(run)(widget.open_document(images[image_index]))
+				widget.close_document()
+				await widget.open_document(images[image_index])
 		
 		elif event.type_ == 'opening':
 			widget.main_url = event.detail
-			schedule(widget.set_image)(None)
+			widget.set_image(None)
 		
 		elif event.type_ == 'open':
-			#print("open...", widget.main_url)
 			if event.detail == widget.main_url:
-				schedule(widget.set_image)(event.target)
-				#schedule(widget.queue_draw)()
+				widget.set_image(event.target)
 			else:
-				schedule(widget.set_image)(widget.image)
-				#schedule(widget.queue_draw)()
+				widget.set_image(widget.image)
 		
 		elif event.type_ == 'close':
 			widget.main_url = None
-			schedule(widget.set_image)(None)
-		
-		#else:
-		#	schedule(widget.queue_draw)()
+			widget.set_image(None)
 	
 	widget.connect('dom_event', dom_event)
 	
 	images = []
 	image_index = 0
 	
-	#async def load_images():
-	#	"Display images from local directory, switch using left-right cursor key."
-	#	global images, image_index, model
-	#	
-	#	model.font_dir = await Path('~/.cache/guixmpp-fonts').expanduser()
-	#	await model.font_dir.mkdir(parents=True, exist_ok=True)
-	#	
-	#	async for image in (Path.cwd() / 'examples/gfx').iterdir():
-	#		if image.suffix not in ('.svg', '.png', '.jpeg'): continue
-	#		images.append(image.as_uri())
-	#	
-	#	#images.sort(key=(lambda x: f'{len(x):03d}' +  x.lower()))
-	#	images.sort(key=(lambda x: x.lower()))
-	#	await widget.open_document(images[image_index])
-	
-	async def load_images():
-		"Display image from http url."
-		for n in range(200):
-			images.append(f'https://www.w3.org/Consortium/Offices/Presentations/SVG/{n}.svg')
-		images[19] = 'https://www.w3.org/Consortium/Offices/Presentations/SVG/0.svg'
+	async def main():
+		"Display images from local directory, switch using left-right cursor key."
+		
+		global images, image_index, model
+		
+		widget.model.font_dir = await Path('~/.cache/guixmpp-fonts').expanduser()
+		await widget.model.font_dir.mkdir(parents=True, exist_ok=True)
+		
+		async for image in (Path.cwd() / 'examples/gfx').iterdir():
+			images.append(image.as_uri())
+		
+		#images.sort(key=(lambda x: f'{len(x):03d}' +  x.lower()))
+		images.sort(key=(lambda x: x.lower()))
 		await widget.open_document(images[image_index])
-		#await widget.open_document('https://www.w3.org/Consortium/Offices/Presentations/SVG/0.svg')
+		
+		window.show_all()
+		await loop_run()
+		window.hide()
 	
-	GLib.idle_add(lambda: run(load_images()))
+	#async def main():
+	#	"Display image from http url."
+	#	for n in range(200):
+	#		images.append(f'https://www.w3.org/Consortium/Offices/Presentations/SVG/{n}.svg')
+	#	images[19] = 'https://www.w3.org/Consortium/Offices/Presentations/SVG/0.svg'
+	#	await widget.open_document(images[image_index])
+	#	#await widget.open_document('https://www.w3.org/Consortium/Offices/Presentations/SVG/0.svg')	
+	#	window.show_all()
+	#	await loop_run()
+	#	window.hide()
 	
-	try:
-		mainloop.run()
-	except KeyboardInterrupt:
-		print()
-	
-
+	run(main())

@@ -1,3 +1,6 @@
 [submodule "python_fontconfig"]
 	path = python_fontconfig
 	url = https://github.com/ldo/python_fontconfig.git
+[submodule "tinyxmpp"]
+	path = tinyxmpp
+	url = git@github.com:haael/tinyxmpp.git

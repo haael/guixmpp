@@ -629,10 +629,10 @@ class SVGImage:
 	#		orig_nodex[idx].extend(nodes)
 	#	return orig_nodes
 	
-	def __render_group(self, view, document, ctx, box, node, pointer):
+	def __render_group(self, view, document, ctx, box, node, pointer): # FIXME: improve speed for deep documents
 		"Render SVG group element and its subelements."
 		
-		print("render_group", node.tag)
+		#print("render_group", node.tag)
 		
 		display = self.__get_attribute(view, document, ctx, box, node, 'display', 'block').lower()
 		visibility = self.__get_attribute(view, document, ctx, box, node, 'visibility', 'visible').lower()
@@ -1815,11 +1815,11 @@ class SVGImage:
 				node_x = x + dx + x_advance
 				node_y = y + dy + y_advance
 				
-				if txt == " ":
+				if txt == " ": # avoid creating many text paths with nothing but a space (usually separating <tspan/> elements)
 					if pango_layout is not None:
-						space_width = 3.9 / 1.33333
+						space_width = 3.1 / 1.33333 # spacing used by pango
 					else:
-						space_width = 3.4
+						space_width = 3.4 # spacing used by cairo
 					node_right = node_x + space_width					
 					text_right = max(text_right, node_right) if text_right is not None else node_right
 					x_advance += space_width
@@ -1845,7 +1845,7 @@ class SVGImage:
 					node_right = node_x + extents.x_bearing + extents.width
 					node_top = node_y + extents.y_bearing
 					node_bottom = node_y + extents.y_bearing + extents.height
-
+					
 					x_advance += extents.x_advance
 					y_advance += extents.y_advance
 					
