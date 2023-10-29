@@ -26,7 +26,7 @@ gi.require_version('Pango', '1.0')
 gi.require_version('PangoCairo', '1.0')
 from gi.repository import Pango, PangoCairo
 
-from format.xml import XMLDocument
+from format.xml import XMLDocument, OverlayElement
 
 
 try:
@@ -39,84 +39,6 @@ except AttributeError:
 class NotANumber(BaseException):
 	def __init__(self, original):
 		self.original = original
-
-
-class OverlayElement:
-	def __init__(self, one, two, parent, tag=None):
-		#if one is None: raise ValueError
-		if two is None: raise ValueError
-		self.__one = one
-		self.__two = two
-		self.__parent = parent
-		self.__tag = tag
-	
-	def __repr__(self):
-		return f"<OverlayElement {self.tag}>"
-	
-	def __eq__(self, other):
-		try:
-			return self.tag == other.tag and self.attrib == other.attrib and self.getparent() == other.getparent()
-		except AttributeError:
-			return NotImplemented
-	
-	def __hash__(self):
-		return hash((self.tag, tuple(sorted(self.attrib.items()))))
-	
-	def getparent(self):
-		return self.__parent
-	
-	@property
-	def tag(self):
-		if self.__tag is not None:
-			return self.__tag
-		else:
-			return self.__two.tag
-	
-	@property
-	def attrib(self):
-		if self.__one is not None:
-			a = dict()
-			a.update(self.__two.attrib)
-			a.update(self.__one.attrib)
-			
-			try:
-				a[f'{{{SVGImage.xmlns_xlink}}}href'] = self.__two.attrib[f'{{{SVGImage.xmlns_xlink}}}href']
-			except KeyError:
-				try:
-					del a[f'{{{SVGImage.xmlns_xlink}}}href']
-				except KeyError:
-					pass
-			
-			try:
-				a['href'] = self.__two.attrib['href']
-			except KeyError:
-				try:
-					del a['href']
-				except KeyError:
-					pass
-			
-			if 'transform' in self.__one.attrib:
-				a['transform'] = self.__one.attrib['transform'] + self.__two.attrib.get('transform', '')
-			
-			if 'gradientTransform' in self.__one.attrib:
-				a['gradientTransform'] = self.__one.attrib['gradientTransform'] + self.__two.attrib.get('gradientTransform', '')
-			
-			return a
-		else:
-			return self.__two.attrib
-	
-	def __getattr__(self, attr):
-		if attr[0] != '_':
-			return getattr(self.__two, attr)
-		else:
-			raise AttributeError(f"No attibute found in OverlayElement: {attr}")
-	
-	def __len__(self):
-		return len(self.__two)
-	
-	def __getitem__(self, index):
-		original = self.__two[index]
-		return self.__class__(None, original, self)
 
 
 class SVGImage:
@@ -527,7 +449,7 @@ class SVGImage:
 		return False
 	
 	def __pseudoclass_test(self, view, pseudoclass, node):
-		if pseudoclass == 'hover':
+		if pseudoclass == 'hover' and hasattr(self, 'get_pointed'):
 			pointed = self.get_pointed(view)
 			if pointed is not None:
 				return self.are_nodes_ordered(node, pointed)
@@ -566,6 +488,7 @@ class SVGImage:
 		
 		if node is not None:
 			try:
+				#view.__attr_cache[node][attr]
 				return view.__attr_cache[node][attr]
 			except KeyError:
 				pass
@@ -596,6 +519,7 @@ class SVGImage:
 			
 			for stylesheet in stylesheets:
 				css_attrs = stylesheet.match_element(node, (lambda *args: self.__media_test(view, *args)), (lambda *args: self.__pseudoclass_test(view, *args)), self.xmlns_svg)
+				#if css_attrs: print("css:", css_attrs, node)
 				if attr in css_attrs:
 					value, priority = css_attrs[attr]
 					if priority >= css_priority:
@@ -622,12 +546,6 @@ class SVGImage:
 			return result
 		else:
 			raise KeyError(f"Attribute {attr} not found in any of ancestors")
-	
-	#@staticmethod
-	#def __extend_nodes(orig_nodes, new_nodes):
-	#	for idx, nodes in new_nodes.items():
-	#		orig_nodex[idx].extend(nodes)
-	#	return orig_nodes
 	
 	def __render_group(self, view, document, ctx, box, node, pointer): # FIXME: improve speed for deep documents
 		"Render SVG group element and its subelements."
@@ -674,8 +592,9 @@ class SVGImage:
 			if (node.getparent() is None):
 				x_scale = width / viewbox_w
 				y_scale = height / viewbox_h
-				x_scale = y_scale = min(x_scale, y_scale)
 				
+				x_scale = y_scale = min(x_scale, y_scale)
+				ctx.translate((width - x_scale * viewbox_w) / 2, (height - y_scale * viewbox_h) / 2)
 				ctx.scale(x_scale, y_scale)
 				ctx.translate(-viewbox_x, -viewbox_y)
 			else:
@@ -692,7 +611,7 @@ class SVGImage:
 				#ctx.translate(-viewbox_x, -viewbox_y)
 			
 			box = viewbox_x, viewbox_y, viewbox_w, viewbox_h
-
+			
 			ctx.rectangle(*box)
 			ctx.clip()
 		
@@ -942,7 +861,27 @@ class SVGImage:
 		else:
 			original = original.getroot()
 		
-		target = OverlayElement(node, original, node.getparent())
+		add_attrib = {}
+		del_attrib = set()
+		
+		try:
+			add_attrib[f'{{{self.xmlns_xlink}}}href'] = original.attrib[f'{{{self.xmlns_xlink}}}href']
+		except KeyError:
+			del_attrib.add(f'{{{self.xmlns_xlink}}}href')
+		
+		try:
+			add_attrib['href'] = original.attrib['href']
+		except KeyError:
+			del_attrib.add('href')
+		
+		if 'transform' in node.attrib:
+			add_attrib['transform'] = node.attrib['transform'] + original.attrib.get('transform', '')
+		
+		if 'gradientTransform' in node.attrib:
+			add_attrib['gradientTransform'] = node.attrib['gradientTransform'] + original.attrib.get('gradientTransform', '')
+		
+		target = OverlayElement(node.getparent(), node, original, original.tag, add_attrib, del_attrib)
+		#print("construct use:", node, original, target.attrib)
 		
 		return target
 	
@@ -1375,7 +1314,27 @@ class SVGImage:
 					return False
 				else:
 					next_gradient = next_gradient_doc.getroot()
-					target = OverlayElement(orig_target, next_gradient, orig_target.getparent(), orig_target.tag)
+
+					add_attrib = {}
+					del_attrib = set()
+					
+					try:
+						add_attrib[f'{{{self.xmlns_xlink}}}href'] = next_gradient.attrib[f'{{{self.xmlns_xlink}}}href']
+					except KeyError:
+						del_attrib.add(f'{{{self.xmlns_xlink}}}href')
+					
+					try:
+						add_attrib['href'] = next_gradient.attrib['href']
+					except KeyError:
+						del_attrib.add('href')
+					
+					if 'transform' in orig_target.attrib:
+						add_attrib['transform'] = orig_target.attrib['transform'] + next_gradient.attrib.get('transform', '')
+					
+					if 'gradientTransform' in orig_target.attrib:
+						add_attrib['gradientTransform'] = orig_target.attrib['gradientTransform'] + next_gradient.attrib.get('gradientTransform', '')
+					
+					target = OverlayElement(orig_target.getparent(), orig_target, next_gradient, orig_target.tag, add_attrib, del_attrib)
 			
 			if target.tag == f'{{{self.xmlns_svg}}}linearGradient':					
 				try:
@@ -1943,7 +1902,10 @@ class SVGImage:
 			except (ValueError, AttributeError, TypeError) as error:
 				raise NotANumber(error)
 		
-		next_token()
+		try:
+			next_token()
+		except StopIteration:
+			return
 		
 		first = True
 		
@@ -2421,6 +2383,7 @@ if __debug__ and __name__ == '__main__':
 
 		for filepath in example.iterdir():
 			if filepath.suffix != '.svg': continue
+			#if filepath.name != 'animated-text-fine-cravings.svg': continue
 			#nn += 1
 			#if nn > 1: break
 			

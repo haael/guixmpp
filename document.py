@@ -15,6 +15,10 @@ class URLNotFound(Exception):
 	pass
 
 
+class CreationError(Exception):
+	pass
+
+
 class Model:
 	"A structure holding a collection of documents, capable of loading and unloading."
 	
@@ -51,6 +55,7 @@ class Model:
 		view.emit('dom_event', CustomEvent('close', target=None, view=view, detail=url))
 		view.__location = None
 		view.__document = None
+		self.documents.clear() # TODO
 	
 	def current_location(self, view):
 		try:
@@ -154,8 +159,13 @@ class Model:
 		else:
 			shurl = url
 		data, mime_type = await self.download_document(shurl)
-		print("create", shurl, mime_type)
-		self.documents[shurl] = self.create_document(data, mime_type)
+		
+		#print("create", shurl, mime_type)
+		try:
+			self.documents[shurl] = self.create_document(data, mime_type)
+		except Exception as error:
+			raise CreationError(f"Could not create document {mime_type}: '{shurl}'") from error
+		
 		document = self.get_document(url)
 		
 		view.emit('dom_event', CustomEvent('beforeload', target=document, view=view, detail=url))

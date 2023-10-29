@@ -8,7 +8,9 @@ from gi.repository import Gtk, Gdk, GObject, GLib, GdkPixbuf
 #from locale import gettext
 from mainloop import *
 from domwidget import DOMWidget
+from document import CreationError
 from aiopath import Path
+from asyncio import sleep
 
 
 class BuilderExtension:
@@ -36,6 +38,13 @@ class BuilderExtension:
 			return widget
 		else:
 			raise AttributeError("Attribute not found in object nor in builder:" + attr)
+	
+	def replace_widget(self, name, new_widget):
+		old_widget = getattr(self, name)
+		parent = old_widget.get_parent()
+		parent.remove(old_widget)
+		parent.add(new_widget)
+		setattr(self, name, new_widget)
 
 
 class ListBoxWrapper:
@@ -96,15 +105,24 @@ class Spinner:
 			widget.props.sensitive = True
 
 
+class DataForm:
+	def __init__(self, title, fields):
+		grid = Gtk.Grid()
+		grid.set_columns(3)
+		grid.set_rows(len(fields) + 2)
+		grid.pack_start(Gtk.Label(title), width=3)
+		for descr, name, datatype in fields:
+			grid.pack_start(Gtk.Label(descr))
+			grid.pack_start(Gtk.Entry())
+		box = Gtk.Box()
+		grid.pack_start(box, width=3)
+		box.pack_start(Gtk.Button("Cancel"))
+		box.pack_end(Gtk.Button("Submit"))
+
+
 class Browser(BuilderExtension):
 	def __init__(self, interface, translation):
 		super().__init__(interface, translation, ['window_main', 'entrybuffer_jid', 'popover_presence', 'filechooser_avatar', 'filefilter_images'], 'window_main')
-		
-		parent = self.drawingare_avatar_preview.get_parent()
-		size_request = self.drawingare_avatar_preview.get_size_request()
-		parent.remove(self.drawingare_avatar_preview)
-		self.drawingare_avatar_preview = DOMWidget(file_download=True)
-		self.drawingare_avatar_preview.set_size_request(*size_request)
 		
 		@asynchandler
 		async def dom_event(widget, event):
@@ -124,10 +142,17 @@ class Browser(BuilderExtension):
 				widget.main_url = None
 				widget.set_image(None)
 		
-		self.drawingare_avatar_preview.connect('dom_event', dom_event)
+		size_request = self.drawingarea_avatar_preview.get_size_request()
+		self.replace_widget('drawingarea_avatar_preview', DOMWidget(file_download=True))		
+		self.drawingarea_avatar_preview.connect('dom_event', dom_event)		
+		self.drawingarea_avatar_preview.set_size_request(*size_request)
+		self.drawingarea_avatar_preview.show()
 		
-		parent.add(self.drawingare_avatar_preview)
-		self.drawingare_avatar_preview.show()
+		size_request = self.drawingarea_avatar.get_size_request()
+		self.replace_widget('drawingarea_avatar', DOMWidget(file_download=True))		
+		self.drawingarea_avatar.connect('dom_event', dom_event)		
+		self.drawingarea_avatar.set_size_request(*size_request)
+		self.drawingarea_avatar.show()
 		
 		self.network_spinner = Spinner([self.form_login, self.form_register, self.form_server_options])
 		self.stack_main.set_visible_child_name('page1')
@@ -150,42 +175,63 @@ class Browser(BuilderExtension):
 	def choose_avatar(self, widget):
 		self.filechooser_avatar.show()
 	
-	def cancel_avatar(self, widget):
+	def cancel_avatar(self, widget, sthelse=None):
+		print("cancel avatar")
 		self.filechooser_avatar.hide()
+		return True # cancel widget destroy
 	
 	def unset_avatar(self, widget):
 		print("unset avatar")
 		self.filechooser_avatar.hide()
-		self.drawingare_avatar_preview.close_document()
+		if self.drawingarea_avatar_preview.main_url:
+			self.drawingarea_avatar_preview.close_document()
+			self.drawingarea_avatar_preview.main_url = None
 	
 	@asynchandler
 	async def select_avatar(self, widget):
 		filename = self.filechooser_avatar.get_filename()
-		if filename:
-			print("select avatar", filename, self.drawingare_avatar_preview)
-			if self.drawingare_avatar_preview.main_url:
-				self.drawingare_avatar_preview.close_document()
-			await self.drawingare_avatar_preview.open_document(Path(filename).as_uri())
+		if filename and not (await Path(filename).is_dir()):
+			print("select avatar", filename, self.drawingarea_avatar_preview.main_url)
+			if self.drawingarea_avatar_preview.main_url:
+				self.drawingarea_avatar_preview.close_document()
+				self.drawingarea_avatar_preview.main_url = None
+			
+			try:
+				await self.drawingarea_avatar_preview.open_document(Path(filename).as_uri())
+			except CreationError:
+				self.drawingarea_avatar_preview.main_url = None
 	
-	def set_avatar(self, widget):
-		print("set avatar", self.filechooser_avatar.get_filename())
+	@asynchandler
+	async def set_avatar(self, widget):
+		filename = self.filechooser_avatar.get_filename()
+		if filename and not (await Path(filename).is_dir()):
+			print("set avatar", filename, self.drawingarea_avatar)
+			if self.drawingarea_avatar.main_url:
+				self.drawingarea_avatar.close_document()
+				self.drawingarea_avatar.main_url = None
+			
+			try:
+				await self.drawingarea_avatar.open_document(Path(filename).as_uri())
+			except CreationError:
+				self.drawingarea_avatar.main_url = None
+		
 		self.filechooser_avatar.hide()
 	
 	@asynchandler
 	async def set_presence(self, widget):
 		if widget.get_active():
 			print(widget.props.name)
-			await sleep(0.1)
+			await sleep(1/20)
 			self.popover_presence.hide()
 
 
 if __name__ == '__main__':
 	import sys, signal
-	from asyncio import new_event_loop, run
-	from gbulb import install as install_gbulb
+	from asyncio import run
 	from locale import bindtextdomain, textdomain
 	
-	install_gbulb(gtk=True)
+	loop_init()
+	
 	translation = 'haael_svg_browser'
 	bindtextdomain(translation, 'locale')
 	textdomain(translation)
@@ -194,8 +240,10 @@ if __name__ == '__main__':
 	
 	async def main():
 		browser.show()
-		await loop_run()
-		browser.hide()
+		try:
+			await loop_run()
+		finally:
+			browser.hide()
 	
 	browser.main_widget.connect('destroy', lambda window: loop_quit())
 	signal.signal(signal.SIGTERM, lambda signum, frame: loop_quit())

@@ -82,7 +82,7 @@ class XMLDocument(_ElementTree):
 			return False
 	
 	def __hash__(self):
-		return hash(self.getroot().getroottree())
+		return hash(self.getroottree())
 	
 	def scan_stylesheets(self):
 		el = self.getroot().getprevious()
@@ -98,6 +98,86 @@ class XMLDocument(_ElementTree):
 	
 	def to_bytes(self):
 		return tostring(self)
+	
+	def getpath(self, node):
+		if hasattr(node, 'path_override'):
+			return node.path_override
+		else:
+			return super().getpath(node)
+	
+	def xpath(self, path):
+		if path.startswith('§'):
+			return eval(path[1:], globals(), {'xpath':lambda _path: self.xpath(_path)[0]})
+		else:
+			return super().xpath(path)
+
+
+class OverlayElement:
+	def __init__(self, parent, one, two, tag, add_attrib, del_attrib):
+		#if one is None: raise ValueError
+		if two is None: raise ValueError
+		self.__one = one
+		self.__two = two
+		self.__parent = parent
+		self.__tag = tag
+		rt = XMLDocument(parent.getroottree().getroot())
+		one_path = ("xpath(" + repr(rt.getpath(one)) + ")") if (one is not None) else None
+		self.path_override = f'§OverlayElement(xpath({repr(rt.getpath(parent))}), {one_path}, xpath({repr(rt.getpath(two))}), {repr(tag)}, dict({repr(sorted(add_attrib.items()))}), {repr(sorted(del_attrib))})'
+		self.__add_attrib = add_attrib
+		self.__del_attrib = del_attrib
+	
+	def __repr__(self):
+		return f"<OverlayElement {self.tag}>"
+	
+	def __eq__(self, other):
+		try:
+			return self.tag == other.tag and self.attrib == other.attrib and self.getparent() == other.getparent()
+		except AttributeError:
+			return NotImplemented
+	
+	def __hash__(self):
+		return hash((self.tag, tuple(sorted(self.attrib.items()))))
+	
+	def getparent(self):
+		return self.__parent
+	
+	@property
+	def tag(self):
+		return self.__tag
+	
+	@property
+	def attrib(self):
+		if self.__one is not None:
+			a = dict()
+			a.update(self.__two.attrib)
+			a.update(self.__one.attrib)
+		else:
+			a = dict(self.__two.attrib)
+		
+		a.update(self.__add_attrib)
+		for attr in self.__del_attrib:
+			try:
+				del a[attr]
+			except KeyError:
+				pass
+		
+		return a
+	
+	def __getattr__(self, attr):
+		if attr[0] != '_':
+			return getattr(self.__two, attr)
+		else:
+			raise AttributeError(f"No attibute found in OverlayElement: {attr}")
+	
+	def __len__(self):
+		return len(self.__two)
+	
+	def __getitem__(self, index):
+		original = self.__two[index]
+		return self.__class__(self, None, original, original.tag, {}, [])
+	
+	def getroottree(self):
+		return XMLDocument(self.__parent.getroottree().getroot())
 
 
 if __debug__ and __name__ == '__main__':

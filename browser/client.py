@@ -270,17 +270,19 @@ class XMPPClient:
 			if result:
 				try:
 					is_match = match_(*result)
-				except TypeError:
-					is_match = match_(stanza)
-					single = True
-				else:
+				except (TypeError, IndexError, AttributeError):
+					is_match = False
+				
+				if is_match:
 					single = False
-			else:
+			
+			if not is_match:
 				try:
 					is_match = match_(stanza)
-				except TypeError:
-					single = False
-				else:
+				except (TypeError, IndexError, AttributeError):
+					is_match = False
+				
+				if is_match:
 					single = True
 			
 			if is_match:
@@ -633,7 +635,7 @@ class XMPPClient:
 				self.read_task.cancel()
 			raise
 	
-	def handle(self, *args, **kwargs):
+	def handle(self, coro):
 		self.handled = True
 		stanza_serial = self.recv_stanza_counter
 		self.handlers_running[stanza_serial] += 1
@@ -644,14 +646,14 @@ class XMPPClient:
 		
 		async def handler(coro):
 			try:
-				await coro(expect, *args, **kwargs)
+				await coro(expect)
 			finally:
 				self.handlers_running[stanza_serial] -= 1
 		
 		for serial, stanza in sorted([(_serial, _stanza) for (_serial, _stanza) in self.saved_stanzas.items()], key=lambda _item: _item[0]):
 			queue.put_nowait(stanza)
 		
-		return lambda coro: self.tasks.add(self.guarded(handler(coro)), coro.__name__)
+		self.tasks.add(self.guarded(handler(coro)), coro.__name__)
 	
 	async def expect(self, queue, match_):
 		self.expectations.append((match_, queue))
@@ -721,7 +723,7 @@ if __name__ == '__main__':
 				elif event == 'ready':
 					if not client.authenticated or not client.established:
 						break
-					@client.handle()
+					@client.handle
 					async def get_roster(expect):
 						roster, = await client.query('get', None, fromstring(b'<query xmlns="jabber:iq:roster"/>'))
 						for item in roster:
@@ -729,7 +731,7 @@ if __name__ == '__main__':
 						client.stop()
 				
 				elif event == 'register':
-					@client.handle()
+					@client.handle
 					async def register(expect):
 						reg_query, = await client.query('get', None, fromstring(b'<query xmlns="jabber:iq:register"/>'))
 						for child in reg_query:
@@ -752,8 +754,8 @@ if __name__ == '__main__':
 					client.unhandled = False
 				
 				elif type_ == 'iq.set' and len(elements) == 1 and hasattr(elements[0], 'tag') and elements[0].tag == '{boom}boom':
-					@client.handle(type_, id_, from_, *elements)
-					async def boom_get(expect, type_, id_, from_, *elements):
+					@client.handle
+					async def boom_get(expect, type_=type_, id_=id_, from_=from_, elements=elements):
 						try:
 							nick = await wait_for(get_nick(), 10)
 							await client.send_message(from_, "boom boom " + nick)
@@ -764,8 +766,8 @@ if __name__ == '__main__':
 							await client.answer('result', id_, from_, "boom!")
 				
 				elif type_ == 'iq.get' and len(elements) == 1 and hasattr(elements[0], 'tag') and elements[0].tag == '{boom}boom-boom-boom' and elements[0].attrib['n'] == '0':
-					@client.handle(id_, from_)
-					async def boom_set(expect, id_, from_):
+					@client.handle
+					async def boom_set(expect, id_=id_, from_=from_):
 						sstanza = await expect(lambda _stanza: True)
 						stype, sid, sfrom, *selements = await expect(lambda _stype, _sid, _sfrom, *_selements: _stype == 'iq.get' and _sid == id_ and _sfrom == from_)
 	

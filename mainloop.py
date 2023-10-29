@@ -22,7 +22,7 @@ def asynchandler(coro):
 	
 	def method(self, *args, **kwargs):
 		app_tasks.append(create_task(coro(self, *args, **kwargs)))
-		if not app_task.done():
+		if app_task and not app_task.done():
 			app_task.cancel()
 	
 	method.__name__ = coro.__name__

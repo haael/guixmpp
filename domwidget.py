@@ -112,7 +112,7 @@ class DOMWidget(Gtk.DrawingArea):
 		#context.set_source_rgb(1, 1, 1)
 		#context.paint() # background
 		
-		image = model.get_image(self)
+		image = self.model.get_image(self)
 		if (image is not None) and (viewport_width > 0) and (viewport_height > 0):
 			try:
 				w, h = self.model.image_dimensions(self, image)
@@ -139,7 +139,7 @@ class DOMWidget(Gtk.DrawingArea):
 		surface = cairo.RecordingSurface(cairo.Content.COLOR_ALPHA, (0, 0, viewport_width, viewport_height))
 		context = cairo.Context(surface)
 		
-		image = model.get_image(self)
+		image = self.model.get_image(self)
 		if (image is not None) and (viewport_width > 0) and (viewport_height > 0):			
 			w, h = self.model.image_dimensions(self, image)
 			if w / h <= viewport_width / viewport_height:
@@ -227,7 +227,7 @@ if __debug__ and __name__ == '__main__':
 		widget.model.font_dir = await Path('~/.cache/guixmpp-fonts').expanduser()
 		await widget.model.font_dir.mkdir(parents=True, exist_ok=True)
 		
-		async for image in (Path.cwd() / 'examples/gfx').iterdir():
+		async for image in (Path.cwd() / 'examples/animations').iterdir():
 			images.append(image.as_uri())
 		
 		#images.sort(key=(lambda x: f'{len(x):03d}' +  x.lower()))
