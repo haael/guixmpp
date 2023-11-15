@@ -107,13 +107,14 @@ class XMLDocument(_ElementTree):
 	
 	def xpath(self, path):
 		if path.startswith('§'):
-			return eval(path[1:], globals(), {'xpath':lambda _path: self.xpath(_path)[0]})
+			return [eval(path[1:], globals(), {'xpath':lambda _path: self.xpath(_path)[0]})]
 		else:
 			return super().xpath(path)
 
 
 class OverlayElement:
 	def __init__(self, parent, one, two, tag, add_attrib, del_attrib):
+		if not isinstance(tag, str): raise ValueError
 		#if one is None: raise ValueError
 		if two is None: raise ValueError
 		self.__one = one
@@ -174,6 +175,9 @@ class OverlayElement:
 	
 	def __getitem__(self, index):
 		original = self.__two[index]
+		if not isinstance(original.tag, str): # not element
+			return original
+		#print(original, type(original))
 		return self.__class__(self, None, original, original.tag, {}, [])
 	
 	def getroottree(self):

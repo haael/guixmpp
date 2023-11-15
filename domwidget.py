@@ -72,7 +72,6 @@ class DOMWidget(Gtk.DrawingArea):
 			features.append(ChromeDownload)
 		
 		self.model = Model.features('<local>.DOMWidgetModel', DisplayView, SVGImage, PNGImage, PixbufImage, FontFormat, *features, XMLFormat, CSSFormat, PlainFormat, NullFormat, DataDownload)()
-		self.model.set_image(self, None)
 		self.main_url = None
 		
 		self.connect('draw', self.model.draw)
@@ -86,6 +85,8 @@ class DOMWidget(Gtk.DrawingArea):
 		self.connect('scroll-event', self.model.handle_event, 'scroll')
 		self.connect('key-press-event', self.model.handle_event, 'key')
 		self.connect('key-release-event', self.model.handle_event, 'key')
+		
+		self.model.set_view(self)
 	
 	async def open_document(self, url):
 		"Open image identified by the provided url. No image may be opened currently."
@@ -100,17 +101,16 @@ class DOMWidget(Gtk.DrawingArea):
 		"Set current image to the document provided."
 		self.model.set_image(self, image)
 	
-	def draw_image(self, widget, model):
+	def draw_image(self, model):
 		"Draw the currently opened image to a Cairo surface. Returns the rendered surface."
 		
+		widget = self
 		viewport_width = model.get_viewport_width(widget)
 		viewport_height = model.get_viewport_height(widget)
 		
-		#surface = cairo.RecordingSurface(cairo.Content.COLOR_ALPHA, None)
-		surface = cairo.ImageSurface(cairo.Format.ARGB32, viewport_width, viewport_height)
+		surface = cairo.RecordingSurface(cairo.Content.COLOR_ALPHA, (0, 0, viewport_width, viewport_height))
+		#surface = cairo.ImageSurface(cairo.Format.ARGB32, viewport_width, viewport_height)
 		context = cairo.Context(surface)
-		#context.set_source_rgb(1, 1, 1)
-		#context.paint() # background
 		
 		image = self.model.get_image(self)
 		if (image is not None) and (viewport_width > 0) and (viewport_height > 0):
@@ -179,7 +179,7 @@ if __debug__ and __name__ == '__main__':
 	
 	@asynchandler
 	async def dom_event(widget, event):
-		print(event)
+		#print(event)
 		global images, image_index
 		
 		if event.type_ == 'warning':
@@ -200,6 +200,9 @@ if __debug__ and __name__ == '__main__':
 				widget.close_document()
 				await widget.open_document(images[image_index])
 		
+		elif event.type_ == 'load':
+			print("load:", event.detail, event.target)
+		
 		elif event.type_ == 'opening':
 			widget.main_url = event.detail
 			widget.set_image(None)
@@ -219,6 +222,7 @@ if __debug__ and __name__ == '__main__':
 	images = []
 	image_index = 0
 	
+	#'''
 	async def main():
 		"Display images from local directory, switch using left-right cursor key."
 		
@@ -227,26 +231,27 @@ if __debug__ and __name__ == '__main__':
 		widget.model.font_dir = await Path('~/.cache/guixmpp-fonts').expanduser()
 		await widget.model.font_dir.mkdir(parents=True, exist_ok=True)
 		
-		async for image in (Path.cwd() / 'examples/animations').iterdir():
+		async for image in (Path.cwd() / 'examples/gfx').iterdir():
 			images.append(image.as_uri())
 		
-		#images.sort(key=(lambda x: f'{len(x):03d}' +  x.lower()))
+		#images.sort(key=(lambda x: f'{len(x):03d}' + x.lower()))
 		images.sort(key=(lambda x: x.lower()))
 		await widget.open_document(images[image_index])
 		
 		window.show_all()
 		await loop_run()
 		window.hide()
+	#'''
 	
-	#async def main():
-	#	"Display image from http url."
-	#	for n in range(200):
-	#		images.append(f'https://www.w3.org/Consortium/Offices/Presentations/SVG/{n}.svg')
-	#	images[19] = 'https://www.w3.org/Consortium/Offices/Presentations/SVG/0.svg'
-	#	await widget.open_document(images[image_index])
-	#	#await widget.open_document('https://www.w3.org/Consortium/Offices/Presentations/SVG/0.svg')	
-	#	window.show_all()
-	#	await loop_run()
-	#	window.hide()
+	'''
+	async def main():
+		"Display image from http url."
+		for n in range(200):
+			images.append(f'https://www.w3.org/Consortium/Offices/Presentations/SVG/{n}.svg')
+		await widget.open_document(images[image_index])
+		window.show_all()
+		await loop_run()
+		window.hide()
+	'''
 	
 	run(main())

@@ -250,10 +250,20 @@ class CSSDocument:
 		else:
 			for pseudoclasses, result in pseudoclass_cache.items():
 				for p_class, p_element_path, p_result in pseudoclasses:
-					if pseudoclass_test(p_class, root_tree.xpath(p_element_path)) != p_result:
+					if pseudoclass_test(p_class, root_tree.xpath(p_element_path)[0]) != p_result:
 						break
 				else:
 					return result
+		
+		def is_class(node, classnames):
+			if ('class' in node.attrib) and (node.attrib['class'] in classnames):
+				return True
+			
+			#parent = node.getparent()
+			#if parent:
+			#	return is_class(parent, classnames)
+			
+			return False
 		
 		def walk_node(node, args):
 			if isinstance(node, str):
@@ -268,7 +278,7 @@ class CSSDocument:
 				else:
 					return lambda _xml_element, _pseudoclass_test: _xml_element.tag == f"{namespace}{args[0]}"
 			elif node.name == 'selector-class':
-				return lambda _xml_element, _pseudoclass_test: ('class' in _xml_element.attrib) and (_xml_element.attrib['class'] == args[0])
+				return lambda _xml_element, _pseudoclass_test: is_class(_xml_element, args[0].split(' '))
 			elif node.name == 'selector-pseudo-class':
 				return lambda _xml_element, _pseudoclass_test: _pseudoclass_test(args[0], _xml_element)
 			elif node.name == 'selector-attr':
@@ -377,7 +387,7 @@ class CSSDocument:
 				return False
 			else:
 				return True
-				
+		
 		pseudoclasses = set()
 		
 		def do_pseudoclass_test(pseudoclass, xml_element):
@@ -413,11 +423,18 @@ class CSSParser:
 		def __init__(self, s):
 			self.s = s
 			self.n = 0
+			#self.__prefix_cache = {}
 		
 		def prefix(self, n):
 			return self.s[self.n : self.n+n]
+			#try:
+			#	result = self.__prefix_cache[n]
+			#except KeyError:
+			#	result = self.__prefix_cache[n] = self.s[self.n : self.n+n]
+			#return result
 		
 		def shift(self, n):
+			#self.__prefix_cache.clear()
 			self.n += n
 		
 		def eof(self):
@@ -575,7 +592,7 @@ class CSSParser:
 				context = None
 				yield stream.prefix(1)
 				stream.shift(1)
-		
+	
 	ParserSymbol = Enum('ParserSymbol', 'curly square brace item')
 	
 	def build_structure(self, tokens):
@@ -1148,8 +1165,8 @@ if __debug__ and __name__ == '__main__':
 		for cssfile in example.iterdir():
 			if cssfile.suffix != '.css': continue
 			
-			profiler = PyCallGraph(output=GraphvizOutput(output_file=f'profile/css_{example.name}_{cssfile.name}.png'))
-			profiler.start()
+			#profiler = PyCallGraph(output=GraphvizOutput(output_file=f'profile/css_{example.name}_{cssfile.name}.png'))
+			#profiler.start()
 			
 			tree = model.create_document(cssfile.read_bytes(), 'text/css')
 			for node in tree.scan_syntax_errors():
@@ -1159,4 +1176,4 @@ if __debug__ and __name__ == '__main__':
 			assert tree.is_valid()
 			#print(list(model.scan_document_links(tree)))
 
-			profiler.done()
+			#profiler.done()

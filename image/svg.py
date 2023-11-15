@@ -337,16 +337,18 @@ class SVGImage:
 		except AttributeError:
 			pass
 		
+		em_size = 12
+		
 		if any(node.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__shape_tags):
-			self.__render_shape(view, document, ctx, box, node, None)
+			self.__render_shape(view, document, ctx, box, node, em_size, None)
 		elif node.tag == f'{{{self.xmlns_svg}}}text':
-			self.__render_text(view, document, ctx, box, node, None)
+			self.__render_text(view, document, ctx, box, node, em_size, None)
 		elif any(node.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__group_tags):
-			self.__render_group(view, document, ctx, box, node, None)
+			self.__render_group(view, document, ctx, box, node, em_size, None)
 		elif node.tag == f'{{{self.xmlns_svg}}}image':
-			self.__render_image(view, document, ctx, box, node, None)
+			self.__render_image(view, document, ctx, box, node, em_size, None)
 		elif node.tag == f'{{{self.xmlns_svg}}}foreignObject':
-			self.__render_foreign_object(view, document, ctx, box, node, None)
+			self.__render_foreign_object(view, document, ctx, box, node, em_size, None)
 		else:
 			self.emit_warning(view, f"Unsupported node: {node.tag}", node.tag, node)	
 	
@@ -360,16 +362,18 @@ class SVGImage:
 			node = document
 			document = XMLDocument(node.getroottree().getroot())
 		
+		em_size = 12
+		
 		if any(node.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__shape_tags):
-			return self.__render_shape(view, document, ctx, box, node, (px, py))
+			return self.__render_shape(view, document, ctx, box, node, em_size, (px, py))
 		elif node.tag == f'{{{self.xmlns_svg}}}text':
-			return self.__render_text(view, document, ctx, box, node, (px, py))
+			return self.__render_text(view, document, ctx, box, node, em_size, (px, py))
 		elif any(node.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__group_tags):
-			return self.__render_group(view, document, ctx, box, node, (px, py))
+			return self.__render_group(view, document, ctx, box, node, em_size, (px, py))
 		elif node.tag == f'{{{self.xmlns_svg}}}image':
-			return self.__render_image(view, document, ctx, box, node, (px, py))
+			return self.__render_image(view, document, ctx, box, node, em_size, (px, py))
 		elif node.tag == f'{{{self.xmlns_svg}}}foreignObject':
-			return self.__render_foreign_object(view, document, ctx, box, node, (px, py))
+			return self.__render_foreign_object(view, document, ctx, box, node, em_size, (px, py))
 		else:
 			self.emit_warning(view, f"Unsupported node: {node.tag}", node.tag, node)
 			return []
@@ -465,7 +469,7 @@ class SVGImage:
 		#	return node in view.link_elements
 		return False
 	
-	def __get_attribute(self, view, document, ctx, box, node, attr, default):
+	def __get_attribute(self, view, document, ctx, box, node, em_size, attr, default):
 		if attr not in self.__presentation_attributes:
 			raise ValueError(f"Not a presentation attribute: {attr}")
 		
@@ -515,19 +519,19 @@ class SVGImage:
 				document.__stylesheets = stylesheets
 			
 			css_value = None
-			css_priority = 0
+			css_priority = None
 			
 			for stylesheet in stylesheets:
 				css_attrs = stylesheet.match_element(node, (lambda *args: self.__media_test(view, *args)), (lambda *args: self.__pseudoclass_test(view, *args)), self.xmlns_svg)
-				#if css_attrs: print("css:", css_attrs, node)
 				if attr in css_attrs:
 					value, priority = css_attrs[attr]
-					if priority >= css_priority:
+					print(" attrs:", node.tag, node.attrib, attr, value, repr(priority), css_priority)
+					if css_priority == None or priority >= css_priority:
 						css_value = value
-				#	view.__attr_cache[node][attr] = css_attrs[attr]
-				#	return css_attrs[attr]
+						css_priority = priority
 			
 			if css_value is not None:
+				print("attr:", node.tag, node.attrib.get('class', '-'), attr, css_value)
 				view.__attr_cache[node][attr] = css_value
 				return css_value
 			
@@ -547,13 +551,15 @@ class SVGImage:
 		else:
 			raise KeyError(f"Attribute {attr} not found in any of ancestors")
 	
-	def __render_group(self, view, document, ctx, box, node, pointer): # FIXME: improve speed for deep documents
+	def __render_group(self, view, document, ctx, box, node, em_size, pointer): # FIXME: improve speed for deep documents
 		"Render SVG group element and its subelements."
 		
 		#print("render_group", node.tag)
 		
-		display = self.__get_attribute(view, document, ctx, box, node, 'display', 'block').lower()
-		visibility = self.__get_attribute(view, document, ctx, box, node, 'visibility', 'visible').lower()
+		em_size = self.__font_size(view, document, ctx, box, node, em_size)
+		
+		display = self.__get_attribute(view, document, ctx, box, node, em_size, 'display', 'block').lower()
+		visibility = self.__get_attribute(view, document, ctx, box, node, em_size, 'visibility', 'visible').lower()
 		
 		if visibility == 'collapse' or display == 'none':
 			return defaultdict(list)
@@ -562,8 +568,8 @@ class SVGImage:
 		
 		transform = node.attrib.get('transform', None)
 		
-		x = self.__units(view, node.attrib.get('x', 0), percentage=width)
-		y = self.__units(view, node.attrib.get('y', 0), percentage=height)
+		x = self.__units(view, node.attrib.get('x', 0), percentage=width, em_size=em_size)
+		y = self.__units(view, node.attrib.get('y', 0), percentage=height, em_size=em_size)
 		
 		if transform or ((node.getparent() is not None) and (x or y)) or node.tag == f'{{{self.xmlns_svg}}}svg' or node.tag == f'{{{self.xmlns_svg}}}symbol':
 			ctx.save()
@@ -572,8 +578,8 @@ class SVGImage:
 			if (left or top) and (node.getparent() is None):
 				ctx.translate(left, top)
 			
-			svg_width = self.__units(view, node.attrib.get('width', width), percentage=width)
-			svg_height = self.__units(view, node.attrib.get('height', height), percentage=height)
+			svg_width = self.__units(view, node.attrib.get('width', width), percentage=width, em_size=em_size)
+			svg_height = self.__units(view, node.attrib.get('height', height), percentage=height, em_size=em_size)
 			
 			try:
 				vb_x, vb_y, vb_w, vb_h = node.attrib.get('viewBox', None).split()
@@ -584,10 +590,10 @@ class SVGImage:
 				viewbox_h = svg_height
 			else:
 				# TODO: correct calculations
-				viewbox_x = self.__units(view, vb_x, percentage=width)
-				viewbox_y = self.__units(view, vb_y, percentage=height)
-				viewbox_w = self.__units(view, vb_w, percentage=width)
-				viewbox_h = self.__units(view, vb_h, percentage=height)
+				viewbox_x = self.__units(view, vb_x, percentage=width, em_size=em_size)
+				viewbox_y = self.__units(view, vb_y, percentage=height, em_size=em_size)
+				viewbox_w = self.__units(view, vb_w, percentage=width, em_size=em_size)
+				viewbox_h = self.__units(view, vb_h, percentage=height, em_size=em_size)
 			
 			if (node.getparent() is None):
 				x_scale = width / viewbox_w
@@ -618,7 +624,7 @@ class SVGImage:
 		left, top, width, height = box
 		
 		if transform:
-			self.__apply_transform(view, document, ctx, box, node, transform)
+			self.__apply_transform(view, document, ctx, box, node, em_size, transform)
 		
 		if (node.getparent() is not None) and (x or y):
 			ctx.translate(x, y)
@@ -659,23 +665,23 @@ class SVGImage:
 				pass
 			
 			elif any(child.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__shape_tags):
-				hover_subnodes = self.__render_shape(view, document, ctx, box, child, pointer)
+				hover_subnodes = self.__render_shape(view, document, ctx, box, child, em_size, pointer)
 				hover_nodes.extend(hover_subnodes)
 			
 			elif child.tag == f'{{{self.xmlns_svg}}}text':
-				hover_subnodes = self.__render_text(view, document, ctx, box, child, pointer)
+				hover_subnodes = self.__render_text(view, document, ctx, box, child, em_size, pointer)
 				hover_nodes.extend(hover_subnodes)
 			
 			elif any(child.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__group_tags):
-				hover_subnodes = self.__render_group(view, document, ctx, box, child, pointer)
+				hover_subnodes = self.__render_group(view, document, ctx, box, child, em_size, pointer)
 				hover_nodes.extend(hover_subnodes)
 			
 			elif child.tag == f'{{{self.xmlns_svg}}}image':
-				hover_subnodes = self.__render_image(view, document, ctx, box, child, pointer)
+				hover_subnodes = self.__render_image(view, document, ctx, box, child, em_size, pointer)
 				hover_nodes.extend(hover_subnodes)
 			
 			elif child.tag == f'{{{self.xmlns_svg}}}foreignObject':
-				hover_subnodes = self.__render_foreign_object(view, document, ctx, box, child, pointer)
+				hover_subnodes = self.__render_foreign_object(view, document, ctx, box, child, em_size, pointer)
 				hover_nodes.extend(hover_subnodes)
 			
 			elif not child.tag.startswith(f'{{{self.xmlns_svg}}}'):
@@ -706,23 +712,23 @@ class SVGImage:
 				hover_nodes.insert(0, node)
 		return hover_nodes
 	
-	def __render_shape(self, view, document, ctx, box, node, pointer):
+	def __render_shape(self, view, document, ctx, box, node, em_size, pointer):
 		left, top, width, height = box
 		
-		display = self.__get_attribute(view, document, ctx, box, node, 'display', 'block').lower()
-		visibility = self.__get_attribute(view, document, ctx, box, node, 'visibility', 'visible').lower()
+		display = self.__get_attribute(view, document, ctx, box, node, em_size, 'display', 'block').lower()
+		visibility = self.__get_attribute(view, document, ctx, box, node, em_size, 'visibility', 'visible').lower()
 		
 		if visibility == 'collapse' or display == 'none':
 			return defaultdict(list)
 		
-		#transform = self.__get_attribute(view, document, ctx, box, node, 'transform', None)
+		#transform = self.__get_attribute(view, document, ctx, box, node, em_size, 'transform', None)
 		transform = node.attrib.get('transform', None)
 		if transform:
 			ctx.save()
-			self.__apply_transform(view, document, ctx, box, node, transform)
+			self.__apply_transform(view, document, ctx, box, node, em_size, transform)
 		
 		if visibility != 'hidden':
-			filter_ = self.__get_attribute(view, document, ctx, box, node, 'filter', None)
+			filter_ = self.__get_attribute(view, document, ctx, box, node, em_size, 'filter', None)
 			filter_ = None # TODO
 		else:
 			filter_ = None
@@ -739,8 +745,8 @@ class SVGImage:
 		
 		
 		if node.tag == f'{{{self.xmlns_svg}}}rect':
-			x, w, rx = [self.__units(view, node.attrib.get(_a, 0), percentage=width) for _a in ('x', 'width', 'rx')]
-			y, h, ry = [self.__units(view, node.attrib.get(_a, 0), percentage=height) for _a in ('y', 'height', 'ry')]
+			x, w, rx = [self.__units(view, node.attrib.get(_a, 0), percentage=width, em_size=em_size) for _a in ('x', 'width', 'rx')]
+			y, h, ry = [self.__units(view, node.attrib.get(_a, 0), percentage=height, em_size=em_size) for _a in ('y', 'height', 'ry')]
 			
 			rx = max(rx, 0)
 			ry = max(ry, 0)
@@ -751,16 +757,16 @@ class SVGImage:
 				ctx.rectangle(x, y, w, h)
 		
 		elif node.tag == f'{{{self.xmlns_svg}}}circle':
-			cx = self.__units(view, node.attrib.get('cx', 0), percentage=width)
-			cy = self.__units(view, node.attrib.get('cy', 0), percentage=height)
-			r = self.__units(view, node.attrib['r'], percentage=(width + height) / 2)
+			cx = self.__units(view, node.attrib.get('cx', 0), percentage=width, em_size=em_size)
+			cy = self.__units(view, node.attrib.get('cy', 0), percentage=height, em_size=em_size)
+			r = self.__units(view, node.attrib['r'], percentage=(width + height) / 2, em_size=em_size)
 			ctx.arc(cx, cy, r, 0, 2 * math.pi)
 		
 		elif node.tag == f'{{{self.xmlns_svg}}}ellipse':
-			cx = self.__units(view, node.attrib.get('cx', 0), percentage=width)
-			cy = self.__units(view, node.attrib.get('cy', 0), percentage=height)
-			rx = self.__units(view, node.attrib['rx'], percentage=width)
-			ry = self.__units(view, node.attrib['ry'], percentage=height)
+			cx = self.__units(view, node.attrib.get('cx', 0), percentage=width, em_size=em_size)
+			cy = self.__units(view, node.attrib.get('cy', 0), percentage=height, em_size=em_size)
+			rx = self.__units(view, node.attrib['rx'], percentage=width, em_size=em_size)
+			ry = self.__units(view, node.attrib['ry'], percentage=height, em_size=em_size)
 			ctx.save()
 			ctx.translate(cx, cy)
 			ctx.scale(rx, ry)
@@ -768,16 +774,16 @@ class SVGImage:
 			ctx.restore()
 		
 		elif node.tag == f'{{{self.xmlns_svg}}}line':
-			x1 = self.__units(view, node.attrib.get('x1', 0), percentage=width)
-			y1 = self.__units(view, node.attrib.get('y1', 0), percentage=height)
-			x2 = self.__units(view, node.attrib.get('x2', 0), percentage=width)
-			y2 = self.__units(view, node.attrib.get('y2', 0), percentage=height)
+			x1 = self.__units(view, node.attrib.get('x1', 0), percentage=width, em_size=em_size)
+			y1 = self.__units(view, node.attrib.get('y1', 0), percentage=height, em_size=em_size)
+			x2 = self.__units(view, node.attrib.get('x2', 0), percentage=width, em_size=em_size)
+			y2 = self.__units(view, node.attrib.get('y2', 0), percentage=height, em_size=em_size)
 			ctx.move_to(x1, y1)
 			ctx.line_to(x2, y2)
 		
 		elif node.tag == f'{{{self.xmlns_svg}}}polygon' or node.tag == f'{{{self.xmlns_svg}}}polyline':
-			x = self.__units(view, node.attrib.get('x', 0), percentage=width)
-			y = self.__units(view, node.attrib.get('y', 0), percentage=height)
+			x = self.__units(view, node.attrib.get('x', 0), percentage=width, em_size=em_size)
+			y = self.__units(view, node.attrib.get('y', 0), percentage=height, em_size=em_size)
 			
 			rpoints = node.attrib['points'].split()
 			points = []
@@ -792,8 +798,8 @@ class SVGImage:
 				#xs, ys, *_ = point.split(',')
 				xs = points[2 * n]
 				ys = points[2 * n + 1]
-				kx = self.__units(view, xs, percentage=width)
-				ky = self.__units(view, ys, percentage=height)
+				kx = self.__units(view, xs, percentage=width, em_size=em_size)
+				ky = self.__units(view, ys, percentage=height, em_size=em_size)
 				if first:
 					ctx.move_to(x + kx, y + ky)
 					first = False
@@ -804,16 +810,16 @@ class SVGImage:
 				ctx.close_path()
 		
 		elif node.tag == f'{{{self.xmlns_svg}}}path':
-			self.__draw_path(view, document, ctx, box, node)
+			self.__draw_path(view, document, ctx, box, node, em_size)
 		
 		#elif node.tag == f'{{{self.xmlns_svg}}}text':
-		#	self.__draw_text(view, document, ctx, box, node)
+		#	self.__draw_text(view, document, ctx, box, node, em_size)
 		
 		else:
 			self.emit_warning(view, f"tag {node.tag} not supported by this method", node.tag, node)
 		
 		
-		has_fill, has_stroke = self.__apply_paint(view, document, ctx, box, node, (visibility != 'hidden'))
+		has_fill, has_stroke = self.__apply_paint(view, document, ctx, box, node, em_size, (visibility != 'hidden'))
 		
 		hover_nodes = []
 		if pointer:
@@ -894,18 +900,18 @@ class SVGImage:
 		node = document.getroot()
 		
 		try:
-			svg_width = self.__units(view, node.attrib['width'], percentage=self.get_viewport_width(view))
+			svg_width = self.__units(view, node.attrib['width'], percentage=self.get_viewport_width(view)) # TODO: default em size
 		except KeyError:
 			svg_width = self.get_viewport_width(view)
 		
 		try:
-			svg_height = self.__units(view, node.attrib['height'], percentage=self.get_viewport_height(view))
+			svg_height = self.__units(view, node.attrib['height'], percentage=self.get_viewport_height(view)) # TODO: default em size
 		except KeyError:
 			svg_height = self.get_viewport_height(view)
 		
 		return svg_width, svg_height
 	
-	def __units(self, view, spec, percentage=None, percentage_origin=0):
+	def __units(self, view, spec, percentage=None, percentage_origin=0, em_size=None):
 		if not isinstance(spec, str):
 			return spec
 		
@@ -920,7 +926,9 @@ class SVGImage:
 			scale = 1
 			value = spec[:-2]
 		elif spec[-2:] == 'ex':
-			scale = 24 * 1.5 # TODO
+			if em_size == None:
+				raise ValueError("`em_size` not specified.")
+			scale = em_size * 1.2 # TODO
 			value = spec[:-2]
 		elif spec[-2:] == 'mm':
 			scale = dpi / 25.4
@@ -938,7 +946,9 @@ class SVGImage:
 			scale = dpi / 72
 			value = spec[:-2]
 		elif spec[-2:] == 'em':
-			scale = 1 # FIXME
+			if em_size == None:
+				raise ValueError("`em_size` not specified.")
+			scale = em_size * 2
 			value = spec[:-2]
 		elif spec[-1:] == 'Q':
 			scale = dpi / (2.54 * 40)
@@ -981,12 +991,12 @@ class SVGImage:
 		text = text.replace(',', '')
 		return not text or text.isspace()
 	
-	def __apply_transform(self, view, document, ctx, box, node, transform_string):
+	def __apply_transform(self, view, document, ctx, box, node, em_size, transform_string):
 		left, top, width, height = box
 		
 		origin = node.attrib.get('transform-origin', '0 0').split()
-		origin_x = self.__units(view, origin[0], percentage=width)
-		origin_y = self.__units(view, origin[1], percentage=height)
+		origin_x = self.__units(view, origin[0], percentage=width, em_size=em_size)
+		origin_y = self.__units(view, origin[1], percentage=height, em_size=em_size)
 		
 		if origin_x or origin_y:
 			ctx.translate(origin_x, origin_y)
@@ -1005,14 +1015,14 @@ class SVGImage:
 			
 			match = self.__re_translate1.search(text, n)
 			if match and self.__transform_separators(text[n:match.start()]):
-				x, = [self.__units(view, _spec) for _spec in match.groups()]
+				x, = [self.__units(view, _spec, em_size=em_size) for _spec in match.groups()]
 				ctx.translate(x, 0)
 				n = match.end()
 				continue
 			
 			match = self.__re_translate.search(text, n)
 			if match and self.__transform_separators(text[n:match.start()]):
-				x, y = [self.__units(view, _spec) for _spec in match.groups()]
+				x, y = [self.__units(view, _spec, em_size=em_size) for _spec in match.groups()]
 				ctx.translate(x, y)
 				n = match.end()
 				continue
@@ -1073,12 +1083,12 @@ class SVGImage:
 		
 		return True
 	
-	def __apply_paint(self, view, document, ctx, box, node, draw):
+	def __apply_paint(self, view, document, ctx, box, node, em_size, draw):
 		"Draw the current shape, applying fill and stroke. The path is preserved. Returns a pair of bool, indicating whether fill and stroke was non-transparent."
 		
 		has_fill = False
 		ctx.save()
-		if self.__apply_fill(view, document, ctx, box, node):
+		if self.__apply_fill(view, document, ctx, box, node, em_size):
 			has_fill = True
 			if draw:
 				ctx.fill_preserve()
@@ -1086,7 +1096,7 @@ class SVGImage:
 		
 		has_stroke = False
 		ctx.save()
-		if self.__apply_stroke(view, document, ctx, box, node):
+		if self.__apply_stroke(view, document, ctx, box, node, em_size):
 			has_stroke = True
 			if draw:
 				ctx.stroke_preserve()
@@ -1094,13 +1104,13 @@ class SVGImage:
 		
 		return has_fill, has_stroke
 	
-	def __apply_fill(self, view, document, ctx, box, node):
+	def __apply_fill(self, view, document, ctx, box, node, em_size):
 		"Prepares the context to fill() operation, including setting color and fill rules."
 		
-		if not self.__apply_color(view, document, ctx, box, node, 'fill', 'fill-opacity', 'black'):
+		if not self.__apply_color(view, document, ctx, box, node, em_size, 'fill', 'fill-opacity', 'black'):
 			return False
 		
-		fill_rule = self.__get_attribute(view, document, ctx, box, node, 'fill-rule', None)
+		fill_rule = self.__get_attribute(view, document, ctx, box, node, em_size, 'fill-rule', None)
 		
 		if fill_rule == 'evenodd':
 			ctx.set_fill_rule(cairo.FillRule.EVEN_ODD)
@@ -1116,16 +1126,16 @@ class SVGImage:
 		
 		return True
 	
-	def __apply_stroke(self, view, document, ctx, box, node):
+	def __apply_stroke(self, view, document, ctx, box, node, em_size):
 		"Prepares the context to stroke() operation, including setting color and line parameters."
 		
-		if not self.__apply_color(view, document, ctx, box, node, 'stroke', 'stroke-opacity', 'none'):
+		if not self.__apply_color(view, document, ctx, box, node, em_size, 'stroke', 'stroke-opacity', 'none'):
 			return False
 		
 		try:
-			stroke_width = self.__units(view, str(self.__get_attribute(view, document, ctx, box, node, 'stroke-width', 1)))
+			stroke_width = self.__units(view, str(self.__get_attribute(view, document, ctx, box, node, em_size, 'stroke-width', 1)), em_size=em_size)
 		except ValueError:
-			self.emit_warning(view, f"Unsupported stroke spec: {self.__get_attribute(view, document, ctx, box, node, 'stroke-width')}", self.__get_attribute(view, document, ctx, box, node, 'stroke-width'), node)
+			self.emit_warning(view, f"Unsupported stroke spec: {self.__get_attribute(view, document, ctx, box, node, em_size, 'stroke-width')}", self.__get_attribute(view, document, ctx, box, node, em_size, 'stroke-width'), node)
 			return False
 		
 		if stroke_width > 0:
@@ -1133,7 +1143,7 @@ class SVGImage:
 		else:
 			return False
 		
-		linecap = self.__get_attribute(view, document, ctx, box, node, 'stroke-linecap', 'butt')
+		linecap = self.__get_attribute(view, document, ctx, box, node, em_size, 'stroke-linecap', 'butt')
 		if linecap == 'butt' or linecap == 'null':
 			ctx.set_line_cap(cairo.LINE_CAP_BUTT)
 		elif linecap == 'round':
@@ -1149,11 +1159,11 @@ class SVGImage:
 		else:
 			pathScale = self.__get_current_path_length(ctx) / pathLength
 		
-		dasharray = self.__get_attribute(view, document, ctx, box, node, 'stroke-dasharray', 'none')
+		dasharray = self.__get_attribute(view, document, ctx, box, node, em_size, 'stroke-dasharray', 'none')
 		if dasharray == 'none' or dasharray == 'null':
 			ctx.set_dash([], 0)
 		else:
-			dashoffset = self.__parse_float(self.__get_attribute(view, document, ctx, box, node, 'stroke-dashoffset', 0)) * pathScale
+			dashoffset = self.__parse_float(self.__get_attribute(view, document, ctx, box, node, em_size, 'stroke-dashoffset', 0)) * pathScale
 			
 			try:
 				ctx.set_dash([self.__parse_float(dasharray) * pathScale + 0], dashoffset)
@@ -1165,7 +1175,7 @@ class SVGImage:
 				ctx.set_dash(dashes, dashoffset)
 		
 		
-		linejoin = self.__get_attribute(view, document, ctx, box, node, 'stroke-linejoin', 'miter')
+		linejoin = self.__get_attribute(view, document, ctx, box, node, em_size, 'stroke-linejoin', 'miter')
 		if linejoin == 'miter':
 			ctx.set_line_join(cairo.LineJoin.MITER)
 		elif linejoin == 'bevel':
@@ -1175,7 +1185,7 @@ class SVGImage:
 		else:
 			self.emit_warning(view, f"Unsupported linejoin `{linejoin}`", linejoin, node)
 		
-		miterlimit = self.__get_attribute(view, document, ctx, box, node, 'stroke-miterlimit', '4')
+		miterlimit = self.__get_attribute(view, document, ctx, box, node, em_size, 'stroke-miterlimit', '4')
 		try:
 			miterlimit = self.__parse_float(miterlimit)
 		except ValueError:
@@ -1210,16 +1220,16 @@ class SVGImage:
 		
 		return r, g, b
 	
-	def __apply_color(self, view, document, ctx, box, node, color_attr, opacity_attr, default_color):
+	def __apply_color(self, view, document, ctx, box, node, em_size, color_attr, opacity_attr, default_color):
 		"Set painting source to the color identified by provided parameters."
 		
-		color = self.__get_attribute(view, document, ctx, box, node, color_attr, default_color).strip()
+		color = self.__get_attribute(view, document, ctx, box, node, em_size, color_attr, default_color).strip()
 		target = node.getparent()
 		while color in ('currentColor', 'inherit') and (target is not None):			
 			if color == 'currentColor':
-				color = self.__get_attribute(view, document, ctx, box, target, 'color', default_color).strip()
+				color = self.__get_attribute(view, document, ctx, box, target, em_size, 'color', default_color).strip()
 			elif color == 'inherit':
-				color = self.__get_attribute(view, document, ctx, box, target, color_attr, default_color).strip()
+				color = self.__get_attribute(view, document, ctx, box, target, em_size, color_attr, default_color).strip()
 			target = target.getparent()
 		
 		assert color != 'currentColor' and color != 'inherit'
@@ -1235,7 +1245,7 @@ class SVGImage:
 		except AttributeError:
 			pass
 		
-		opacity = self.__get_attribute(view, document, ctx, box, node, opacity_attr, None)
+		opacity = self.__get_attribute(view, document, ctx, box, node, em_size, opacity_attr, None)
 		if opacity == 'null':
 			a = None # None means 1 (full opacity), not 0 (full transparency)
 		else:
@@ -1247,7 +1257,7 @@ class SVGImage:
 		if color[:4] == 'url(' and color[-1] == ')':
 			href = color.strip()[4:-1]
 			if href[0] == '"' and href[-1] == '"': href = href[1:-1]
-			return self.__apply_pattern(view, document, ctx, box, node, href)
+			return self.__apply_pattern(view, document, ctx, box, node, em_size, href)
 			# TODO: transparency
 		else:
 			cc = self.__parse_color(color, view, node)
@@ -1266,7 +1276,7 @@ class SVGImage:
 		
 		return True
 	
-	def __apply_pattern(self, view, document, ctx, box, node, url):
+	def __apply_pattern(self, view, document, ctx, box, node, em_size, url):
 		"Set painting source to a pattern, i.e. a gradient, identified by url."
 		
 		current_url = self.get_document_url(document)
@@ -1480,12 +1490,12 @@ class SVGImage:
 				stop_color = None
 				stop_opacity = None
 				
-				stop_color = self.__get_attribute(view, document, ctx, box, colorstop, 'stop-color', None)
+				stop_color = self.__get_attribute(view, document, ctx, box, colorstop, em_size, 'stop-color', None)
 				if stop_color == None:
 					self.emit_warning(view, "Stop color of linear gradient not found.", None, colorstop)
 					continue
 				
-				stop_opacity = self.__parse_float(self.__get_attribute(view, document, ctx, box, colorstop, 'stop-opacity', None))
+				stop_opacity = self.__parse_float(self.__get_attribute(view, document, ctx, box, colorstop, em_size, 'stop-opacity', None))
 				
 				if not stop_color or stop_color.lower() in ('none', 'transparent'):
 					continue
@@ -1508,7 +1518,7 @@ class SVGImage:
 			
 			gradient_transform = target.attrib.get('gradientTransform', None)
 			if gradient_transform is not None:
-				self.__apply_transform(view, document, ctx, box, target, gradient_transform)
+				self.__apply_transform(view, document, ctx, box, target, em_size, gradient_transform)
 			
 			ctx.set_source(gradient)
 		else:
@@ -1571,16 +1581,18 @@ class SVGImage:
 		#	txt = txt.lstrip()
 		return txt.lstrip()
 	
-	def __render_text(self, view, document, ctx, box, textnode, pointer):
+	def __render_text(self, view, document, ctx, box, textnode, em_size, pointer):
 		pango_layout = PangoCairo.create_layout(ctx)
-		textspec = self.__produce_text(view, document, ctx, box, textnode, '', 0, 0, pango_layout)
-		return self.__render_text_spec(view, document, ctx, box, textspec, None, pango_layout, pointer)
+		textspec = self.__produce_text(view, document, ctx, box, textnode, em_size, '', 0, 0, pango_layout)
+		return self.__render_text_spec(view, document, ctx, box, textspec, em_size, None, pango_layout, pointer)
 	
-	def __render_text_spec(self, view, document, ctx, box, textspec, ta_width, pango_layout, pointer):
+	def __render_text_spec(self, view, document, ctx, box, textspec, em_size, ta_width, pango_layout, pointer):
 		node, txt_paths, tx, ty, extents = textspec
 		
-		display = self.__get_attribute(view, document, ctx, box, node, 'display', 'block').lower()
-		visibility = self.__get_attribute(view, document, ctx, box, node, 'visibility', 'visible').lower()
+		# TODO: support links
+		
+		display = self.__get_attribute(view, document, ctx, box, node, em_size, 'display', 'block').lower()
+		visibility = self.__get_attribute(view, document, ctx, box, node, em_size, 'visibility', 'visible').lower()
 		
 		if visibility == 'collapse' or display == 'none':
 			return []
@@ -1593,32 +1605,29 @@ class SVGImage:
 		if (ta_width is None) or any((_attr in node.attrib) for _attr in ['text-anchor', 'x', 'dx']):
 			ta_width = extents.width
 		
-		text_anchor = self.__get_attribute(view, document, ctx, box, node, 'text-anchor', 'begin').strip()
+		text_anchor = self.__get_attribute(view, document, ctx, box, node, em_size, 'text-anchor', 'begin').strip()
 		if text_anchor == 'end':
 			dsx -= ta_width #extents.width
 		elif text_anchor == 'middle':
 			dsx -= ta_width / 2 #extents.width / 2
 		
 		baseline_shift = node.attrib.get('baseline-shift', 'baseline').strip()
-		#baseline_shift = self.__get_attribute(view, document, ctx, box, node, 'baseline-shift', 'baseline').strip()
+		#baseline_shift = self.__get_attribute(view, document, ctx, box, node, em_size, 'baseline-shift', 'baseline').strip()
 		if baseline_shift == 'sub':
-			font_size_attrib = self.__get_attribute(view, document, ctx, box, node, 'font-size', '12') # FIXME: default font size 12?
-			font_size = self.__units(view, font_size_attrib, percentage=(width + height) / 2)
-			#print("font size", font_size)
+			font_size = self.__font_size(view, document, ctx, box, node, em_size)
 			dsy += font_size / 2
 		elif baseline_shift == 'super':
-			font_size_attrib = self.__get_attribute(view, document, ctx, box, node, 'font-size', '12') # FIXME: default font size 12?
-			font_size = self.__units(view, font_size_attrib, percentage=(width + height) / 2)
+			font_size = self.__font_size(view, document, ctx, box, node, em_size)
 			dsy -= font_size / 2
 		
 		transform = node.attrib.get('transform', '')
 		
 		if transform:
 			ctx.save()
-			self.__apply_transform(view, document, ctx, box, node, transform)
+			self.__apply_transform(view, document, ctx, box, node, em_size, transform)
 		
 		if visibility != 'hidden':
-			filter_ = self.__get_attribute(view, document, ctx, box, node, 'filter', None)
+			filter_ = self.__get_attribute(view, document, ctx, box, node, em_size, 'filter', None)
 			filter_ = None # TODO
 		else:
 			filter_ = None
@@ -1633,7 +1642,7 @@ class SVGImage:
 			old_ctx = ctx
 			ctx = image_ctx
 		
-		self.__apply_font(view, document, ctx, box, node, pango_layout)
+		self.__apply_font(view, document, ctx, box, node, em_size, pango_layout)
 		
 		for spec in txt_paths:
 			if spec[0] is not None: continue
@@ -1650,7 +1659,7 @@ class SVGImage:
 				ctx.move_to(sx, sy)
 				ctx.text_path(txt)
 			
-			has_fill, has_stroke = self.__apply_paint(view, document, ctx, box, node, (visibility != 'hidden'))
+			has_fill, has_stroke = self.__apply_paint(view, document, ctx, box, node, em_size, (visibility != 'hidden'))
 			
 			if pointer:
 				px, py = ctx.device_to_user(*pointer)
@@ -1663,7 +1672,7 @@ class SVGImage:
 		
 		for spec in txt_paths:
 			if spec[0] is None: continue
-			hover_nodes.extend(self.__render_text_spec(view, document, ctx, box, spec, ta_width, pango_layout, pointer))
+			hover_nodes.extend(self.__render_text_spec(view, document, ctx, box, spec, em_size, ta_width, pango_layout, pointer))
 		
 		if filter_:
 			image.flush()
@@ -1686,13 +1695,13 @@ class SVGImage:
 		
 		return hover_nodes
 	
-	def __produce_text(self, view, document, ctx, box, node, whitespace, x, y, pango_layout):
+	def __produce_text(self, view, document, ctx, box, node, em_size, whitespace, x, y, pango_layout):
 		left, top, width, height = box
 		
-		x = self.__units(view, node.attrib.get('x', str(x)).split()[0], percentage=width) # TODO: support sequences
-		y = self.__units(view, node.attrib.get('y', str(y)).split()[0], percentage=height) # TODO: support sequences
-		dx = self.__units(view, node.attrib.get('dx', '0').split()[0], percentage=width) # TODO: support sequences
-		dy = self.__units(view, node.attrib.get('dy', '0').split()[0], percentage=height) # TODO: support sequences
+		x = self.__units(view, node.attrib.get('x', str(x)).split()[0], percentage=width, em_size=em_size) # TODO: support sequences
+		y = self.__units(view, node.attrib.get('y', str(y)).split()[0], percentage=height, em_size=em_size) # TODO: support sequences
+		dx = self.__units(view, node.attrib.get('dx', '0').split()[0], percentage=width, em_size=em_size) # TODO: support sequences
+		dy = self.__units(view, node.attrib.get('dy', '0').split()[0], percentage=height, em_size=em_size) # TODO: support sequences
 		
 		whitespace = node.attrib.get(f'{{{self.xmlns_xml}}}space', whitespace)
 		strip = whitespace != 'preserve'
@@ -1712,7 +1721,7 @@ class SVGImage:
 				node_x = x + dx + x_advance
 				node_y = y + dy + y_advance
 				
-				self.__apply_font(view, document, ctx, box, node, pango_layout)
+				self.__apply_font(view, document, ctx, box, node, em_size, pango_layout)
 				if pango_layout is not None:
 					pango_layout.set_text(txt)
 					
@@ -1743,14 +1752,14 @@ class SVGImage:
 				text_bottom = max(text_bottom, node_bottom) if text_bottom is not None else node_bottom
 		
 		for child in node:
-			if child.tag != f'{{{self.xmlns_svg}}}tspan':
+			if child.tag not in [f'{{{self.xmlns_svg}}}tspan', f'{{{self.xmlns_svg}}}a']:
 				self.emit_warning(view, "Unsupported tag %s" % child.tag, child.tag, child)
 				continue
 			
 			node_x = x + dx + x_advance
 			node_y = y + dy + y_advance
 			
-			subnode, subpaths, span_dx, span_dy, extents = self.__produce_text(view, document, ctx, box, child, whitespace, node_x, node_y, pango_layout)
+			subnode, subpaths, span_dx, span_dy, extents = self.__produce_text(view, document, ctx, box, child, em_size, whitespace, node_x, node_y, pango_layout)
 			txt_paths.append((subnode, subpaths, span_dx, span_dy, extents))
 			
 			node_left = node_x + extents.x_bearing + span_dx - node_x
@@ -1783,7 +1792,7 @@ class SVGImage:
 					text_right = max(text_right, node_right) if text_right is not None else node_right
 					x_advance += space_width
 				elif txt:
-					self.__apply_font(view, document, ctx, box, node, pango_layout)
+					self.__apply_font(view, document, ctx, box, node, em_size, pango_layout)
 					if pango_layout is not None:
 						pango_layout.set_text(txt)
 						
@@ -1821,14 +1830,14 @@ class SVGImage:
 		
 		return node, txt_paths, x + dx, y + dy, extents
 	
-	def __apply_font(self, view, document, ctx, box, node, pango_layout):
+	def __apply_font(self, view, document, ctx, box, node, em_size, pango_layout):
 		left, top, width, height = box
 		
 		pango_font = Pango.FontDescription()
 		
-		font_family = self.__get_attribute(view, document, ctx, box, node, 'font-family', 'serif') # FIXME: default font family serif?
-		font_style_attrib = self.__get_attribute(view, document, ctx, box, node, 'font-style', 'normal')
-		font_weight_attrib = self.__get_attribute(view, document, ctx, box, node, 'font-weight', 'normal')
+		font_family = self.__get_attribute(view, document, ctx, box, node, em_size, 'font-family', 'serif') # FIXME: default font family serif?
+		font_style_attrib = self.__get_attribute(view, document, ctx, box, node, em_size, 'font-style', 'normal')
+		font_weight_attrib = self.__get_attribute(view, document, ctx, box, node, em_size, 'font-weight', 'normal')
 		
 		if font_style_attrib == 'normal':
 			font_style = cairo.FontSlant.NORMAL
@@ -1866,9 +1875,7 @@ class SVGImage:
 					font_weight = cairo.FontWeight.NORMAL
 					pango_font.set_weight(Pango.Weight.NORMAL)
 		
-		font_size_attrib = self.__get_attribute(view, document, ctx, box, node, 'font-size', '12') # FIXME: default font size 12?
-		# TODO: support "smaller", "bigger"
-		font_size = self.__units(view, font_size_attrib, percentage=(width + height) / 2)
+		font_size = self.__font_size(view, document, ctx, box, node, em_size)
 		ctx.set_font_size(font_size)
 		pango_font.set_size(font_size * Pango.SCALE / 1.33333)
 		
@@ -1878,7 +1885,19 @@ class SVGImage:
 			if pango_layout is not None:
 				pango_layout.set_font_description(pango_font)
 	
-	def __draw_path(self, view, document, ctx, box, node):
+	def __font_size(self, view, document, ctx, box, node, em_size):
+		font_size_attrib = self.__get_attribute(view, document, ctx, box, node, em_size, 'font-size', 12)
+		
+		if font_size_attrib == 'smaller':
+			font_size_attrib = '0.9em'
+		elif font_size_attrib == 'bigger':
+			font_size_attrib = '1.1em'
+		
+		_, _, width, height = box
+		font_size = self.__units(view, font_size_attrib, percentage=(width + height) / 2, em_size=em_size)
+		return font_size
+	
+	def __draw_path(self, view, document, ctx, box, node, em_size):
 		"Create path in the context, with parameters taken from the `d` attribute of the provided node."
 		
 		left, top, width, height = box
@@ -1898,7 +1917,7 @@ class SVGImage:
 		
 		def next_coord(percentage=None):
 			try:
-				return self.__units(view, next_token(), percentage)
+				return self.__units(view, next_token(), percentage=percentage, em_size=em_size)
 			except (ValueError, AttributeError, TypeError) as error:
 				raise NotANumber(error)
 		
@@ -2169,7 +2188,7 @@ class SVGImage:
 			ctx.arc_negative(center_x, center_y, 1, start_angle, end_angle)
 		ctx.restore()
 	
-	def __render_image(self, view, document, ctx, box, node, pointer):
+	def __render_image(self, view, document, ctx, box, node, em_size, pointer):
 		"Render external image."
 		
 		try:
@@ -2184,16 +2203,16 @@ class SVGImage:
 		url = self.resolve_url(href, self.get_document_url(document))
 		
 		left, top, width, height = box
-		x = self.__units(view, node.attrib.get('x', 0), percentage=width)
-		y = self.__units(view, node.attrib.get('y', 0), percentage=height)
-		w = self.__units(view, node.attrib.get('width', width), percentage=width)
-		h = self.__units(view, node.attrib.get('height', height), percentage=height)
+		x = self.__units(view, node.attrib.get('x', 0), percentage=width, em_size=em_size)
+		y = self.__units(view, node.attrib.get('y', 0), percentage=height, em_size=em_size)
+		w = self.__units(view, node.attrib.get('width', width), percentage=width, em_size=em_size)
+		h = self.__units(view, node.attrib.get('height', height), percentage=height, em_size=em_size)
 		box = x, y, w, h
 		
 		transform = node.attrib.get('transform', None)
 		if transform:
 			ctx.save()
-			self.__apply_transform(view, document, ctx, box, node, transform)
+			self.__apply_transform(view, document, ctx, box, node, em_size, transform)
 		
 		hover_nodes = []
 		
@@ -2218,20 +2237,20 @@ class SVGImage:
 				hover_nodes.insert(0, node)
 		return hover_nodes
 	
-	def __render_foreign_object(self, view, document, ctx, box, node, pointer):
+	def __render_foreign_object(self, view, document, ctx, box, node, em_size, pointer):
 		"Render <foreignObject/>. Rendering of the child node must be implemented separately."
 		
 		left, top, width, height = box
-		x = self.__units(view, node.attrib.get('x', 0), percentage=width)
-		y = self.__units(view, node.attrib.get('y', 0), percentage=height)
-		w = self.__units(view, node.attrib.get('width', width), percentage=width)
-		h = self.__units(view, node.attrib.get('height', height), percentage=height)
+		x = self.__units(view, node.attrib.get('x', 0), percentage=width, em_size=em_size)
+		y = self.__units(view, node.attrib.get('y', 0), percentage=height, em_size=em_size)
+		w = self.__units(view, node.attrib.get('width', width), percentage=width, em_size=em_size)
+		h = self.__units(view, node.attrib.get('height', height), percentage=height, em_size=em_size)
 		box = x, y, w, h
 		
 		transform = node.attrib.get('transform', None)
 		if transform:
 			ctx.save()
-			self.__apply_transform(view, document, ctx, box, node, transform)
+			self.__apply_transform(view, document, ctx, box, node, em_size, transform)
 		
 		hover_nodes = []
 		
@@ -2387,8 +2406,8 @@ if __debug__ and __name__ == '__main__':
 			#nn += 1
 			#if nn > 1: break
 			
-			profiler = PyCallGraph(output=GraphvizOutput(output_file=f'profile/svg_{example.name}_{filepath.name}.png'))
-			profiler.start()
+			#profiler = PyCallGraph(output=GraphvizOutput(output_file=f'profile/svg_{example.name}_{filepath.name}.png'))
+			#profiler.start()
 			
 			ctx = PseudoContext(f'Context("{str(filepath)}")')
 			rnd = SVGRenderModel()
@@ -2405,6 +2424,6 @@ if __debug__ and __name__ == '__main__':
 			else:	
 				assert ctx.balance == 0
 				
-			profiler.done()
+			#profiler.done()
 
 

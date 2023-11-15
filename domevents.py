@@ -256,7 +256,9 @@ class FocusEvent(UIEvent):
 
 if __debug__ and __name__ == "__main__":
 	#import unittest
-
+	
+	print("domevents")
+	
 	## variable tests
 	ui = UIEvent("load")
 	we = WheelEvent("wheel", deltaY=3.0)
@@ -282,10 +284,10 @@ if __debug__ and __name__ == "__main__":
 
 	assert we.deltaX == 0.0
 	assert we.deltaY == 3.0
-	print("Event type default for 'load'|composed", ui.composed, "cancelable", ui.cancelable, "bubbles", ui.bubbles)
-	print("Event type default for 'wheel'|composed", we.composed, "cancelable", we.cancelable, "bubbles", we.bubbles)
-	print("Event type default for 'keydown'|composed", ke.composed, "cancelable", ke.cancelable, "bubbles", ke.bubbles)
-	print("Event type default for 'focusin'|composed", fe.composed, "cancelable", fe.cancelable, "bubbles", fe.bubbles)
+	#print("Event type default for 'load'|composed", ui.composed, "cancelable", ui.cancelable, "bubbles", ui.bubbles)
+	#print("Event type default for 'wheel'|composed", we.composed, "cancelable", we.cancelable, "bubbles", we.bubbles)
+	#print("Event type default for 'keydown'|composed", ke.composed, "cancelable", ke.cancelable, "bubbles", ke.bubbles)
+	#print("Event type default for 'focusin'|composed", fe.composed, "cancelable", fe.cancelable, "bubbles", fe.bubbles)
 
 
 	## constants tests
@@ -338,13 +340,13 @@ if __debug__ and __name__ == "__main__":
 	except ValueError as exc: pass;
 	else: assert False
 
-	print("\n\tKontruktory repr:")
-	print(repr(we), end="\n\n")
-	print(repr(ke), end="\n\n")
-	print(repr(fe), end="\n\n")
-	print(repr(ui), end="\n\n")
+	#print("\n\tKontruktory repr:")
+	#print(repr(we), end="\n\n")
+	#print(repr(ke), end="\n\n")
+	#print(repr(fe), end="\n\n")
+	#print(repr(ui), end="\n\n")
 
-	del(we, ke, fe, ui)
+	del we, ke, fe, ui
 
 	'''
 	## unittests

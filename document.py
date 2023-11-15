@@ -31,7 +31,6 @@ class Model:
 		self.emitted_warnings = set()
 	
 	async def open_document(self, view, url):
-		#print("open document", url)
 		if hasattr(view, '_Model__document') and view.__document is not None:
 			raise ValueError("Close previous document first.")
 		
@@ -45,7 +44,6 @@ class Model:
 		return view.__document
 	
 	def close_document(self, view):
-		#print("close document")
 		if not (hasattr(view, '_Model__document') and view.__document is not None):
 			raise ValueError("No document is open.")
 		
@@ -160,7 +158,6 @@ class Model:
 			shurl = url
 		data, mime_type = await self.download_document(shurl)
 		
-		#print("create", shurl, mime_type)
 		try:
 			self.documents[shurl] = self.create_document(data, mime_type)
 		except Exception as error:
@@ -229,6 +226,9 @@ class Model:
 	async def end_downloads(self):
 		await self.__chain_impl_async('end_downloads', ())
 	
+	def set_view(self, widget):
+		self.__chain_impl('set_view', (widget,))
+	
 	def handle_event(self, widget, event, name):
 		self.__chain_impl('handle_event', (widget, event, name))
 	
@@ -266,7 +266,9 @@ class Model:
 
 
 if __debug__ and __name__ == '__main__':
-	from asyncio import run
+	from collections import deque
+	
+	from asyncio import run, Event
 	from aiopath import AsyncPath as Path
 	
 	from format.plain import PlainFormat
@@ -283,35 +285,63 @@ if __debug__ and __name__ == '__main__':
 	from download.file import FileDownload
 	from download.chrome import ChromeDownload
 	
+	from view.display import DisplayView
+	
+	print("document")
+	
+	class Rectangle:
+		def __init__(self, x, y, width, height):
+			self.x = x
+			self.y = y
+			self.width = width
+			self.height = height
+	
 	class PseudoView:
+		def __init__(self):
+			self.__events = deque()
+			self.__update = Event()
+		
 		def emit(self, handler, event):
-			#print(handler)
+			if handler == 'dom_event':
+				self.__events.append(event)
+				self.__update.set()
+		
+		async def receive(self, type_):
+			while True:
+				for event in self.__events:
+					if event.type_ == type_:
+						self.__events.remove(event)
+						return event
+				await self.__update.wait()
+				self.__update.clear()
+		
+		def clear(self):
+			self.__events.clear()
+			self.__update.clear()
+		
+		def get_allocation(self):
+			return Rectangle(0, 0, 1000, 700)
+		
+		def draw_image(self, document):
 			pass
 		
-		def get_viewport_width(self, widget):
-			return 2500
-		
-		def get_viewport_height(self, widget):
-			return 1000
-		
-		def get_dpi(self, widget):
-			return 96
+		def queue_draw(self):
+			pass
 	
 	async def test_main():
 		view = PseudoView()
-		TestModel = Model.features('TestModel', SVGImage, CSSFormat, PNGImage, PixbufImage, FontFormat, DataDownload, FileDownload, ChromeDownload, XMLFormat, PlainFormat, NullFormat)
+		TestModel = Model.features('TestModel', DisplayView, SVGImage, CSSFormat, PNGImage, PixbufImage, FontFormat, DataDownload, FileDownload, ChromeDownload, XMLFormat, PlainFormat, NullFormat)
 		model = TestModel()
-		async for filepath in (Path.cwd() / 'gfx').iterdir():
-			#if filepath.suffix in ['.css']: continue
-			#print(filepath.as_uri())
+		model.set_view(view)
+		async for filepath in (Path.cwd() / 'examples/gfx').iterdir():
 			document = await model.open_document(view, filepath.as_uri())
-			#print(" type:", type(document))
+			await view.receive('open')
 			try:
 				dimensions = model.image_dimensions(view, document)
-				#print(" dimensions:", dimensions)
 			except NotImplementedError:
 				pass
 			model.close_document(view)
+			view.clear()
 	
 	run(test_main())
 

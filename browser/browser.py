@@ -155,7 +155,7 @@ class Browser(BuilderExtension):
 		self.drawingarea_avatar.show()
 		
 		self.network_spinner = Spinner([self.form_login, self.form_register, self.form_server_options])
-		self.stack_main.set_visible_child_name('page1')
+		self.stack_main.set_visible_child_name('page0')
 	
 	@asynchandler
 	async def login(self, widget):

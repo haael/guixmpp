@@ -2,25 +2,27 @@
 
 set -e
 
-PYTHONPATH=. format/plain.py   # plain document model
-PYTHONPATH=. format/xml.py     # xml tree document model
-PYTHONPATH=. format/css.py     # css syntax tree document model
-PYTHONPATH=. format/xforms.py  # xforms
-PYTHONPATH=. format/font.py    # fonts
+export PYTHONPATH=.
 
-PYTHONPATH=. image/svg.py      # svg parser
-PYTHONPATH=. image/png.py      # png reader (cairo)
-PYTHONPATH=. image/pixbuf.py   # image reader (gdk)
+format/plain.py   # plain document model
+format/xml.py     # xml tree document model
+format/css.py     # css syntax tree document model
+format/xforms.py  # xforms
+format/font.py    # fonts
 
-PYTHONPATH=. download/data.py  # inline (data:) link support
-PYTHONPATH=. download/file.py  # filesystem (file:) link support (dangerous)
-PYTHONPATH=. download/http.py  # http & https link support
-#PYTHONPATH=. download/xmpp.py # xmpp cid link support
+image/svg.py      # svg parser
+image/png.py      # png reader (cairo)
+image/pixbuf.py   # image reader (gdk)
 
-PYTHONPATH=. view/display.py   # any view that displays contents on screen
-PYTHONPATH=. view/pointer.py   # a view that has a pointer (i.e. mouse)
-PYTHONPATH=. view/keyboard.py  # a view that has a keyboard
+download/data.py  # inline (data:) link support
+download/file.py  # filesystem (file:) link support (dangerous)
+download/http.py  # http & https link support
+#download/xmpp.py # xmpp cid link support
 
-PYTHONPATH=. ./domevents.py
-PYTHONPATH=. ./document.py
+view/display.py   # any view that displays contents on screen
+view/pointer.py   # a view that has a pointer (i.e. mouse)
+view/keyboard.py  # a view that has a keyboard
+
+./domevents.py
+./document.py
 

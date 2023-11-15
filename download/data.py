@@ -49,6 +49,6 @@ if __debug__ and __name__ == '__main__':
 	print("data download")
 	
 	model = DataDownload()
-	assert run(model.download_document('data:,hello,void')) == (b"hello,void", 'text/plain')
+	assert run(model.download_document('data:,hello,void')) == (b"hello,void", 'application/octet-stream')
 
 

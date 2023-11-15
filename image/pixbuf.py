@@ -18,6 +18,8 @@ class PixbufImage:
 	"Supports many image formats through GdkPixbuf library."
 	
 	def create_document(self, data, mime_type):
+		assert isinstance(mime_type, str)
+		
 		try:
 			loader = GdkPixbuf.PixbufLoader.new_with_mime_type(mime_type)
 		except GLib.Error:

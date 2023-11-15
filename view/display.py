@@ -13,16 +13,16 @@ import cairo
 
 
 class DisplayView:
-	def set_image(self, widget, image):
+	def set_view(self, widget):
 		alloc = widget.get_allocation()
 		widget.__viewport_width = alloc.width
 		widget.__viewport_height = alloc.height
 		widget.__dpi = 96 # TODO: get dpi from gtk
-		
+		widget.__image = None
+		self.update(widget)
+	
+	def set_image(self, widget, image):
 		widget.__image = image
-		if image is None:
-			widget.__surface = cairo.ImageSurface(cairo.Format.ARGB32, self.get_viewport_width(widget), self.get_viewport_height(widget))
-		
 		self.update(widget)
 	
 	def get_image(self, widget):
@@ -46,12 +46,10 @@ class DisplayView:
 			self.update(widget)
 	
 	def update(self, widget):
-		document = self.current_document(widget)
-		#print("update", widget, document)
-		if document is not None:
+		if hasattr(widget, '_DisplayView__surface') and widget.__surface:
 			widget.__surface.finish()
-			widget.__surface = widget.draw_image(widget, self)
-			widget.queue_draw()
+		widget.__surface = widget.draw_image(self)
+		widget.queue_draw()
 	
 	def draw(self, widget, ctx):
 		ctx.set_source_surface(widget.__surface)
