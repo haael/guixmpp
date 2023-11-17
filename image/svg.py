@@ -447,7 +447,7 @@ class SVGImage:
 	
 	__group_tags = frozenset(['svg', 'g', 'a', 'symbol'])
 	__shape_tags = frozenset(['polygon', 'line', 'ellipse', 'circle', 'rect', 'path', 'polyline'])
-	__skip_tags = frozenset(['defs', 'title', 'desc', 'metadata', 'style', 'linearGradient', 'radialGradient', 'script', 'animate', 'filter', 'switch'])
+	__skip_tags = frozenset(['defs', 'title', 'desc', 'metadata', 'style', 'linearGradient', 'radialGradient', 'pattern', 'script', 'animate', 'filter', 'switch'])
 	
 	def __media_test(self, view):
 		return False
@@ -525,13 +525,13 @@ class SVGImage:
 				css_attrs = stylesheet.match_element(node, (lambda *args: self.__media_test(view, *args)), (lambda *args: self.__pseudoclass_test(view, *args)), self.xmlns_svg)
 				if attr in css_attrs:
 					value, priority = css_attrs[attr]
-					print(" attrs:", node.tag, node.attrib, attr, value, repr(priority), css_priority)
+					#print(" attrs:", node.tag, node.attrib, attr, value, repr(priority), css_priority)
 					if css_priority == None or priority >= css_priority:
 						css_value = value
 						css_priority = priority
 			
 			if css_value is not None:
-				print("attr:", node.tag, node.attrib.get('class', '-'), attr, css_value)
+				#print("attr:", node.tag, node.attrib.get('class', '-'), attr, css_value)
 				view.__attr_cache[node][attr] = css_value
 				return css_value
 			
@@ -659,7 +659,7 @@ class SVGImage:
 							child = subchild
 							break
 					else:
-						self.emit_warning(view, f"Fequired features not satisfied.", child.tag, child)
+						self.emit_warning(view, f"Required features not satisfied.", child.tag, child)
 			
 			if any(child.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__skip_tags):
 				pass
@@ -1521,6 +1521,23 @@ class SVGImage:
 				self.__apply_transform(view, document, ctx, box, target, em_size, gradient_transform)
 			
 			ctx.set_source(gradient)
+		
+		elif target.tag == f'{{{self.xmlns_svg}}}pattern':
+			#self.emit_warning(view, "Patterns not implemented.", target.tag, node)
+
+			#surface = cairo.RecordingSurface(cairo.Content.COLOR_ALPHA, (0, 0, box[2], box[3]))
+			
+			pattern_width = self.__units(view, target.attrib['width'], percentage=(width + height) / 2, em_size=em_size)
+			pattern_height = self.__units(view, target.attrib['height'], percentage=(width + height) / 2, em_size=em_size)
+			
+			surface = cairo.ImageSurface(cairo.Format.ARGB32, math.ceil(pattern_width), math.ceil(pattern_height))
+			
+			self.__render_group(view, document, cairo.Context(surface), box, target, 12, None) # TODO: initial em size
+			pattern = cairo.SurfacePattern(surface)
+			pattern.set_extend(cairo.Extend.REPEAT)
+
+			ctx.set_source(pattern)
+
 		else:
 			self.emit_warning(view, "Unsupported fill element: %s" % target.tag, target.tag, node)
 			return False

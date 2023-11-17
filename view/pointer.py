@@ -25,7 +25,7 @@ class PointerView:
 			return None
 	
 	def handle_event(self, widget, event, name):
-		if name != 'motion' and name != 'button': return
+		if name != 'motion' and name != 'button': return NotImplemented
 		
 		if event.type == Gdk.EventType.MOTION_NOTIFY:
 			pointed, qx, qy = widget.poke_image(event.x, event.y)

@@ -92,6 +92,7 @@ class DOMWidget(Gtk.DrawingArea):
 		"Open image identified by the provided url. No image may be opened currently."
 		print("open document", url)
 		await self.model.open_document(self, url)
+		print("open document finished")
 	
 	def close_document(self):
 		"Close current image, reverting to default state."
@@ -222,7 +223,7 @@ if __debug__ and __name__ == '__main__':
 	images = []
 	image_index = 0
 	
-	#'''
+	'''
 	async def main():
 		"Display images from local directory, switch using left-right cursor key."
 		
@@ -241,17 +242,17 @@ if __debug__ and __name__ == '__main__':
 		window.show_all()
 		await loop_run()
 		window.hide()
-	#'''
-	
 	'''
+	
+	#'''
 	async def main():
 		"Display image from http url."
-		for n in range(200):
+		for n in range(219):
 			images.append(f'https://www.w3.org/Consortium/Offices/Presentations/SVG/{n}.svg')
 		await widget.open_document(images[image_index])
 		window.show_all()
 		await loop_run()
 		window.hide()
-	'''
+	#'''
 	
 	run(main())

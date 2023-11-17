@@ -49,7 +49,9 @@ if __debug__ and __name__ == '__main__':
 		
 		async for filepath in (Path.cwd() / 'examples/gfx').iterdir():
 			data, mime_type = await download.download_document(filepath.as_uri())
-			if filepath.suffix == '.xml':
+			if filepath.suffix[-1] == '_':
+				assert mime_type == 'application/octet-stream', mime_type
+			elif filepath.suffix == '.xml':
 				assert mime_type == 'application/xml', mime_type
 			elif filepath.suffix == '.svg':
 				assert mime_type == 'image/svg+xml', mime_type

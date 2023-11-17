@@ -38,7 +38,7 @@ class DisplayView:
 		return widget.__dpi
 	
 	def handle_event(self, widget, event, name):
-		if name != 'display': return
+		if name != 'display': return NotImplemented
 		
 		if event.type == Gdk.EventType.CONFIGURE:
 			widget.__viewport_width = event.width

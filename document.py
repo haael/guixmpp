@@ -6,7 +6,7 @@ __all__ = 'DocumentModel',
 
 
 from collections import defaultdict
-from asyncio import gather, create_task
+from asyncio import gather, create_task, wait, FIRST_EXCEPTION
 
 from domevents import UIEvent, CustomEvent
 
@@ -150,6 +150,7 @@ class Model:
 			return self.get_document(url)
 		except URLNotFound:
 			pass
+		print("load document", url)
 		
 		u = url.split('#')
 		if len(u) > 1:
@@ -175,7 +176,9 @@ class Model:
 			view.__referenced[absurl].add(url)
 			load = create_task(self.__load_document(view, absurl))
 			loads.append(load)
-		await gather(*loads)
+		#await gather(*loads)
+		if loads:
+			await wait(loads, return_when=FIRST_EXCEPTION)
 		view.emit('dom_event', UIEvent('load', target=document, view=view, detail=url))
 		return document
 	

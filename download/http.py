@@ -10,6 +10,27 @@ if __name__ == '__main__':
 	del sys.path[0] # needs to be removed because this module is called "http"
 
 
+import aiohttp
+
+
+class HTTPDownload:
+	async def begin_downloads(self):
+		assert not hasattr(self, '_HTTPDownload__client')
+		self.__client = aiohttp.ClientSession()
+	
+	async def end_downloads(self):
+		await self.__client.close()
+		del self.__client
+	
+	async def download_document(self, url):
+		if url.startswith('http:') or url.startswith('https:'):
+			async with self.__client.get(url) as response:
+				response.raise_for_status()
+				return (await response.read()), response.headers['content-type'].split(';')[0].strip()
+		else:
+			return NotImplemented
+
+'''
 import httpx
 
 
@@ -24,14 +45,11 @@ class HTTPDownload:
 	
 	async def download_document(self, url):
 		if url.startswith('http:') or url.startswith('https:'):
-			try:
-				result = await self.__client.get(url)
-			except httpx.ConnectError:
-				return b"", 'application/x-null'
+			result = await self.__client.get(url)
 			return result.content, result.headers['content-type'].split(';')[0].strip()
 		else:
 			return NotImplemented
-
+'''
 
 if __debug__ and __name__ == '__main__':
 	from asyncio import run

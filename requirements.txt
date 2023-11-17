@@ -1,4 +1,4 @@
-gbulb
 aiopath
+aiohttp[speedups]
 fontTools
 scramp
