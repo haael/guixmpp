@@ -1,4 +1,5 @@
 aiopath
-aiohttp[speedups]
+h11
+h2
 fontTools
 scramp

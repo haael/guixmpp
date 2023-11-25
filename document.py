@@ -9,6 +9,7 @@ from collections import defaultdict
 from asyncio import gather, create_task, wait, FIRST_EXCEPTION
 
 from domevents import UIEvent, CustomEvent
+from download.utils import DownloadError
 
 
 class URLNotFound(Exception):
@@ -150,14 +151,18 @@ class Model:
 			return self.get_document(url)
 		except URLNotFound:
 			pass
-		print("load document", url)
 		
 		u = url.split('#')
 		if len(u) > 1:
 			shurl = '#'.join(url.split('#')[:-1])
 		else:
 			shurl = url
-		data, mime_type = await self.download_document(shurl)
+		
+		try:
+			data, mime_type = await self.download_document(shurl)
+		except DownloadError as error:
+			self.emit_warning(view, str(error), None, None)
+			data, mime_type = None, 'application/x-null'
 		
 		try:
 			self.documents[shurl] = self.create_document(data, mime_type)
@@ -168,22 +173,31 @@ class Model:
 		
 		view.emit('dom_event', CustomEvent('beforeload', target=document, view=view, detail=url))
 		loads = []
+		visited = set()
 		for link in self.scan_document_links(document):
-			if link.startswith('data:'):
-				self.documents[link] = self.create_document(*(await self.download_document(link)))
+			if link in self.documents or link in visited:
 				continue
-			absurl = self.resolve_url(link, url)
-			view.__referenced[absurl].add(url)
-			load = create_task(self.__load_document(view, absurl))
-			loads.append(load)
-		#await gather(*loads)
+			
+			if link.startswith('data:'):
+				self.documents[link] = self.create_document(*(await self.download_document(link))) # TODO: possible exception
+			else:
+				absurl = self.resolve_url(link, url)
+				view.__referenced[absurl].add(url)
+				load = create_task(self.__load_document(view, absurl))
+				loads.append(load)
+			visited.add(link)
+		
 		if loads:
 			await wait(loads, return_when=FIRST_EXCEPTION)
 		view.emit('dom_event', UIEvent('load', target=document, view=view, detail=url))
 		return document
 	
 	def __unload_document(self, view, url):
-		document = self.get_document(url)
+		try:
+			document = self.get_document(url)
+		except URLNotFound:
+			return
+		
 		view.emit('dom_event', CustomEvent('beforeunload', target=document, view=view, detail=url))
 		for link in self.scan_document_links(document):
 			if link.startswith('data:'):

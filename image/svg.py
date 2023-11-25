@@ -331,7 +331,7 @@ class SVGImage:
 		else:
 			node = document
 			document = XMLDocument(node.getroottree().getroot())
-
+		
 		try:
 			del view.__attr_cache
 		except AttributeError:

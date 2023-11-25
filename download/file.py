@@ -8,6 +8,10 @@ __all__ = 'FileDownload',
 from aiopath import AsyncPath as Path
 import mimetypes
 from urllib.parse import unquote
+try:
+	from .utils import DownloadError
+except ImportError:
+	from utils import DownloadError
 
 
 class FileDownload:
@@ -28,18 +32,21 @@ class FileDownload:
 			mime_type, encoding = mimetypes.guess_type(str(path))
 			if not mime_type:
 				mime_type = 'application/octet-stream'
+			
 			try:
 				return await path.read_bytes(), mime_type
 			except IOError as error:
-				#print(error)
-				return None, 'application/x-null'
+				raise DownloadError(f"Could not open file at `{url}`.") from error
 		
 		else:
 			return NotImplemented
 
 
 if __debug__ and __name__ == '__main__':
-	from asyncio import run
+	from asyncio import run, set_event_loop_policy
+	from gtkaio import GtkAioEventLoopPolicy
+	
+	set_event_loop_policy(GtkAioEventLoopPolicy())
 	
 	print("file download")
 	

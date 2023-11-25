@@ -423,18 +423,11 @@ class CSSParser:
 		def __init__(self, s):
 			self.s = s
 			self.n = 0
-			#self.__prefix_cache = {}
 		
 		def prefix(self, n):
 			return self.s[self.n : self.n+n]
-			#try:
-			#	result = self.__prefix_cache[n]
-			#except KeyError:
-			#	result = self.__prefix_cache[n] = self.s[self.n : self.n+n]
-			#return result
 		
 		def shift(self, n):
-			#self.__prefix_cache.clear()
 			self.n += n
 		
 		def eof(self):

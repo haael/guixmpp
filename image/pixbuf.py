@@ -10,7 +10,6 @@ gi.require_version('Gdk', '3.0')
 gi.require_version('GdkPixbuf', '2.0')
 
 from gi.repository import GdkPixbuf, GLib, Gdk
-#from cairo import ImageSurface
 from collections import defaultdict
 
 
@@ -26,6 +25,38 @@ class PixbufImage:
 			return NotImplemented
 		else:
 			loader.write(data)
+			loader.close()
+			return loader.get_pixbuf()
+	
+	def create_document_from_bytes(self, data, mime_type):
+		try:
+			loader = GdkPixbuf.PixbufLoader.new_with_mime_type(mime_type)
+		except GLib.Error:
+			return NotImplemented
+		else:
+			loader.write(data)
+			loader.close()
+			return loader.get_pixbuf()
+	
+	def create_document_from_iter(self, iter_, mime_type):
+		try:
+			loader = GdkPixbuf.PixbufLoader.new_with_mime_type(mime_type)
+		except GLib.Error:
+			return NotImplemented
+		else:
+			for data in iter_:
+				loader.write(data)
+			loader.close()
+			return loader.get_pixbuf()
+	
+	async def create_document_from_aiter(self, aiter_, mime_type):
+		try:
+			loader = GdkPixbuf.PixbufLoader.new_with_mime_type(mime_type)
+		except GLib.Error:
+			return NotImplemented
+		else:
+			async for data in aiter_:
+				loader.write(data) # TODO: run in executor
 			loader.close()
 			return loader.get_pixbuf()
 	
@@ -64,7 +95,7 @@ class PixbufImage:
 		ctx.fill()
 		if x != 0 or y != 0 or ww != w or hh != h:
 			ctx.restore()
-		
+	
 	def poke_image(self, view, document, ctx, box, px, py):
 		if not self.is_image_document(document):
 			return NotImplemented

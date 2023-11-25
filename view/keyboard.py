@@ -50,7 +50,6 @@ class KeyboardView:
 	
 	def handle_event(self, widget, event, name):
 		if name != 'key': return NotImplemented
-		print("key press")
 		
 		if event.type == Gdk.EventType.KEY_PRESS:
 			keyval_name = Gdk.keyval_name(event.keyval)

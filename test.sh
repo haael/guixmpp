@@ -4,6 +4,10 @@ set -e
 
 export PYTHONPATH=.
 
+./gtkaio.py
+protocol/dns/client.py
+protocol/http/client.py
+
 format/plain.py   # plain document model
 format/xml.py     # xml tree document model
 format/css.py     # css syntax tree document model
