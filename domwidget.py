@@ -219,9 +219,9 @@ if __debug__ and __name__ == '__main__':
 	widget.connect('dom_event', dom_event)
 	
 	images = []
-	image_index = 203
+	image_index = 0
 	
-	'''
+	#'''
 	async def main():
 		"Display images from local directory, switch using left-right cursor key."
 		
@@ -230,7 +230,7 @@ if __debug__ and __name__ == '__main__':
 		widget.model.font_dir = await Path('~/.cache/guixmpp-fonts').expanduser()
 		await widget.model.font_dir.mkdir(parents=True, exist_ok=True)
 		
-		async for image in (Path.cwd() / 'examples/gfx').iterdir():
+		async for image in (Path.cwd() / 'examples/animations').iterdir():
 			images.append(image.as_uri())
 		
 		#images.sort(key=(lambda x: f'{len(x):03d}' + x.lower()))
@@ -240,9 +240,9 @@ if __debug__ and __name__ == '__main__':
 		window.show_all()
 		await loop_run()
 		window.hide()
-	'''
-	
 	#'''
+	
+	'''
 	async def main():
 		"Display image from http url."
 		for n in range(219):
@@ -251,6 +251,6 @@ if __debug__ and __name__ == '__main__':
 		window.show_all()
 		await loop_run()
 		window.hide()
-	#'''
+	'''
 	
 	run(main())
