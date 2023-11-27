@@ -6,18 +6,18 @@ __all__ = 'DocumentModel',
 
 
 from collections import defaultdict
-from asyncio import gather, create_task, wait, FIRST_EXCEPTION
+from asyncio import gather, create_task, wait, FIRST_EXCEPTION, Lock, Event
 
 from domevents import UIEvent, CustomEvent
 from download.utils import DownloadError
 
 
-class URLNotFound(Exception):
+class DocumentNotFound(Exception):
 	pass
 
 
-class CreationError(Exception):
-	pass
+#class CreationError(Exception):
+#	pass
 
 
 class Model:
@@ -30,6 +30,8 @@ class Model:
 	def __init__(self):
 		self.documents = {}
 		self.emitted_warnings = set()
+		self.__downloading = {}
+		self.__start_downloading = Lock()
 	
 	async def open_document(self, view, url):
 		if hasattr(view, '_Model__document') and view.__document is not None:
@@ -149,7 +151,7 @@ class Model:
 	async def __load_document(self, view, url):
 		try:
 			return self.get_document(url)
-		except URLNotFound:
+		except DocumentNotFound:
 			pass
 		
 		u = url.split('#')
@@ -158,18 +160,53 @@ class Model:
 		else:
 			shurl = url
 		
-		try:
-			data, mime_type = await self.download_document(shurl)
-		except DownloadError as error:
-			self.emit_warning(view, str(error), None, None)
-			data, mime_type = None, 'application/x-null'
+		async with self.__start_downloading:
+			if shurl not in self.__downloading:
+				print("me downloading", shurl)
+				me_downloading = True
+				self.__downloading[shurl] = Event()
+			else:
+				print("other downloading", shurl)
+				me_downloading = False
 		
-		try:
-			self.documents[shurl] = self.create_document(data, mime_type)
-		except Exception as error:
-			raise CreationError(f"Could not create document {mime_type}: '{shurl}'") from error
+		if not me_downloading:
+			print("wait for download", shurl)
+			await self.__downloading[shurl].wait()
+			print("finished waiting for download", shurl)
+			
+			try:
+				return self.get_document(url)
+			except DocumentNotFound:
+				pass
+			
+			self.emit_warning(view, "Document download not attempted.", url)
+			
+			return None
+		
+		else:
+			try:
+				try:
+					data, mime_type = await self.download_document(shurl)
+				except Exception as error:
+					self.emit_warning(view, f"Error downloading document: {str(error)}", url)
+					data, mime_type = None, 'application/x-null'
+				
+				try:
+					self.documents[shurl] = self.create_document(data, mime_type)
+				except Exception as error:
+					self.emit_warning(view, f"Error creating document: {str(error)}", url)
+					self.documents[shurl] = self.create_document(None, 'application/x-null')
+			
+			finally:
+				async with self.__start_downloading:
+					print("finished downloading", shurl)
+					self.__downloading[shurl].set()
+					del self.__downloading[shurl]
 		
 		document = self.get_document(url)
+		if document is None:
+			view.emit('dom_event', UIEvent('error', target=document, view=view, detail=url))
+			return document
 		
 		view.emit('dom_event', CustomEvent('beforeload', target=document, view=view, detail=url))
 		loads = []
@@ -179,7 +216,11 @@ class Model:
 				continue
 			
 			if link.startswith('data:'):
-				self.documents[link] = self.create_document(*(await self.download_document(link))) # TODO: possible exception
+				try:
+					self.documents[link] = self.create_document(*(await self.download_document(link))) # TODO: possible exception
+				except Exception as error:
+					self.emit_warning(view, f"Error creating document: {str(error)}", link)
+					self.documents[link] = self.create_document(None, 'application/x-null')
 			else:
 				absurl = self.resolve_url(link, url)
 				view.__referenced[absurl].add(url)
@@ -188,14 +229,21 @@ class Model:
 			visited.add(link)
 		
 		if loads:
-			await wait(loads, return_when=FIRST_EXCEPTION)
+			done, pending = await wait(loads)
+			errors = []
+			for t in done:
+				if t.exception() is not None:
+					errors.append(t.exception())
+			if errors:
+				raise ExceptionGroup("Errors in __load_document subtasks.", errors) # should not happen
+		
 		view.emit('dom_event', UIEvent('load', target=document, view=view, detail=url))
 		return document
 	
 	def __unload_document(self, view, url):
 		try:
 			document = self.get_document(url)
-		except URLNotFound:
+		except DocumentNotFound:
 			return
 		
 		view.emit('dom_event', CustomEvent('beforeunload', target=document, view=view, detail=url))
@@ -222,7 +270,7 @@ class Model:
 		except KeyError:
 			pass
 		
-		raise URLNotFound(f"No document found for the provided url: {url}")
+		raise DocumentNotFound(f"No document found for the provided url: {url}")
 	
 	def get_document(self, url):
 		if url.startswith('data:'):
@@ -276,9 +324,9 @@ class Model:
 	def element_tabindex(self, document, element):
 		return self.__find_impl('element_tabindex', [document, element])
 	
-	def emit_warning(self, view, message, url, node):
+	def emit_warning(self, view, message, target):
 		if message not in self.emitted_warnings:
-			view.emit('dom_event', CustomEvent('warning', target=node, detail=message))
+			view.emit('dom_event', CustomEvent('warning', view=view, detail=message, target=target))
 			self.emitted_warnings.add(message)
 
 

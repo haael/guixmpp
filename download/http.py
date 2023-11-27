@@ -5,12 +5,6 @@
 __all__ = 'HTTPDownload',
 
 
-try:
-	from .utils import DownloadError
-except ImportError:
-	from utils import DownloadError
-
-
 if __name__ == '__main__':
 	import sys
 	del sys.path[0] # needs to be removed because this module is called "http"
@@ -20,7 +14,7 @@ _library = ''
 
 
 if _library == '':
-	from protocol.http.client import Connection1, HTTPError, ResolveError
+	from protocol.http.client import Connection1, Connection2, HTTPError, ResolveError
 	from asyncio import gather
 	
 	class HTTPDownload:
@@ -45,13 +39,10 @@ if _library == '':
 					connection = self.__client[host] = Connection1(f'https://{host}')
 					await connection.open()
 				
-				try:
-					async with connection.Url(path).get() as request:
-						status, headers = await request.response()
-						request.raise_for_status(status)
-						return (await request.read()), headers['content-type'].split(';')[0].strip()
-				except (HTTPError, ResolveError) as error:
-					raise DownloadError("Could not download url `{url}`.") from error
+				async with connection.Url(path).get() as request:
+					status, headers = await request.response()
+					request.raise_for_status(status)
+					return (await request.read()), headers['content-type'].split(';')[0].strip()
 			
 			else:
 				return NotImplemented

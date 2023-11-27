@@ -350,7 +350,7 @@ class SVGImage:
 		elif node.tag == f'{{{self.xmlns_svg}}}foreignObject':
 			self.__render_foreign_object(view, document, ctx, box, node, em_size, None)
 		else:
-			self.emit_warning(view, f"Unsupported node: {node.tag}", node.tag, node)	
+			self.emit_warning(view, f"Unsupported node: {node.tag}", node)	
 	
 	def poke_image(self, view, document, ctx, box, px, py):
 		if not self.is_svg_document(document):
@@ -375,7 +375,7 @@ class SVGImage:
 		elif node.tag == f'{{{self.xmlns_svg}}}foreignObject':
 			return self.__render_foreign_object(view, document, ctx, box, node, em_size, (px, py))
 		else:
-			self.emit_warning(view, f"Unsupported node: {node.tag}", node.tag, node)
+			self.emit_warning(view, f"Unsupported node: {node.tag}", node)
 			return []
 	
 	__presentation_attributes = frozenset([
@@ -659,7 +659,7 @@ class SVGImage:
 							child = subchild
 							break
 					else:
-						self.emit_warning(view, f"Required features not satisfied.", child.tag, child)
+						self.emit_warning(view, f"Required features not satisfied.", child)
 			
 			if any(child.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__skip_tags):
 				pass
@@ -692,10 +692,10 @@ class SVGImage:
 						hover_subnodes = self.poke_image(view, child, ctx, box, *pointer)
 						hover_nodes.extend(hover_subnodes)
 				except NotImplementedError:
-					self.emit_warning(view, f"Unsupported non-SVG element: {child.tag}", child.tag, child)
+					self.emit_warning(view, f"Unsupported non-SVG element: {child.tag}", child)
 			
 			else:
-				self.emit_warning(view, f"Unsupported SVG element: {child.tag}", child.tag, child)
+				self.emit_warning(view, f"Unsupported SVG element: {child.tag}", child)
 		
 		if node.tag == f'{{{self.xmlns_svg}}}a':
 			if hasattr(ctx, 'tag_end'):
@@ -816,7 +816,7 @@ class SVGImage:
 		#	self.__draw_text(view, document, ctx, box, node, em_size)
 		
 		else:
-			self.emit_warning(view, f"tag {node.tag} not supported by this method", node.tag, node)
+			self.emit_warning(view, f"Tag {node.tag} not supported by this method.", node)
 		
 		
 		has_fill, has_stroke = self.__apply_paint(view, document, ctx, box, node, em_size, (visibility != 'hidden'))
@@ -862,7 +862,7 @@ class SVGImage:
 		link = self.resolve_url(href, current_url)
 		original = self.get_document(link)
 		if original == None:
-			self.emit_warning(view, f"Ref not found: {link}", link, node)
+			self.emit_warning(view, f"Ref not found: {link}.", node)
 			raise KeyError
 		else:
 			original = original.getroot()
@@ -1075,7 +1075,7 @@ class SVGImage:
 				n = match.end()
 				continue
 			
-			self.emit_warning(view, "Unsupported transformation: %s" % repr(text[n:]), text[n:], node)
+			self.emit_warning(view, f"Unsupported transformation: {text[n:]}.", node)
 			break
 		
 		if origin_x or origin_y:
@@ -1118,11 +1118,11 @@ class SVGImage:
 			ctx.set_fill_rule(cairo.FillRule.WINDING)
 		elif fill_rule == 'nonzero':
 			ctx.set_fill_rule(cairo.FillRule.WINDING)
-			#self.emit_warning(view, f"Unsupported fill rule: {fill_rule}", fill_rule, node) # TODO
+			#self.emit_warning(view, f"Unsupported fill rule: {fill_rule}.", node) # TODO
 		elif fill_rule == None:
 			pass
 		else:
-			self.emit_warning(view, f"Unsupported fill rule: {fill_rule}", fill_rule, node)
+			self.emit_warning(view, f"Unsupported fill rule: {fill_rule}.", node)
 		
 		return True
 	
@@ -1135,7 +1135,7 @@ class SVGImage:
 		try:
 			stroke_width = self.__units(view, str(self.__get_attribute(view, document, ctx, box, node, em_size, 'stroke-width', 1)), em_size=em_size)
 		except ValueError:
-			self.emit_warning(view, f"Unsupported stroke spec: {self.__get_attribute(view, document, ctx, box, node, em_size, 'stroke-width')}", self.__get_attribute(view, document, ctx, box, node, em_size, 'stroke-width'), node)
+			self.emit_warning(view, f"Unsupported stroke spec: {self.__get_attribute(view, document, ctx, box, node, em_size, 'stroke-width')}.", node)
 			return False
 		
 		if stroke_width > 0:
@@ -1151,7 +1151,7 @@ class SVGImage:
 		elif linecap == 'square':
 			ctx.set_line_cap(cairo.LINE_CAP_SQUARE)
 		else:
-			self.emit_warning(view, f"Unsupported linecap `{linecap}`", linecap, node)
+			self.emit_warning(view, f"Unsupported linecap `{linecap}`.", node)
 		
 		pathLength = self.__parse_float(node.attrib.get('pathLength', None))
 		if pathLength is None:
@@ -1183,13 +1183,13 @@ class SVGImage:
 		elif linejoin == 'round':
 			ctx.set_line_join(cairo.LineJoin.ROUND)
 		else:
-			self.emit_warning(view, f"Unsupported linejoin `{linejoin}`", linejoin, node)
+			self.emit_warning(view, f"Unsupported linejoin `{linejoin}`.", node)
 		
 		miterlimit = self.__get_attribute(view, document, ctx, box, node, em_size, 'stroke-miterlimit', '4')
 		try:
 			miterlimit = self.__parse_float(miterlimit)
 		except ValueError:
-			self.emit_warning(view, f"Miter limit float parse error `{miterlimit}`", miterlimit, node)
+			self.emit_warning(view, f"Miter limit float parse error `{miterlimit}`.", node)
 		else:
 			ctx.set_miter_limit(miterlimit)
 		
@@ -1215,7 +1215,7 @@ class SVGImage:
 			r, g, b = hls_to_rgb(h, l, s)
 		
 		else:
-			self.emit_warning(view, f"Unsupported color specification: {color}", color, node)
+			self.emit_warning(view, f"Unsupported color specification: {color}.", node)
 			return None
 		
 		return r, g, b
@@ -1283,7 +1283,7 @@ class SVGImage:
 		href = self.resolve_url(url, current_url)
 		target_doc = self.get_document(href)
 		if target_doc == None:
-			self.emit_warning(view, f"Color pattern ref not found: {href}", href, node)
+			self.emit_warning(view, f"Color pattern ref not found: {href}.", node)
 			return defaultdict(list)
 		else:
 			target = target_doc.getroot()
@@ -1306,7 +1306,7 @@ class SVGImage:
 				gscalex = gwidth
 				gscaley = gheight
 			else:
-				self.emit_warning(vie, "Unknown gradient units.", gradient_units, target)
+				self.emit_warning(view, f"Unknown gradient units: {gradient_units}.", target)
 			
 			try:
 				try:
@@ -1320,7 +1320,7 @@ class SVGImage:
 				orig_target = target
 				next_gradient_doc = self.get_document(href)
 				if next_gradient_doc == None:
-					self.emit_warning(view, f"Ref not found: {href}", href, node)
+					self.emit_warning(view, f"Ref not found: {href}.", node)
 					return False
 				else:
 					next_gradient = next_gradient_doc.getroot()
@@ -1356,7 +1356,7 @@ class SVGImage:
 				except KeyError:
 					x1 = 0
 				except ValueError:
-					self.emit_warning(view, "Invalid x1 specification in linear gradient.", target.attrib['x1'], target)
+					self.emit_warning(view, f"Invalid x1 specification in linear gradient: {target.attrib['x1']}.", target)
 					x1 = 0
 				
 				try:
@@ -1368,7 +1368,7 @@ class SVGImage:
 				except KeyError:
 					y1 = 0
 				except ValueError:
-					self.emit_warning(view, "Invalid y1 specification in linear gradient.", target.attrib['y1'], target)
+					self.emit_warning(view, f"Invalid y1 specification in linear gradient: {target.attrib['y1']}.", target)
 					y1 = 0
 				
 				try:
@@ -1380,7 +1380,7 @@ class SVGImage:
 				except KeyError:
 					x2 = gwidth
 				except ValueError:
-					self.emit_warning(view, "Invalid x2 specification in linear gradient.", target.attrib['x2'], target)
+					self.emit_warning(view, f"Invalid x2 specification in linear gradient: {target.attrib['x2']}.", target)
 					x2 = gwidth
 				
 				try:
@@ -1392,7 +1392,7 @@ class SVGImage:
 				except KeyError:
 					y2 = 0
 				except ValueError:
-					self.emit_warning(view, "Invalid y2 specification in linear gradient.", target.attrib['y2'], target)
+					self.emit_warning(view, f"Invalid y2 specification in linear gradient: {target.attrib['y2']}.", target)
 					y2 = 0
 				
 				gradient = cairo.LinearGradient(x1 + gleft, y1 + gtop, x2 + gleft, y2 + gtop)
@@ -1407,7 +1407,7 @@ class SVGImage:
 				except KeyError:
 					r = (gwidth + gheight) / 2
 				except ValueError:
-					self.emit_warning(view, "Invalid r specification in radial gradient.", target.attrib['r'], target)
+					self.emit_warning(view, f"Invalid r specification in radial gradient: {target.attrib['r']}.", target)
 					r = (gwidth + gheight) / 2
 				
 				try:
@@ -1419,7 +1419,7 @@ class SVGImage:
 				except KeyError:
 					cx = gwidth / 2
 				except ValueError:
-					self.emit_warning(view, "Invalid cx specification in linear gradient.", target.attrib['cx'], target)
+					self.emit_warning(view, f"Invalid cx specification in linear gradient: {target.attrib['cx']}.", target)
 					cx = gwidth / 2
 				
 				try:
@@ -1431,7 +1431,7 @@ class SVGImage:
 				except KeyError:
 					cy = gheight / 2
 				except ValueError:
-					self.emit_warning(view, "Invalid cy specification in linear gradient.", target.attrib['cy'], target)
+					self.emit_warning(view, f"Invalid cy specification in linear gradient: {target.attrib['cy']}.", target)
 					cy = gheight / 2
 				
 				try:
@@ -1443,7 +1443,7 @@ class SVGImage:
 				except KeyError:
 					fr = 0
 				except ValueError:
-					self.emit_warning(view, "Invalid r specification in radial gradient.", target.attrib['fr'], target)
+					self.emit_warning(view, f"Invalid r specification in radial gradient: {target.attrib['fr']}.", target)
 					fr = 0
 				
 				try:
@@ -1455,7 +1455,7 @@ class SVGImage:
 				except KeyError:
 					fx = cx
 				except ValueError:
-					self.emit_warning(view, "Invalid fx specification in linear gradient.", target.attrib['fx'], target)
+					self.emit_warning(view, f"Invalid fx specification in linear gradient: {target.attrib['fx']}.", target)
 					fx = cx
 				
 				try:
@@ -1467,7 +1467,7 @@ class SVGImage:
 				except KeyError:
 					fy = cy
 				except ValueError:
-					self.emit_warning(view, "Invalid cy specification in linear gradient.", target.attrib['fy'], target)
+					self.emit_warning(view, f"Invalid cy specification in linear gradient: {target.attrib['fy']}.", target)
 					fy = cy
 				
 				gradient = cairo.RadialGradient(fx + gleft, fy + gtop, fr, cx + gleft, cy + gtop, r)
@@ -1483,7 +1483,7 @@ class SVGImage:
 				except KeyError:
 					offset = last_offset
 				except ValueError:
-					self.emit_warning(view, "Error in offset spec of a linear gradient.", colorstop.attrib['offset'], colorstop)
+					self.emit_warning(view, f"Error in offset spec of a linear gradient: {colorstop.attrib['offset']}.", colorstop)
 					offset = last_offset
 				
 				last_offset = offset
@@ -1492,7 +1492,7 @@ class SVGImage:
 				
 				stop_color = self.__get_attribute(view, document, ctx, box, colorstop, em_size, 'stop-color', None)
 				if stop_color == None:
-					self.emit_warning(view, "Stop color of linear gradient not found.", None, colorstop)
+					self.emit_warning(view, "Stop color of linear gradient not found.", colorstop)
 					continue
 				
 				stop_opacity = self.__parse_float(self.__get_attribute(view, document, ctx, box, colorstop, em_size, 'stop-opacity', None))
@@ -1523,10 +1523,6 @@ class SVGImage:
 			ctx.set_source(gradient)
 		
 		elif target.tag == f'{{{self.xmlns_svg}}}pattern':
-			#self.emit_warning(view, "Patterns not implemented.", target.tag, node)
-
-			#surface = cairo.RecordingSurface(cairo.Content.COLOR_ALPHA, (0, 0, box[2], box[3]))
-			
 			pattern_width = self.__units(view, target.attrib['width'], percentage=(width + height) / 2, em_size=em_size)
 			pattern_height = self.__units(view, target.attrib['height'], percentage=(width + height) / 2, em_size=em_size)
 			
@@ -1537,9 +1533,11 @@ class SVGImage:
 			pattern.set_extend(cairo.Extend.REPEAT)
 
 			ctx.set_source(pattern)
+			
+			# TODO: pattern transform
 
 		else:
-			self.emit_warning(view, "Unsupported fill element: %s" % target.tag, target.tag, node)
+			self.emit_warning(view, f"Unsupported fill element: {target.tag}.", node)
 			return False
 		
 		return True
@@ -1770,7 +1768,7 @@ class SVGImage:
 		
 		for child in node:
 			if child.tag not in [f'{{{self.xmlns_svg}}}tspan', f'{{{self.xmlns_svg}}}a']:
-				self.emit_warning(view, "Unsupported tag %s" % child.tag, child.tag, child)
+				self.emit_warning(view, f"Unsupported tag {child.tag}.", child)
 				continue
 			
 			node_x = x + dx + x_advance
@@ -1866,7 +1864,7 @@ class SVGImage:
 			font_style = cairo.FontSlant.OBLIQUE
 			pango_font.set_style(Pango.Style.OBLIQUE)
 		else:
-			self.emit_warning(view, f"Unsupported font style '{font_style_attrib}'", font_style_attrib, node)
+			self.emit_warning(view, f"Unsupported font style '{font_style_attrib}'.", node)
 			font_style = cairo.FontSlant.NORMAL
 			pango_font.set_style(Pango.Style.NORMAL)
 		
@@ -1881,7 +1879,7 @@ class SVGImage:
 				font_weight_number = int(font_weight_attrib)
 				pango_font.set_weight(font_weight_number)
 			except ValueError:
-				self.emit_warning(view, f"Unsupported font weight '{font_weight_attrib}'", font_weight_attrib, node)
+				self.emit_warning(view, f"Unsupported font weight '{font_weight_attrib}'.", node)
 				font_weight = cairo.FontWeight.NORMAL
 				pango_font.set_weight(Pango.Weight.NORMAL)
 			else:
@@ -2118,7 +2116,7 @@ class SVGImage:
 					first = True
 				
 				else:
-					self.emit_warning(view, 'Unsupported path syntax: %s' % command, tokens, node)
+					self.emit_warning(view, f"Unsupported path syntax: {command}.", node)
 					#raise ValueError("Unsupported path syntax")
 				
 				next_token()
@@ -2128,7 +2126,7 @@ class SVGImage:
 			except StopIteration:
 				break
 			except ValueError as error:
-				self.emit_warning(view, "Error in path rendering", str(error), node)
+				self.emit_warning(view, f"Error in path rendering: {str(error)}.", node)
 				raise
 				return
 	
@@ -2214,7 +2212,7 @@ class SVGImage:
 			href = node.attrib.get('href', None)
 		
 		if not href:
-			self.emit_warning(view, "Image without href.", node.tag, node)
+			self.emit_warning(view, "Image without href.", node)
 			return defaultdict(list)
 		
 		url = self.resolve_url(href, self.get_document_url(document))
@@ -2241,9 +2239,9 @@ class SVGImage:
 			#	hover_subnodes = self.poke_image(view, image, ctx, box, *pointer)
 			#	hover_nodes.extend(hover_subnodes)
 		except (IndexError, KeyError):
-			self.emit_warning(view, f"Could not fetch url.", url, node)
+			self.emit_warning(view, f"Could not fetch url: {url}.", node)
 		except NotImplementedError:
-			self.emit_warning(view, f"Unsupported image format.", type(image), node)
+			self.emit_warning(view, f"Unsupported image format: {type(image).__name__}.", node)
 		finally:
 			if transform:
 				ctx.restore()
@@ -2281,7 +2279,7 @@ class SVGImage:
 						hover_subnodes = self.poke_image(view, child, ctx, box, *pointer)
 						hover_nodes.extend(hover_subnodes)
 				except NotImplementedError:
-					self.emit_warning(view, f"Unsupported foreign object: `{child.tag}`.", child.tag, child)
+					self.emit_warning(view, f"Unsupported foreign object: `{child.tag}`.", child)
 				finally:
 					ctx.restore()
 		finally:
@@ -2380,7 +2378,7 @@ if __debug__ and __name__ == '__main__':
 		def resolve_url(self, rel_url, base_url):
 			return rel_url
 		
-		def emit_warning(self, view, message, url, node):
+		def emit_warning(self, view, message, target):
 			print(message, node.attrib)
 		
 		def is_svg_document(self, document):

@@ -31,7 +31,7 @@ class XFormsFormat:
 				try:
 					self.draw_image(view, child, ctx, box)
 				except NotImplementedError:
-					self.emit_warning(view, f"Unsupported non-XForms element: {child.tag}", child.tag, child)
+					self.emit_warning(view, f"Unsupported non-XForms element: {child.tag}.", child)
 	
 	def poke_image(self, view, document, ctx, box, px, py):
 		if not self.is_xforms_document(document):
@@ -48,7 +48,7 @@ class XFormsFormat:
 					hover_subnodes = self.poke_image(view, child, ctx, box, px, pt)
 					hover_nodes.extend(hover_subnodes)
 				except NotImplementedError:
-					self.emit_warning(view, f"Unsupported non-XForms element: {child.tag}", child.tag, child)
+					self.emit_warning(view, f"Unsupported non-XForms element: {child.tag}.", child)
 		
 		qx, qy = ctx.device_to_user(px, py)
 		if left <= qx <= left + width and top <= qy <= top + height and ctx.in_clip(qx, qy):

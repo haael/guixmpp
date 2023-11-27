@@ -24,7 +24,7 @@ class Connection:
 		self.baseurl = baseurl
 		
 		self.protocol, _, self.host, *path = baseurl.split('/')
-		self.path = '/'.join(path)
+		self.path = '/' + '/'.join(path)
 		
 		if ':' in self.host:
 			self.host, port = self.host.split(':')
@@ -50,14 +50,10 @@ class Connection:
 		raise NotImplementedError
 	
 	def connection_made(self, transport):
-		#print('connection_made', transport)
 		self.__transport = transport
 	
 	def connection_lost(self, exc):
-		#print('connection_lost', exc)
-		
 		del self.__transport
-		
 		if exc:
 			raise exc # TODO: raise proper exception
 	
@@ -65,7 +61,6 @@ class Connection:
 		self.__arrived.set()
 	
 	async def send_data(self, data):
-		#print('send_data')
 		await self.__writing.wait()
 		self.__transport.write(data)
 	
@@ -176,7 +171,7 @@ class Connection1(Connection):
 		super().data_received(data)
 	
 	async def send_request(self, stream, method, path, headers):
-		self.read_buffer = deque()
+		self.__read_buffer = deque()
 		self.__http = h11.Connection(our_role=h11.CLIENT)
 		data = self.__http.send(h11.Request(method=method, target=path, headers=list(headers.items())))
 		await self.send_data(data)
@@ -205,14 +200,14 @@ class Connection1(Connection):
 		if bufsize is not None and bufsize <= 0:
 			raise ValueError("`bufsize` must be > 0")
 		
-		if self.is_eof() and not self.read_buffer:
+		if self.is_eof() and not self.__read_buffer:
 			return bytes()
 		
 		result = []
 		
 		while (bufsize is None) or sum(len(_chunk) for _chunk in result) < bufsize:
 			try:
-				chunk = self.read_buffer.popleft()
+				chunk = self.__read_buffer.popleft()
 			except IndexError:
 				break
 			else:
@@ -224,7 +219,7 @@ class Connection1(Connection):
 						result.append(chunk)
 					else:
 						result.append(chunk[:needed])
-						self.read_buffer.insert(0, chunk[needed:])
+						self.__read_buffer.insert(0, chunk[needed:])
 		
 		if not self.is_eof():
 			while (bufsize is None) or sum(len(_chunk) for _chunk in result) < bufsize:
@@ -243,7 +238,7 @@ class Connection1(Connection):
 							result.append(chunk)
 						else:
 							result.append(chunk[:needed])
-							self.read_buffer.append(chunk[needed:])
+							self.__read_buffer.append(chunk[needed:])
 				elif type(event) is h11.EndOfMessage:
 					self.eof_received()
 					break
@@ -257,18 +252,23 @@ class Connection2(Connection):
 	def __init__(self, *args):
 		super().__init__(*args)
 		self.__locks = {}
-		self.__streams = 0
+		self.__received_length = {}
+		self.__streams = 1
+		self.__events = deque()
 	
 	async def begin_stream(self):
 		stream = self.__streams
-		self.__streams += 1
+		#print('begin_stream', stream)
+		self.__streams += 2
 		lock = self.__locks[stream] = Lock()
+		self.__received_length[stream] = 0
 		await lock.acquire()
 		return stream
 	
 	async def end_stream(self, stream):
+		#print('end_stream', stream)
 		self.__locks[stream].release()
-		del self.__locks[stream]
+		del self.__locks[stream], self.__received_length[stream]
 	
 	def create_ssl_context(self):
 		ctx = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH) # client connection should have purpose=ssl.Purpose.SERVER_AUTH
@@ -277,59 +277,87 @@ class Connection2(Connection):
 	
 	def data_received(self, data):
 		events = self.__http.receive_data(data)
+		#print([type(_event).__name__ + (('/' + str(_event.stream_id)) if hasattr(_event, 'stream_id') else '') for _event in events])
+		#for event in events:
+		#	print(event)
 		self.__events.extend(events)
 		super().data_received(data)
 	
-	async def send_request(self, stream, method, path, headers):
+	async def open(self):
+		await super().open()
+		
 		self.__read_buffer = deque()
 		conn = self.__http = h2.connection.H2Connection()
 		conn.initiate_connection()
 		await self.send_data(conn.data_to_send())
 		
+		acked = False
+		while not acked:
+			for event in list(self.__events):
+				if hasattr(event, 'stream_id'):
+					continue
+				self.__events.remove(event)
+				if not isinstance(event, h2.events.SettingsAcknowledged):
+					continue
+				#print("Settings acknowledged", event, [type(_event).__name__ for _event in self.__events])
+				acked = True
+				break
+			else:
+				await self.wait_for_data()
+	
+	async def send_request(self, stream, method, path, headers):
+		#print('send_request', path)
 		headers = [
 			(':method', method),
 			(':path', path),
 			(':authority', self.host),
 			(':scheme', self.protocol[:-1])
 		]
-		conn.send_headers(1, headers, end_stream=True)
-		await self.send_data(conn.data_to_send())
+		self.__http.send_headers(stream, headers, end_stream=True)
+		await self.send_data(self.__http.data_to_send())
 	
 	async def write(self, stream, data):
 		data = self.__http.send(h2.Data(data=data))
 		await self.send_data(data)
 	
 	async def response(self, stream):
-
-
-
-		data = self.__http.send(h2.EndOfMessage())
-		await self.send_data(data)
-		
-		event = self.__http.next_event()
-		while event is h2.NEED_DATA:
-			await self.wait_for_data()
-			event = self.http.next_event()
-		
-		assert type(event) is h2.Response
+		#print('response', stream)
+		headers = None
+		while headers is None:
+			for event in list(self.__events):
+				if hasattr(event, 'stream_id') and event.stream_id != stream:
+					continue
+				self.__events.remove(event)
+				if not isinstance(event, h2.events.ResponseReceived):
+					continue
+				headers = event.headers
+				break
+			else:
+				await self.wait_for_data()
 		
 		self.start_body_reception()
 		
-		headers = dict((_key.decode('ascii'), _value.decode('ascii')) for (_key, _value) in event.headers)
-		return event.status_code, headers
+		pseudo_header = dict((_key.decode('ascii'), _value.decode('ascii')) for (_key, _value) in event.headers if _key.startswith(b':'))
+		headers = dict((_key.decode('ascii'), _value.decode('ascii')) for (_key, _value) in event.headers if not _key.startswith(b':'))
+		status_code = int(pseudo_header[':status'])
+		#print(pseudo_header, headers)
+
+		#self.__remaining[stream] = int(headers['content-length'])
+
+		return status_code, headers
 	
 	async def read(self, stream, bufsize):
 		if bufsize is not None and bufsize < 0:
 			raise ValueError
 		
-		if self.is_eof() and not self.read_buffer:
+		if self.is_eof() and not self.__read_buffer:
 			return bytes()
 		
 		result = []
 		
 		while (bufsize is None) or sum(len(_chunk) for _chunk in result) < bufsize:
 			try:
-				chunk = self.read_buffer.popleft()
+				chunk = self.__read_buffer.popleft()
 			except IndexError:
 				break
 			else:
@@ -341,29 +369,43 @@ class Connection2(Connection):
 						result.append(chunk)
 					else:
 						result.append(chunk[:needed])
-						self.read_buffer.insert(0, chunk[needed:])
+						self.__read_buffer.insert(0, chunk[needed:])
 		
 		while (not self.is_eof()) and ((bufsize is None) or sum(len(_chunk) for _chunk in result) < bufsize):
-			for event in events:
-				if isinstance(event, h2.events.DataReceived):
-					self.__http.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
-					chunk = event.data
-					
-					if bufsize is None:
-						result.append(chunk)
-					else:
-						needed = bufsize - sum(len(_chunk) for _chunk in result)
-						if len(chunk) <= needed:
-							result.append(chunk)
-						else:
-							result.append(chunk[:needed])
-							self.read_buffer.insert(0, chunk[needed:])
-				
-				elif isinstance(event, h2.events.StreamEnded):
+			for event in list(self.__events):
+				if hasattr(event, 'stream_id') and event.stream_id != stream:
+					continue
+				self.__events.remove(event)
+				if isinstance(event, h2.events.StreamEnded):
 					self.eof_received()
 					break
-			if not self.is_eof():
-				self.send_data(self.__http.data_to_send())
+				if not isinstance(event, h2.events.DataReceived):
+					continue
+				chunk = event.data
+				
+				if bufsize is None:
+					result.append(chunk)
+				else:
+					needed = bufsize - sum(len(_chunk) for _chunk in result)
+					if len(chunk) <= needed:
+						result.append(chunk)
+					else:
+						result.append(chunk[:needed])
+						self.__read_buffer.insert(0, chunk[needed:])
+				
+				#print("stream_ended", event.stream_ended)
+				self.__received_length[stream] += len(chunk)
+				#print("remaining", self.__remaining[stream])
+				
+				#if event.stream_ended is not None:
+				#	self.eof_received()
+				#elif self.__remaining[stream] <= 0:
+				#	self.eof_received()
+				
+				break
+			else:
+				self.__http.acknowledge_received_data(self.__received_length[stream], stream)
+				await self.send_data(self.__http.data_to_send())
 				await self.wait_for_data()
 		
 		return bytes().join(result)
@@ -381,6 +423,8 @@ class Url:
 			return self.path
 		elif self.client.path.endswith('/'):
 			return self.client.path + self.path
+		elif not self.path:
+			return self.client.path
 		else:
 			return self.client.path + '/' + self.path
 	
@@ -550,20 +594,31 @@ class Request:
 
 
 if __debug__ and __name__ == '__main__':
-	from asyncio import run, sleep
+	from asyncio import run, sleep, gather
 	
 	async def main():
+		async with Connection2('https://cdn.svgator.com/images/2023/03/vr-girl.png') as vrgirl:
+			print(await vrgirl.Url().get())
+			print()
+		
 		async with Connection2('https://www.google.com/') as google:
-			print(await google.Url().get())
+			r1 = google.Url().get()
+			r2 = google.Url('sitemap.xml').get()
+			r3 = google.Url('robotz.txt').head()
+			r4 = google.Url('robots.txt').head()
+			
+			d1, d2, d3, d4 = await gather(r1, r2, r3, r4)
+			
+			print(d1)
 			print()
 			
-			print(await google.Url('sitemap.xml').get())
+			print(d2)
 			print()
 			
-			print(await google.Url('robotz.txt').head())
+			print(d3)
 			print()
 			
-			print(await google.Url('robots.txt').head())
+			print(d4)
 			print()
 	
 	run(main())
