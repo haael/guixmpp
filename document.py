@@ -162,17 +162,17 @@ class Model:
 		
 		async with self.__start_downloading:
 			if shurl not in self.__downloading:
-				print("me downloading", shurl)
+				#print("me downloading", shurl)
 				me_downloading = True
 				self.__downloading[shurl] = Event()
 			else:
-				print("other downloading", shurl)
+				#print("other downloading", shurl)
 				me_downloading = False
 		
 		if not me_downloading:
-			print("wait for download", shurl)
+			#print("wait for download", shurl)
 			await self.__downloading[shurl].wait()
-			print("finished waiting for download", shurl)
+			#print("finished waiting for download", shurl)
 			
 			try:
 				return self.get_document(url)
@@ -199,7 +199,7 @@ class Model:
 			
 			finally:
 				async with self.__start_downloading:
-					print("finished downloading", shurl)
+					#print("finished downloading", shurl)
 					self.__downloading[shurl].set()
 					del self.__downloading[shurl]
 		

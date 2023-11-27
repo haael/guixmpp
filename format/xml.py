@@ -117,6 +117,10 @@ class OverlayElement:
 		if not isinstance(tag, str): raise ValueError
 		#if one is None: raise ValueError
 		if two is None: raise ValueError
+		
+		#if isinstance(one, OverlayElement): raise ValueError(f"Can not nest OverlayElement: {one.tag}")	
+		#if isinstance(two, OverlayElement): raise ValueError(f"Can not nest OverlayElement: {two.tag}")	
+		
 		self.__one = one
 		self.__two = two
 		self.__parent = parent
@@ -132,6 +136,7 @@ class OverlayElement:
 	
 	def __eq__(self, other):
 		try:
+			#return self.__one == other.__one and self.__two == other.__two and self.__parent == other.__parent and self.__tag == other.__tag and self.__add_attrib == other.__add_attrib and self.__del_attrib == other.__del_attrib
 			return self.tag == other.tag and self.attrib == other.attrib and self.getparent() == other.getparent()
 		except AttributeError:
 			return NotImplemented
@@ -177,11 +182,16 @@ class OverlayElement:
 		original = self.__two[index]
 		if not isinstance(original.tag, str): # not element
 			return original
-		#print(original, type(original))
 		return self.__class__(self, None, original, original.tag, {}, [])
 	
 	def getroottree(self):
 		return XMLDocument(self.__parent.getroottree().getroot())
+	
+	def orig_one(self):
+		try:
+			return self.__one.orig_one()
+		except AttributeError:
+			return self.__one if (self.__one is not None) else self.__two
 
 
 if __debug__ and __name__ == '__main__':

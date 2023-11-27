@@ -31,6 +31,7 @@ class PointerView:
 			pointed, qx, qy = widget.poke_image(event.x, event.y)
 			
 			if pointed != widget.__pointed:
+				#print("pointed:", [_node.tag.split('}')[-1] for _node in pointed])
 				old_pointed = self.get_pointed(widget)
 				widget.__pointed = pointed
 				new_pointed = self.get_pointed(widget)

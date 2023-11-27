@@ -22,6 +22,7 @@ class DisplayView:
 		self.update(widget)
 	
 	def set_image(self, widget, image):
+		#print("set_image", image)
 		widget.__image = image
 		self.update(widget)
 	

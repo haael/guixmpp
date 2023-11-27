@@ -45,7 +45,7 @@ class XFormsFormat:
 		for child in document:
 			if not child.tag.startswith(f'{{{self.xmlns_xforms}}}'):
 				try:
-					hover_subnodes = self.poke_image(view, child, ctx, box, px, pt)
+					hover_subnodes = self.poke_image(view, child, ctx, box, px, py)
 					hover_nodes.extend(hover_subnodes)
 				except NotImplementedError:
 					self.emit_warning(view, f"Unsupported non-XForms element: {child.tag}.", child)

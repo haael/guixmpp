@@ -103,15 +103,15 @@ class DOMWidget(Gtk.DrawingArea):
 	def draw_image(self, model):
 		"Draw the currently opened image to a Cairo surface. Returns the rendered surface."
 		
-		widget = self
-		viewport_width = model.get_viewport_width(widget)
-		viewport_height = model.get_viewport_height(widget)
+		viewport_width = model.get_viewport_width(self)
+		viewport_height = model.get_viewport_height(self)
 		
 		surface = cairo.RecordingSurface(cairo.Content.COLOR_ALPHA, (0, 0, viewport_width, viewport_height))
 		#surface = cairo.ImageSurface(cairo.Format.ARGB32, viewport_width, viewport_height)
 		context = cairo.Context(surface)
 		
 		image = self.model.get_image(self)
+		print("draw_image", image)
 		if (image is not None) and (viewport_width > 0) and (viewport_height > 0):
 			try:
 				w, h = self.model.image_dimensions(self, image)
@@ -121,10 +121,10 @@ class DOMWidget(Gtk.DrawingArea):
 				else:
 					bw = viewport_width
 					bh = (h / w) * viewport_width
+				
+				model.draw_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh))
 			except NotImplementedError:
 				pass # draw placeholder for non-image formats
-			else:
-				model.draw_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh))
 		
 		#print("draw image", image)
 		return surface
@@ -138,22 +138,24 @@ class DOMWidget(Gtk.DrawingArea):
 		surface = cairo.RecordingSurface(cairo.Content.COLOR_ALPHA, (0, 0, viewport_width, viewport_height))
 		context = cairo.Context(surface)
 		
+		qx, qy = px, py
+		nop = []
+		
 		image = self.model.get_image(self)
 		if (image is not None) and (viewport_width > 0) and (viewport_height > 0):			
-			w, h = self.model.image_dimensions(self, image)
-			if w / h <= viewport_width / viewport_height:
-				bw = (w / h) * viewport_height
-				bh = viewport_height
-			else:
-				bw = viewport_width
-				bh = (h / w) * viewport_width
-			
-			qx, qy = context.device_to_user(px, py)
-			nop = self.model.poke_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh), px, py)
-		
-		else:
-			qx, qy = px, py
-			nop = []
+			try:
+				w, h = self.model.image_dimensions(self, image)
+				if w / h <= viewport_width / viewport_height:
+					bw = (w / h) * viewport_height
+					bh = viewport_height
+				else:
+					bw = viewport_width
+					bh = (h / w) * viewport_width
+				
+				qx, qy = context.device_to_user(px, py)
+				nop = self.model.poke_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh), px, py)
+			except NotImplementedError:
+				pass
 		
 		surface.finish()
 		return nop, qx, qy
@@ -230,7 +232,7 @@ if __debug__ and __name__ == '__main__':
 		widget.model.font_dir = await Path('~/.cache/guixmpp-fonts').expanduser()
 		await widget.model.font_dir.mkdir(parents=True, exist_ok=True)
 		
-		async for image in (Path.cwd() / 'examples/animations').iterdir():
+		async for image in (Path.cwd() / 'examples/gfx').iterdir():
 			images.append(image.as_uri())
 		
 		#images.sort(key=(lambda x: f'{len(x):03d}' + x.lower()))
@@ -251,6 +253,6 @@ if __debug__ and __name__ == '__main__':
 		window.show_all()
 		await loop_run()
 		window.hide()
-	'''
+	#'''
 	
 	run(main())

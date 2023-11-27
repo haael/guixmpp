@@ -456,6 +456,19 @@ class SVGImage:
 		if pseudoclass == 'hover' and hasattr(self, 'get_pointed'):
 			pointed = self.get_pointed(view)
 			if pointed is not None:
+				#if self.are_nodes_ordered(node, pointed):
+				#	a = []
+				#	p = pointed
+				#	if isinstance(p, OverlayElement):
+				#		a.append('OOO')
+				#	while p is not None:
+				#		
+				#		n = 0 if p.getparent() is None else p.getparent().index(p.orig_one()) if hasattr(p, 'orig_one') else p.getparent().index(p)
+				#		#n = 0
+				#		a.insert(0, p.tag.split('}')[-1] + ('[' + str(n) + ']') + (''.join('.' + _class for _class in p.attrib['class'].split(' ')) if 'class' in p.attrib else '') + ('#' + p.attrib['id'] if 'id' in p.attrib else '') + ('*' if (p == node) else ''))
+				#		p = p.getparent()
+				#	print("hover:", a)
+				#print(node.tag, node.attrib, pointed.tag, pointed.attrib, self.are_nodes_ordered(node, pointed))
 				return self.are_nodes_ordered(node, pointed)
 		#if pseudoclass in ['hover', 'active', 'focus', 'focus-visible', 'focus-within', 'default', 'fullscreen']:
 		#	return node in view.hover_elements

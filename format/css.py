@@ -37,6 +37,14 @@ class CSSFormat:
 			)
 		else:
 			return NotImplemented
+	
+	#def image_dimensions(self, view, document):
+	#	"Return the SVG dimensions, that might depend on the view state."
+	#	
+	#	if not self.is_css_document(document):
+	#		return NotImplemented
+	#	
+	#	return self.get_viewport_width(view), self.get_viewport_height(view)
 
 
 class StyleNode:
