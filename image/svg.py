@@ -2392,7 +2392,7 @@ if __debug__ and __name__ == '__main__':
 			return rel_url
 		
 		def emit_warning(self, view, message, target):
-			print(message, node.attrib)
+			print(message)
 		
 		def is_svg_document(self, document):
 			return hasattr(document, 'getroot')

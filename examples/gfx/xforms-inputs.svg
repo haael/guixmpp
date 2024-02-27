@@ -1,18 +1,71 @@
 <?xml version="1.0"?>
-<svg width="640" height="480" xmlns="http://www.w3.org/2000/svg" xmlns:xforms="http://www.w3.org/2002/xforms">
- <!-- Created with SVG-edit - https://github.com/SVG-Edit/svgedit-->
-
+<svg width="640" height="480" xmlns="http://www.w3.org/2000/svg" xmlns:xforms="http://www.w3.org/2002/xforms" xmlns:jc="http://jabber.org/protocol/commands" xmlns:jd="jabber:x:data">
  <xforms:model>
   <xforms:instance>
-   <root xmlns="">
-    <a/>
-    <b/>
-   </root>
+   <command xmlns="http://jabber.org/protocol/commands" node="create" sessionid="create:20040408T0128Z" status="executing">
+    <x xmlns="jabber:x:data" type="form">
+      <title>Bot Configuration</title>
+      <instructions>Fill out this form to configure your new bot!</instructions>
+      <field type="hidden" var="FORM_TYPE">
+        <value>jabber:bot</value>
+      </field>
+      <field type="fixed"><value>Section 1: Bot Info</value></field>
+      <field type="text-single" label="The name of your bot" var="botname"/>
+      <field type="text-multi" label="Helpful description of your bot" var="description"/>
+      <field type="boolean" label="Public bot?" var="public">
+        <required/>
+      </field>
+      <field type="text-private" label="Password for special access" var="password"/>
+      <field type="fixed"><value>Section 2: Features</value></field>
+      <field type="list-multi" label="What features will the bot support?" var="features">
+        <option label="Contests"><value>contests</value></option>
+        <option label="News"><value>news</value></option>
+        <option label="Polls"><value>polls</value></option>
+        <option label="Reminders"><value>reminders</value></option>
+        <option label="Search"><value>search</value></option>
+        <value>news</value>
+        <value>search</value>
+      </field>
+      <field type="fixed"><value>Section 3: Subscriber List</value></field>
+      <field type="list-single" label="Maximum number of subscribers" var="maxsubs">
+        <value>20</value>
+        <option label="10"><value>10</value></option>
+        <option label="20"><value>20</value></option>
+        <option label="30"><value>30</value></option>
+        <option label="50"><value>50</value></option>
+        <option label="100"><value>100</value></option>
+        <option label="None"><value>none</value></option>
+      </field>
+      <field type="fixed"><value>Section 4: Invitations</value></field>
+      <field type="jid-multi" label="People to invite" var="invitelist">
+        <desc>Tell all your friends about your new bot!</desc>
+      </field>
+    </x>
+   </command>
   </xforms:instance>
+  <xforms:submission id="initial_fetch" method="get" resource="jid:example.net/some/resource" includenamespaceprefixes=""/>
   <xforms:submission id="submit1" method="set" resource="jid:example.net/some/resource" includenamespaceprefixes=""/>
  </xforms:model>
 
- <g class="layer">
+ <text x="10" y="20">
+  .
+  <smilText><xforms:value value="context()"/></smilText>
+  <set attribute="y"><xforms:value value="68.5 + 100 * index(.)"/></set>
+ </text>
+
+ <rect x="10" y="10" width="300" height="20" fill="none" stroke="black" stroke-width="1.5"/>
+
+ <xforms:output ref="jc:command/jd:x/jd:title">
+  <xforms:label>Title</xforms:label>
+  <text fill="#000000" font-family="Sans-serif" font-size="16"><smilText><xforms:value value="context()"/></smilText></text>
+ </xforms:output>
+
+ <xforms:repeat ref="jc:command/jd:x/jd:*">
+ </xforms:repeat>
+
+
+
+ <!--g class="layer">
   <title>Layer 1</title>
 
   <rect fill="#00ffff" font-size="16" height="52" id="svg_10" stroke="#000000" width="294" x="51.5" y="143.5"/>
@@ -69,5 +122,5 @@
    <polygon cx="559" cy="168" fill="#00ffff" id="svg_37" orient="point" point="3" points="602.4637809026226,231.52345074791128 574.9087802402264,252.12097030774885 556.9732438587471,280.9029497818774 552.897851766933,248.07418888728898 536.430918258553,219.38306792482763 568.0613448172426,231.61436231971447 602.4637809026226,231.52345074791128 574.9087802402264,252.12097030774885 " r="20.92" r2="6.97" radialshift="0" shape="star" starRadiusMultiplier="3" stroke="#000000" stroke-width="NaN"/>
 
   </xforms:input>
- </g>
+ </g-->
 </svg>

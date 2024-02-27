@@ -223,7 +223,7 @@ if __debug__ and __name__ == '__main__':
 	images = []
 	image_index = 0
 	
-	#'''
+	'''
 	async def main():
 		"Display images from local directory, switch using left-right cursor key."
 		
@@ -244,7 +244,7 @@ if __debug__ and __name__ == '__main__':
 		window.hide()
 	#'''
 	
-	'''
+	#'''
 	async def main():
 		"Display image from http url."
 		for n in range(219):

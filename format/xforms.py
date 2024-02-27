@@ -12,6 +12,8 @@ class XFormsFormat:
 	xmlns_xforms = 'http://www.w3.org/2002/xforms'
 	
 	def is_xforms_document(self, document):
+		"A 'document' is a single XML element."
+		
 		try:
 			return document.tag.startswith('{' + self.xmlns_xforms + '}')
 		except AttributeError:
@@ -25,6 +27,8 @@ class XFormsFormat:
 		
 		if document.tag == f'{{{self.xmlns_xforms}}}model':
 			return
+		
+		print(document.tag)
 		
 		for child in document:
 			if not child.tag.startswith(f'{{{self.xmlns_xforms}}}'):
@@ -50,6 +54,7 @@ class XFormsFormat:
 				except NotImplementedError:
 					self.emit_warning(view, f"Unsupported non-XForms element: {child.tag}.", child)
 		
+		left, top, width, height = box
 		qx, qy = ctx.device_to_user(px, py)
 		if left <= qx <= left + width and top <= qy <= top + height and ctx.in_clip(qx, qy):
 			hover_nodes.insert(0, document)

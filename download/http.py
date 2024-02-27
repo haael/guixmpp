@@ -36,7 +36,7 @@ if _library == '':
 				if host in self.__client:
 					connection = self.__client[host]
 				else:
-					connection = self.__client[host] = Connection1(f'https://{host}')
+					connection = self.__client[host] = Connection2(f'https://{host}')
 					await connection.open()
 				
 				async with connection.Url(path).get() as request:

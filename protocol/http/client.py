@@ -18,7 +18,7 @@ class HTTPError(Exception):
 
 
 class Connection:
-	"HTTP/1.1 connection"
+	"Base class"
 	
 	def __init__(self, baseurl):
 		self.baseurl = baseurl
@@ -255,6 +255,8 @@ class Connection2(Connection):
 		self.__received_length = {}
 		self.__streams = 1
 		self.__events = deque()
+		#self.__end_streams = 1
+		self.__end_received = {}
 	
 	async def begin_stream(self):
 		stream = self.__streams
@@ -322,6 +324,7 @@ class Connection2(Connection):
 	
 	async def response(self, stream):
 		#print('response', stream)
+		self.__end_received[stream] = False
 		headers = None
 		while headers is None:
 			for event in list(self.__events):
@@ -340,17 +343,17 @@ class Connection2(Connection):
 		pseudo_header = dict((_key.decode('ascii'), _value.decode('ascii')) for (_key, _value) in event.headers if _key.startswith(b':'))
 		headers = dict((_key.decode('ascii'), _value.decode('ascii')) for (_key, _value) in event.headers if not _key.startswith(b':'))
 		status_code = int(pseudo_header[':status'])
-		#print(pseudo_header, headers)
-
+		#print("", pseudo_header, headers)
+		
 		#self.__remaining[stream] = int(headers['content-length'])
-
+		
 		return status_code, headers
 	
 	async def read(self, stream, bufsize):
 		if bufsize is not None and bufsize < 0:
 			raise ValueError
 		
-		if self.is_eof() and not self.__read_buffer:
+		if self.__end_received[stream] and not self.__read_buffer:
 			return bytes()
 		
 		result = []
@@ -371,17 +374,24 @@ class Connection2(Connection):
 						result.append(chunk[:needed])
 						self.__read_buffer.insert(0, chunk[needed:])
 		
-		while (not self.is_eof()) and ((bufsize is None) or sum(len(_chunk) for _chunk in result) < bufsize):
+		#end_received = False
+		while (not self.__end_received[stream]) and ((bufsize is None) or sum(len(_chunk) for _chunk in result) < bufsize):
 			for event in list(self.__events):
 				if hasattr(event, 'stream_id') and event.stream_id != stream:
 					continue
+				#print(event)
 				self.__events.remove(event)
 				if isinstance(event, h2.events.StreamEnded):
-					self.eof_received()
+					#self.__end_streams += 2
+					self.__end_received[stream] = True
+					#if self.__streams == self.__end_streams:
+					#	self.eof_received()
 					break
 				if not isinstance(event, h2.events.DataReceived):
 					continue
 				chunk = event.data
+				if not len(chunk):
+					continue
 				
 				if bufsize is None:
 					result.append(chunk)
