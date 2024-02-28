@@ -18,7 +18,7 @@ from collections import namedtuple, defaultdict
 
 from domevents import *
 
-from document import Model
+from document import Model, DocumentNotFound
 
 from format.null import NullFormat
 from format.plain import PlainFormat
@@ -94,13 +94,19 @@ class DOMWidget(Gtk.DrawingArea):
 		"Open image identified by the provided url. No image may be opened currently."
 		await self.model.open_document(self, url)
 	
-	def close_document(self):
+	async def close_document(self):
 		"Close current image, reverting to default state."
-		self.model.close_document(self)
+		await self.model.close_document(self)
+	
+	#def confirm_closed(self):
+	#	self.model.confirm_closed()
 	
 	def set_image(self, image):
 		"Set current image to the document provided."
 		self.model.set_image(self, image)
+	
+	def get_image(self):
+		self.model.get_image(self)
 	
 	def draw_image(self, model):
 		"Draw the currently opened image to a Cairo surface. Returns the rendered surface."
@@ -113,7 +119,7 @@ class DOMWidget(Gtk.DrawingArea):
 		context = cairo.Context(surface)
 		
 		image = self.model.get_image(self)
-		print("draw_image", image)
+		#print("draw_image", image)
 		if (image is not None) and (viewport_width > 0) and (viewport_height > 0):
 			try:
 				w, h = self.model.image_dimensions(self, image)
@@ -165,7 +171,7 @@ class DOMWidget(Gtk.DrawingArea):
 
 if __debug__ and __name__ == '__main__':
 	import signal
-	from asyncio import run
+	from asyncio import run, Condition
 	from aiopath import AsyncPath as Path
 	
 	from mainloop import *
@@ -180,6 +186,8 @@ if __debug__ and __name__ == '__main__':
 	window.connect('destroy', lambda window: loop_quit())
 	signal.signal(signal.SIGTERM, lambda signum, frame: loop_quit())
 	
+	doc_cond = Condition()
+	
 	@asynchandler
 	async def dom_event(widget, event):
 		global images, image_index
@@ -189,36 +197,51 @@ if __debug__ and __name__ == '__main__':
 		
 		if event.type_ == 'keyup':
 			if (event.target == None) and (event.code == 'Escape'):
-				widget.close_document()
-				window.close()
+				async with doc_cond:
+					await widget.close_document()
+					await doc_cond.wait_for(lambda: widget.get_image() is None)
+					window.close()
 			elif (event.target == None) and (event.code == 'Left') and images:
-				image_index -= 1
-				image_index %= len(images)
-				widget.close_document()
-				await widget.open_document(images[image_index])
+				async with doc_cond:
+					image_index -= 1
+					image_index %= len(images)
+					await widget.close_document()
+					await doc_cond.wait_for(lambda: widget.get_image() is None)
+					await widget.open_document(images[image_index])
 			elif (event.target == None) and (event.code == 'Right') and images:
-				image_index += 1
-				image_index %= len(images)
-				widget.close_document()
-				await widget.open_document(images[image_index])
-		
-		elif event.type_ == 'load':
-			#print("load:", event.detail, event.target)
-			pass
+				async with doc_cond:
+					image_index += 1
+					image_index %= len(images)
+					await widget.close_document()
+					await doc_cond.wait_for(lambda: widget.get_image() is None)
+					await widget.open_document(images[image_index])
 		
 		elif event.type_ == 'opening':
-			widget.main_url = event.detail
-			widget.set_image(None)
+			async with doc_cond:
+				widget.main_url = event.detail
+				doc_cond.notify_all()
 		
 		elif event.type_ == 'open':
-			if event.detail == widget.main_url:
-				widget.set_image(event.target)
-			else:
-				widget.set_image(widget.image)
+			async with doc_cond:
+				await doc_cond.wait_for(lambda: widget.main_url is not None)
+				try:
+					if event.detail == widget.main_url:
+						widget.set_image(event.target)
+					else:
+						widget.set_image(widget.image)
+				except DocumentNotFound:
+					pass
+		
+		elif event.type_ == 'closing':
+			async with doc_cond:
+				widget.main_url = None
+				doc_cond.notify_all()
 		
 		elif event.type_ == 'close':
-			widget.main_url = None
-			widget.set_image(None)
+			async with doc_cond:
+				await doc_cond.wait_for(lambda: widget.main_url is None)
+				widget.set_image(None)
+				doc_cond.notify_all()
 	
 	widget.connect('dom_event', dom_event)
 	

@@ -337,7 +337,7 @@ class SVGImage:
 		except AttributeError:
 			pass
 		
-		em_size = 12
+		em_size = 12 # FIXME
 		
 		if any(node.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__shape_tags):
 			self.__render_shape(view, document, ctx, box, node, em_size, None)

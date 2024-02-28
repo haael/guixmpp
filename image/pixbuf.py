@@ -130,6 +130,8 @@ if __debug__ and __name__ == '__main__':
 				mime_type = 'image/jpeg'
 			elif filepath.suffix == '.svg':
 				mime_type = 'image/svg'
+			elif filepath.suffix == '.bmp':
+				mime_type = 'image/bmp'
 			else:
 				continue
 			document = model.create_document(filepath.read_bytes(), mime_type)

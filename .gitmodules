@@ -1,6 +1,3 @@
 [submodule "python_fontconfig"]
 	path = python_fontconfig
 	url = https://github.com/ldo/python_fontconfig.git
-[submodule "litehtmlpy"]
-	path = litehtmlpy
-	url = https://github.com/m32/litehtmlpy.git

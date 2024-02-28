@@ -32,6 +32,7 @@ class Model:
 		self.emitted_warnings = set()
 		self.__downloading = {}
 		self.__start_downloading = Lock()
+		#self.__closed = Event()
 		self.__chain_impl('__init__', args, kwargs)
 	
 	async def open_document(self, view, url):
@@ -47,17 +48,21 @@ class Model:
 		view.emit('dom_event', CustomEvent('open', target=view.__document, view=view, detail=url))
 		return view.__document
 	
-	def close_document(self, view):
+	async def close_document(self, view):
 		if not (hasattr(view, '_Model__document') and view.__document is not None):
 			raise ValueError("No document is open.")
 		
 		url = view.__location
 		view.emit('dom_event', CustomEvent('closing', target=view.__document, view=view, detail=url))
 		self.__unload_document(view, url)
+		#await self.__closed.wait()
 		view.emit('dom_event', CustomEvent('close', target=None, view=view, detail=url))
 		view.__location = None
 		view.__document = None
 		self.documents.clear() # TODO
+	
+	#def confirm_closed(self):
+	#	self.__closed.set()
 	
 	def current_location(self, view):
 		try:
@@ -268,7 +273,10 @@ class Model:
 		view.emit('dom_event', UIEvent('unload', target=document, view=view, detail=url))
 	
 	def get_document_url(self, document):
-		return [_url for (_url, _document) in self.documents.items() if _document == document][0] # TODO: raise proper error
+		try:
+			return [_url for (_url, _document) in self.documents.items() if _document == document][0] # TODO: raise proper error
+		except IndexError:
+			raise DocumentNotFound("Could not find url for nonexistent document.")
 	
 	def get_document_fragment(self, document, href):
 		return self.__find_impl('get_document_fragment', [document, href])
