@@ -27,9 +27,9 @@ from format.css import CSSFormat
 from format.xforms import XFormsFormat
 from format.font import FontFormat
 
-from image.svg import SVGImage
-from image.png import PNGImage
-from image.pixbuf import PixbufImage
+from render.svg import SVGRender
+from render.png import PNGRender
+from render.pixbuf import PixbufRender
 
 from download.data import DataDownload
 from download.file import FileDownload
@@ -73,7 +73,7 @@ class DOMWidget(Gtk.DrawingArea):
 		else:
 			features.append(ChromeDownload)
 		
-		self.model = Model.features('<local>.DOMWidgetModel', DisplayView, SVGImage, PNGImage, PixbufImage, FontFormat, *features, XMLFormat, CSSFormat, PlainFormat, NullFormat, DataDownload)()
+		self.model = Model.features('<local>.DOMWidgetModel', DisplayView, SVGRender, PNGRender, PixbufRender, FontFormat, *features, XMLFormat, CSSFormat, PlainFormat, NullFormat, DataDownload)()
 		self.main_url = None
 		
 		self.connect('draw', self.model.draw)

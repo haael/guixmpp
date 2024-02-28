@@ -2,7 +2,7 @@
 #-*- coding:utf-8 -*-
 
 
-__all__ = 'PNGImage',
+__all__ = 'PNGRender',
 
 
 import cairo
@@ -10,7 +10,7 @@ from io import BytesIO
 from collections import defaultdict
 
 
-class PNGImage:
+class PNGRender:
 	"Supports creating and rendering PNG images, using Cairo only."
 	
 	def create_document(self, data, mime_type):
@@ -78,7 +78,7 @@ if __debug__ and __name__ == '__main__':
 	
 	print("png image")	
 	
-	model = PNGImage()
+	model = PNGRender()
 	
 	for example in Path('examples').iterdir():
 		if not example.is_dir(): continue

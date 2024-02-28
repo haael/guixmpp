@@ -2,7 +2,7 @@
 #-*- coding:utf-8 -*-
 
 
-__all__ = 'PixbufImage',
+__all__ = 'PixbufRender',
 
 
 import gi
@@ -13,7 +13,7 @@ from gi.repository import GdkPixbuf, GLib, Gdk
 from collections import defaultdict
 
 
-class PixbufImage:
+class PixbufRender:
 	"Supports many image formats through GdkPixbuf library."
 	
 	def create_document(self, data, mime_type):
@@ -119,7 +119,7 @@ if __debug__ and __name__ == '__main__':
 	
 	print("pixbuf image")
 	
-	model = PixbufImage()
+	model = PixbufRender()
 	
 	for example in Path('examples').iterdir():
 		if not example.is_dir(): continue

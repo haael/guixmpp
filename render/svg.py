@@ -2,7 +2,7 @@
 #-*- coding:utf-8 -*-
 
 
-__all__ = 'SVGImage',
+__all__ = 'SVGRender',
 
 
 if __name__ == '__main__':
@@ -41,7 +41,7 @@ class NotANumber(BaseException):
 		self.original = original
 
 
-class SVGImage:
+class SVGRender:
 	xmlns_xml = 'http://www.w3.org/XML/1998/namespace'
 	xmlns_svg = 'http://www.w3.org/2000/svg'
 	xmlns_xlink = 'http://www.w3.org/1999/xlink'
@@ -2365,10 +2365,10 @@ if __debug__ and __name__ == '__main__':
 			if self.print_out: return lambda *args: print(self.__name + '.' + attr + str(args))
 			return lambda *args: None
 	
-	class SVGRenderModel(SVGImage, CSSFormat, XMLFormat, DataDownload, NullFormat):
+	class SVGRenderModel(SVGRender, CSSFormat, XMLFormat, DataDownload, NullFormat):
 		def scan_document_links(self, document):
-			if SVGImage.is_svg_document(self, document):
-				return SVGImage.scan_document_links(self, document)
+			if SVGRender.is_svg_document(self, document):
+				return SVGRender.scan_document_links(self, document)
 			elif CSSFormat.is_css_document(self, document):
 				return CSSFormat.scan_document_links(self, document)
 			elif XMLFormat.is_xml_document(self, document):
@@ -2384,7 +2384,7 @@ if __debug__ and __name__ == '__main__':
 			elif mime_type == 'text/css':
 				return CSSFormat.create_document(self, data, mime_type)
 			elif mime_type == 'image/svg':
-				return SVGImage.create_document(self, data, mime_type)
+				return SVGRender.create_document(self, data, mime_type)
 			else:
 				raise NotImplementedError("Could not create unsupported document type.")
 		

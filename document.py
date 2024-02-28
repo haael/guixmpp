@@ -359,9 +359,9 @@ if __debug__ and __name__ == '__main__':
 	from format.null import NullFormat
 	from format.font import FontFormat
 	
-	from image.svg import SVGImage
-	from image.png import PNGImage
-	from image.pixbuf import PixbufImage
+	from render.svg import SVGRender
+	from render.png import PNGRender
+	from render.pixbuf import PixbufRender
 	
 	from download.data import DataDownload
 	from download.file import FileDownload
@@ -412,7 +412,7 @@ if __debug__ and __name__ == '__main__':
 	
 	async def test_main():
 		view = PseudoView()
-		TestModel = Model.features('TestModel', DisplayView, SVGImage, CSSFormat, PNGImage, PixbufImage, FontFormat, DataDownload, FileDownload, ChromeDownload, XMLFormat, PlainFormat, NullFormat)
+		TestModel = Model.features('TestModel', DisplayView, SVGRender, CSSFormat, PNGRender, PixbufRender, FontFormat, DataDownload, FileDownload, ChromeDownload, XMLFormat, PlainFormat, NullFormat)
 		model = TestModel()
 		model.set_view(view)
 		async for filepath in (Path.cwd() / 'examples/gfx').iterdir():
