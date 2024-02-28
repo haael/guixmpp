@@ -137,7 +137,7 @@ class Connection:
 	
 	async def read(self, stream, bufsize):
 		raise NotImplementedError
-		
+	
 	async def __aenter__(self):
 		await self.open()
 		return self

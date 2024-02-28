@@ -27,11 +27,12 @@ class Model:
 	def features(name, *classes):
 		return type(name, (Model,) + classes, {})
 	
-	def __init__(self):
+	def __init__(self, *args, **kwargs):
 		self.documents = {}
 		self.emitted_warnings = set()
 		self.__downloading = {}
 		self.__start_downloading = Lock()
+		self.__chain_impl('__init__', args, kwargs)
 	
 	async def open_document(self, view, url):
 		if hasattr(view, '_Model__document') and view.__document is not None:
@@ -88,6 +89,8 @@ class Model:
 			return rel_url
 	
 	def __find_impl(self, method_name, args, kwargs={}):
+		"Call the first method from any of subclasses, in order of their appearance."
+		
 		for cls in self.__class__.mro():
 			if issubclass(cls, Model):
 				continue
@@ -104,6 +107,8 @@ class Model:
 			raise NotImplementedError(f"Could not find implementation for method {method_name}. Arguments: {args}")
 	
 	async def __find_impl_async(self, method_name, args, kwargs={}):
+		"Call the first async method from any of subclasses, in order of their appearance."
+		
 		for cls in self.__class__.mro():
 			if issubclass(cls, Model):
 				continue
@@ -120,6 +125,8 @@ class Model:
 			raise NotImplementedError(f"Could not find implementation for method {method_name}. Arguments: {args}")
 	
 	def __chain_impl(self, method_name, args, kwargs={}):
+		"Call all method from all of subclasses, in order of their appearance."
+		
 		for cls in self.__class__.mro():
 			if issubclass(cls, Model):
 				continue
@@ -132,6 +139,8 @@ class Model:
 			method(self, *args, **kwargs)
 	
 	async def __chain_impl_async(self, method_name, args, kwargs={}):
+		"Call all async method from all of subclasses, in parallel."
+		
 		gens = []
 		
 		for cls in self.__class__.mro():

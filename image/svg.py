@@ -2350,15 +2350,15 @@ if __debug__ and __name__ == '__main__':
 			return 0, 0, 1, 1
 		
 		def text_extents(self, txt):
-			if self.print_out: print(self.__name + f'.text_extents("{txt}")')
+			if self.print_out: print(f'{self.__name}.text_extents("{txt}")')
 			return cairo.Rectangle(0, 0, len(txt), 1)
 		
 		def set_dash(self, dashes, offset):
-			if self.print_out: print(self.__name + '.set_dash(', repr(dashes), ',', repr(offset), ')')
+			if self.print_out: print(f'{self.__name}.set_dash({repr(dashes)}, {repr(offset)})')
 			pass
 		
 		def device_to_user(self, x, y):
-			if self.print_out: print(self.__name + f'.device_to_user("{x}, {y}")')
+			if self.print_out: print(f'{self.__name}.device_to_user({x}, {y})')
 			return x, y
 		
 		def __getattr__(self, attr):

@@ -44,6 +44,8 @@ from view.pointer import PointerView
 class DOMWidget(Gtk.DrawingArea):
 	"Widget implementing Document Object Model."
 	
+	__gtype_name__ = 'DOMWidget'
+	
 	__gsignals__ = {
 		'dom_event': (GObject.SignalFlags.RUN_FIRST, GObject.TYPE_NONE, (GObject.TYPE_PYOBJECT,))
 	}
@@ -223,7 +225,7 @@ if __debug__ and __name__ == '__main__':
 	images = []
 	image_index = 0
 	
-	'''
+	#'''
 	async def main():
 		"Display images from local directory, switch using left-right cursor key."
 		
@@ -233,7 +235,8 @@ if __debug__ and __name__ == '__main__':
 		await widget.model.font_dir.mkdir(parents=True, exist_ok=True)
 		
 		async for image in (Path.cwd() / 'examples/gfx').iterdir():
-			images.append(image.as_uri())
+			if image.suffix not in ('.txt', '.css', '.xml', '.svg_'):
+				images.append(image.as_uri())
 		
 		#images.sort(key=(lambda x: f'{len(x):03d}' + x.lower()))
 		images.sort(key=(lambda x: x.lower()))
@@ -244,7 +247,7 @@ if __debug__ and __name__ == '__main__':
 		window.hide()
 	#'''
 	
-	#'''
+	'''
 	async def main():
 		"Display image from http url."
 		for n in range(219):

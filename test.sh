@@ -13,6 +13,7 @@ format/xml.py     # xml tree document model
 format/css.py     # css syntax tree document model
 format/xforms.py  # xforms
 format/font.py    # fonts
+format/html.py    # html (litehtml)
 
 image/svg.py      # svg parser
 image/png.py      # png reader (cairo)
