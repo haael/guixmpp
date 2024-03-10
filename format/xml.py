@@ -12,15 +12,19 @@ if __name__ == '__main__':
 
 from io import BytesIO
 from lxml.etree import _ElementTree, fromstring, tostring
+from lxml.html import document_fromstring
 
 
 class XMLFormat:
-	#xmlns_xml = 'http://www.w3.org/XML/1998/namespace'
-	#xmlns_xlink = 'http://www.w3.org/1999/xlink'
+	xmlns_xml = 'http://www.w3.org/XML/1998/namespace'
+	xmlns_xlink = 'http://www.w3.org/1999/xlink'
 	
 	def create_document(self, data:bytes, mime:str):
 		if mime == 'text/xml' or mime == 'application/xml' or mime.endswith('+xml'):
 			document = XMLDocument(fromstring(data))
+			return document
+		elif mime == 'text/x-html-tag-soup':
+			document = XMLDocument(document_fromstring(data))
 			return document
 		else:
 			return NotImplemented

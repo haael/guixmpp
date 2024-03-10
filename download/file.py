@@ -8,10 +8,6 @@ __all__ = 'FileDownload',
 from aiopath import AsyncPath as Path
 import mimetypes
 from urllib.parse import unquote
-try:
-	from .utils import DownloadError
-except ImportError:
-	from utils import DownloadError
 
 
 class FileDownload:
@@ -23,23 +19,18 @@ class FileDownload:
 		pass
 	
 	async def download_document(self, url):
+		if not url.startswith('file:'):
+			return NotImplemented
+		
 		if not mimetypes.inited:
 			raise RuntimeError("Run `mimetypes.init()` first.")
 		
-		if url.startswith('file:'):
-			#print("open file", url)
-			path = Path(unquote(url[5:]))
-			mime_type, encoding = mimetypes.guess_type(str(path))
-			if not mime_type:
-				mime_type = 'application/octet-stream'
-			
-			try:
-				return await path.read_bytes(), mime_type
-			except IOError as error:
-				raise DownloadError(f"Could not open file at `{url}`.") from error
+		path = Path(unquote(url[5:]))
+		mime_type, encoding = mimetypes.guess_type(str(path))
+		if not mime_type:
+			mime_type = 'application/octet-stream'
 		
-		else:
-			return NotImplemented
+		return await path.read_bytes(), mime_type
 
 
 if __debug__ and __name__ == '__main__':
@@ -68,6 +59,8 @@ if __debug__ and __name__ == '__main__':
 				assert mime_type == 'image/png', mime_type
 			elif filepath.suffix == '.jpeg':
 				assert mime_type == 'image/jpeg', mime_type
+			elif filepath.suffix == '.bmp':
+				assert mime_type == 'image/bmp', mime_type
 			elif filepath.suffix == '.txt':
 				assert mime_type == 'text/plain', mime_type
 				if filepath.name == 'test.txt':

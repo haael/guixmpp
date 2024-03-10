@@ -18,7 +18,166 @@ from lxml.etree import tostring
 from format.xml import XMLDocument
 
 
+def parse_float(f): # TODO: move to utils
+	if f is None:
+		return None
+	elif f == 'null':
+		return 0
+	else:
+		return float(f)
+
+
 class CSSFormat:
+	web_colors = {
+		'aliceblue': '#F0F8FF',
+		'antiquewhite': '#FAEBD7',
+		'aqua': '#00FFFF',
+		'aquamarine': '#7FFFD4',
+		'azure': '#F0FFFF',
+		'beige': '#F5F5DC',
+		'bisque': '#FFE4C4',
+		'black': '#000000',
+		'blanchedalmond': '#FFEBCD',
+		'blue': '#0000FF',
+		'blueviolet': '#8A2BE2',
+		'brown': '#A52A2A',
+		'burlywood': '#DEB887',
+		'cadetblue': '#5F9EA0',
+		'chartreuse': '#7FFF00',
+		'chocolate': '#D2691E',
+		'coral': '#FF7F50',
+		'cornflowerblue': '#6495ED',
+		'cornsilk': '#FFF8DC',
+		'crimson': '#DC143C',
+		'cyan': '#00FFFF',
+		'darkblue': '#00008B',
+		'darkcyan': '#008B8B',
+		'darkgoldenrod': '#B8860B',
+		'darkgray': '#A9A9A9',
+		'darkgreen': '#006400',
+		'darkgrey': '#A9A9A9',
+		'darkkhaki': '#BDB76B',
+		'darkmagenta': '#8B008B',
+		'darkolivegreen': '#556B2F',
+		'darkorange': '#FF8C00',
+		'darkorchid': '#9932CC',
+		'darkred': '#8B0000',
+		'darksalmon': '#E9967A',
+		'darkseagreen': '#8FBC8F',
+		'darkslateblue': '#483D8B',
+		'darkslategray': '#2F4F4F',
+		'darkslategrey': '#2F4F4F',
+		'darkturquoise': '#00CED1',
+		'darkviolet': '#9400D3',
+		'deeppink': '#FF1493',
+		'deepskyblue': '#00BFFF',
+		'dimgray': '#696969',
+		'dimgrey': '#696969',
+		'dodgerblue': '#1E90FF',
+		'firebrick': '#B22222',
+		'floralwhite': '#FFFAF0',
+		'forestgreen': '#228B22',
+		'fuchsia': '#FF00FF',
+		'gainsboro': '#DCDCDC',
+		'ghostwhite': '#F8F8FF',
+		'gold': '#FFD700',
+		'goldenrod': '#DAA520',
+		'gray': '#808080',
+		'green': '#008000',
+		'greenyellow': '#ADFF2F',
+		'grey': '#808080',
+		'honeydew': '#F0FFF0',
+		'hotpink': '#FF69B4',
+		'indianred': '#CD5C5C',
+		'indigo': '#4B0082',
+		'ivory': '#FFFFF0',
+		'khaki': '#F0E68C',
+		'lavender': '#E6E6FA',
+		'lavenderblush': '#FFF0F5',
+		'lawngreen': '#7CFC00',
+		'lemonchiffon': '#FFFACD',
+		'lightblue': '#ADD8E6',
+		'lightcoral': '#F08080',
+		'lightcyan': '#E0FFFF',
+		'lightgoldenrodyellow': '#FAFAD2',
+		'lightgray': '#D3D3D3',
+		'lightgreen': '#90EE90',
+		'lightgrey': '#D3D3D3',
+		'lightpink': '#FFB6C1',
+		'lightsalmon': '#FFA07A',
+		'lightseagreen': '#20B2AA',
+		'lightskyblue': '#87CEFA',
+		'lightslategray': '#778899',
+		'lightslategrey': '#778899',
+		'lightsteelblue': '#B0C4DE',
+		'lightyellow': '#FFFFE0',
+		'lime': '#00FF00',
+		'limegreen': '#32CD32',
+		'linen': '#FAF0E6',
+		'magenta': '#FF00FF',
+		'maroon': '#800000',
+		'mediumaquamarine': '#66CDAA',
+		'mediumblue': '#0000CD',
+		'mediumorchid': '#BA55D3',
+		'mediumpurple': '#9370DB',
+		'mediumseagreen': '#3CB371',
+		'mediumslateblue': '#7B68EE',
+		'mediumspringgreen': '#00FA9A',
+		'mediumturquoise': '#48D1CC',
+		'mediumvioletred': '#C71585',
+		'midnightblue': '#191970',
+		'mintcream': '#F5FFFA',
+		'mistyrose': '#FFE4E1',
+		'moccasin': '#FFE4B5',
+		'navajowhite': '#FFDEAD',
+		'navy': '#000080',
+		'oldlace': '#FDF5E6',
+		'olive': '#808000',
+		'olivedrab': '#6B8E23',
+		'orange': '#FFA500',
+		'orangered': '#FF4500',
+		'orchid': '#DA70D6',
+		'palegoldenrod': '#EEE8AA',
+		'palegreen': '#98FB98',
+		'paleturquoise': '#AFEEEE',
+		'palevioletred': '#DB7093',
+		'papayawhip': '#FFEFD5',
+		'peachpuff': '#FFDAB9',
+		'peru': '#CD853F',
+		'pink': '#FFC0CB',
+		'plum': '#DDA0DD',
+		'powderblue': '#B0E0E6',
+		'purple': '#800080',
+		'red': '#FF0000',
+		'rosybrown': '#BC8F8F',
+		'royalblue': '#4169E1',
+		'saddlebrown': '#8B4513',
+		'salmon': '#FA8072',
+		'sandybrown': '#F4A460',
+		'seagreen': '#2E8B57',
+		'seashell': '#FFF5EE',
+		'sienna': '#A0522D',
+		'silver': '#C0C0C0',
+		'skyblue': '#87CEEB',
+		'slateblue': '#6A5ACD',
+		'slategray': '#708090',
+		'slategrey': '#708090',
+		'snow': '#FFFAFA',
+		'springgreen': '#00FF7F',
+		'steelblue': '#4682B4',
+		'tan': '#D2B48C',
+		'teal': '#008080',
+		'thistle': '#D8BFD8',
+		'tomato': '#FF6347',
+		'turquoise': '#40E0D0',
+		'violet': '#EE82EE',
+		'wheat': '#F5DEB3',
+		'white': '#FFFFFF',
+		'whitesmoke': '#F5F5F5',
+		'yellow': '#FFFF00',
+		'yellowgreen': '#9ACD32'
+	}
+	
 	def create_document(self, data, mime):
 		if mime == 'text/css':
 			return CSSDocument(CSSParser().parse_css(data.decode('utf-8'))) # TODO: parse encoding indicator from the file
@@ -45,6 +204,62 @@ class CSSFormat:
 	#		return NotImplemented
 	#	
 	#	return self.get_viewport_width(view), self.get_viewport_height(view)
+	
+	def units(self, view, spec, percentage=None, percentage_origin=0, em_size=None):
+		"Convert a string with unit spec into a float metric in pixels. If the spec involves percentage or `em`, additional arguments must be supplied."
+		
+		if not isinstance(spec, str):
+			return spec
+		
+		spec = spec.strip()
+		if not spec:
+			return 0
+		
+		dpi = self.get_dpi(view)
+		shift = 0
+		
+		if spec[-2:] == 'px':
+			scale = 1
+			value = spec[:-2]
+		elif spec[-2:] == 'ex':
+			if em_size == None:
+				raise ValueError("`em_size` not specified.")
+			scale = em_size * 1.2 # TODO
+			value = spec[:-2]
+		elif spec[-2:] == 'mm':
+			scale = dpi / 25.4
+			value = spec[:-2]
+		elif spec[-2:] == 'cm':
+			scale = dpi / 2.54
+			value = spec[:-2]
+		elif spec[-2:] == 'in':
+			scale = dpi
+			value = spec[:-2]
+		elif spec[-2:] == 'pc':
+			scale = dpi / 6
+			value = spec[:-2]
+		elif spec[-2:] == 'pt':
+			scale = dpi / 72
+			value = spec[:-2]
+		elif spec[-2:] == 'em':
+			if em_size == None:
+				raise ValueError("`em_size` not specified.")
+			scale = em_size
+			value = spec[:-2]
+		elif spec[-1:] == 'Q':
+			scale = dpi / (2.54 * 40)
+			value = spec[:-1]
+		elif spec[-1:] == '%':
+			if percentage == None:
+				raise ValueError("Percentage not specified.")
+			scale = percentage / 100
+			shift = percentage_origin
+			value = spec[:-1]
+		else:
+			scale = 1
+			value = spec
+		
+		return parse_float(value) * scale + shift
 
 
 class StyleNode:
@@ -220,6 +435,8 @@ class CSSDocument:
 				return 30
 			elif node.name == 'selector-pseudo-class':
 				return 40
+			elif node.name == 'selector-pseudo-element':
+				return 100
 			elif node.name == 'selector-single':
 				node.cache_selector_priority = sum(args)
 				return node.cache_selector_priority
@@ -241,8 +458,8 @@ class CSSDocument:
 				return True
 		
 		return self.traverse(selector, [], None, walk_node, descend)
-		
-	def match_element(self, xml_element, media_test, pseudoclass_test, default_namespace): # TODO
+	
+	def match_element(self, xml_element, pseudoelement, media_test, pseudoclass_test, default_namespace): # TODO
 		if default_namespace is None:
 			namespace = ''
 		else:
@@ -252,16 +469,22 @@ class CSSDocument:
 		xml_element_path = root_tree.getpath(xml_element)
 		
 		try:
-			pseudoclass_cache = self.__match_element_cache[xml_element_path]
+			pseudoclass_cache = self.__match_element_cache[xml_element_path, pseudoelement]
 		except AttributeError:
 			self.__match_element_cache = defaultdict(dict)
 		else:
+			#print("css.match_element cache", xml_element_path, pseudoelement)
 			for pseudoclasses, result in pseudoclass_cache.items():
 				for p_class, p_element_path, p_result in pseudoclasses:
-					if pseudoclass_test(p_class, root_tree.xpath(p_element_path)[0]) != p_result:
+					#print("element_path", p_element_path)
+					if pseudoclass_test(p_class, root_tree.xpath(p_element_path)[0], pseudoelement) != p_result:
 						break
 				else:
 					return result
+			#print(" ...")
+			
+			#print("css.match_element", xml_element_path, pseudoelement, self.__match_element_cache[xml_element_path, pseudoelement])
+
 		
 		def is_class(node, classnames):
 			if ('class' in node.attrib) and (node.attrib['class'] in classnames):
@@ -274,6 +497,8 @@ class CSSDocument:
 			return False
 		
 		def walk_node(node, args):
+			#<print(node.name if hasattr(node, 'name') else node)
+			
 			if isinstance(node, str):
 				return node
 			elif hasattr(node, 'cache_match_element'):
@@ -282,40 +507,43 @@ class CSSDocument:
 				return args[0]
 			elif node.name == 'selector-tag':
 				if args[0] == '*':
-					return lambda _xml_element, _pseudoclass_test: True
+					return lambda _xml_element, _pseudoelement, _pseudoclass_test: True
 				else:
-					return lambda _xml_element, _pseudoclass_test: _xml_element.tag == f"{namespace}{args[0]}"
+					return lambda _xml_element, _pseudoelement, _pseudoclass_test: _xml_element.tag == f"{namespace}{args[0]}"
 			elif node.name == 'selector-class':
-				return lambda _xml_element, _pseudoclass_test: is_class(_xml_element, args[0].split(' '))
+				return lambda _xml_element, _pseudoelement, _pseudoclass_test: is_class(_xml_element, args[0].split(' '))
 			elif node.name == 'selector-pseudo-class':
-				return lambda _xml_element, _pseudoclass_test: _pseudoclass_test(args[0], _xml_element)
+				return lambda _xml_element, _pseudoelement, _pseudoclass_test: _pseudoclass_test(args[0], _xml_element, _pseudoelement)
+			elif node.name == 'selector-pseudo-element':
+				#print("selector-pseudo-element", args)
+				return lambda _xml_element, _pseudoelement, _pseudoclass_test: (args[0] == _pseudoelement)
 			elif node.name == 'selector-attr':
 				if args[1] == '=':
-					return lambda _xml_element, _pseudoclass_test: (args[0] in _xml_element.attrib) and (_xml_element.attrib[args[0]] == args[2])
+					return lambda _xml_element, _pseudoelement, _pseudoclass_test: (args[0] in _xml_element.attrib) and (_xml_element.attrib[args[0]] == args[2])
 				elif args[1] == '~=':
-					return lambda _xml_element, _pseudoclass_test: (args[0] in _xml_element.attrib) and (args[2] in _xml_element.attrib[args[0]].split(' '))
+					return lambda _xml_element, _pseudoelement, _pseudoclass_test: (args[0] in _xml_element.attrib) and (args[2] in _xml_element.attrib[args[0]].split(' '))
 				else:
 					print("Implement attribute selector operator: " + repr(args[1]))
-					return lambda _xml_element, _pseudoclass_test: False
+					return lambda _xml_element, _pseudoelement, _pseudoclass_test: False
 					#raise NotImplementedError("Attribute selector operator: " + repr(args[1]))
 			elif node.name == 'selector-id':
-				return lambda _xml_element, _pseudoclass_test: ('id' in _xml_element.attrib) and (_xml_element.attrib['id'] == args[0])
+				return lambda _xml_element, _pseudoelement, _pseudoclass_test: ('id' in _xml_element.attrib) and (_xml_element.attrib['id'] == args[0])
 			elif node.name == 'selector-percentage': # TODO: keyframes
-				return lambda _xml_element, _pseudoclass_test: False
+				return lambda _xml_element, _pseudoelement, _pseudoclass_test: False
 			elif node.name == 'selector-single':
 				assert all(callable(_check) for _check in args), str(args)
-				return lambda _xml_element, _pseudoclass_test: all(_check(_xml_element, _pseudoclass_test) for _check in args)
+				return lambda _xml_element, _pseudoelement, _pseudoclass_test: all(_check(_xml_element, _pseudoelement, _pseudoclass_test) for _check in args)
 			elif node.name == 'selector-seq':
-				def check_me(xml_element, pseudoclass_test):
+				def check_me(xml_element, pseudoelement, pseudoclass_test):
 					#print("check_me", args, xml_element)
 					if len(args) == 1:
-						return args[0](xml_element, pseudoclass_test)
+						return args[0](xml_element, pseudoelement, pseudoclass_test)
 					elif len(args) == 3 and args[1] == ' ':
-						if not args[2](xml_element, pseudoclass_test):
+						if not args[2](xml_element, pseudoelement, pseudoclass_test):
 							return False
 						target = xml_element.getparent()
 						while target is not None:
-							if args[0](target, pseudoclass_test):
+							if args[0](target, None, pseudoclass_test):
 								return True
 							target = target.getparent()
 						return False
@@ -341,13 +569,13 @@ class CSSDocument:
 				node.cache_match_element = rules
 				return rules
 			elif node.name == 'selector':
-				check = lambda _xml_element, _pseudoclass_test: [_sel for (_sel, _tst) in zip(node.args, args) if _tst(_xml_element, _pseudoclass_test)]
+				check = lambda _xml_element, _pseudoelement, _pseudoclass_test: [_sel for (_sel, _tst) in zip(node.args, args) if _tst(_xml_element, _pseudoelement, _pseudoclass_test)]
 				node.cache_match_element = check
 				return check
 			elif node.name == 'style':
 				assert isinstance(args[1], dict)
-				def match_(xml_element, pseudoclass_test):
-					matched = args[0](xml_element, pseudoclass_test)
+				def match_(xml_element, pseudoelement, pseudoclass_test):
+					matched = args[0](xml_element, pseudoelement, pseudoclass_test)
 					if matched:
 						return matched, args[1]
 					else:
@@ -355,14 +583,14 @@ class CSSDocument:
 				node.cache_match_element = match_
 				return match_
 			elif node.name == 'stylesheet':
-				def match_(xml_element, pseudoclass_test):
+				def match_(xml_element, pseudoelement, pseudoclass_test):
 					values = {}
 					
 					for arg in args:
 						if not callable(arg):
 							continue
 						
-						matched = arg(xml_element, pseudoclass_test)
+						matched = arg(xml_element, pseudoelement, pseudoclass_test)
 						if not (isinstance(matched, tuple) and len(matched) == 2 and isinstance(matched[1], dict)):
 							continue
 						
@@ -398,13 +626,14 @@ class CSSDocument:
 		
 		pseudoclasses = set()
 		
-		def do_pseudoclass_test(pseudoclass, xml_element):
-			result = pseudoclass_test(pseudoclass, xml_element)
+		def do_pseudoclass_test(pseudoclass, xml_element, pseudoelement):
+			result = pseudoclass_test(pseudoclass, xml_element, pseudoelement)
 			pseudoclasses.add((pseudoclass, root_tree.getpath(xml_element), result))
 			return result
 		
-		result = self.traverse(self.css_tree, [], None, walk_node, descend)(xml_element, do_pseudoclass_test)
-		self.__match_element_cache[xml_element_path][frozenset(pseudoclasses)] = result
+		result = self.traverse(self.css_tree, [], None, walk_node, descend)(xml_element, pseudoelement, do_pseudoclass_test)
+		self.__match_element_cache[xml_element_path, pseudoelement][frozenset(pseudoclasses)] = result
+		#print("result", xml_element_path, pseudoelement, frozenset(pseudoclasses), result)
 		return result
 	
 	def scan_urls(self):
@@ -469,6 +698,37 @@ class CSSParser:
 		def eof(self):
 			return self.e
 	
+	__hex_digits = frozenset('0123456789abcdefABCDEF')
+	
+	@classmethod
+	def __hex_escape(cls, s):
+		r = []
+		e = False
+		h = []
+		for c in s:
+			#print("c", c)
+			if e:
+				if c in cls.__hex_digits:
+					h.append(c)
+				elif c == ' ':
+					e = False
+					r.append(chr(int(''.join(h), 16)))
+				else:
+					e = False
+					r.append(chr(int(''.join(h), 16)))
+					r.append(c)
+			else:
+				if c == '\\':
+					h.clear()
+					e = True
+				else:
+					r.append(c)
+		
+		if e:
+			r.append(chr(int(''.join(h), 16)))
+		#print("hex escape", s, r)
+		return r
+	
 	LexerContext = Enum('LexerContext', 'comment quote dblquote variable identifier number whitespace hexnumber')
 	
 	def lexer(self, stream):
@@ -501,10 +761,11 @@ class CSSParser:
 			elif context == self.LexerContext.dblquote:
 				if stream.prefix(1) == '\\':
 					stream.shift(1)
+					token.append('\\')
 					token.append(stream.prefix(1))
 					stream.shift(1)
 				elif stream.prefix(1) == '"':
-					yield ''.join(['"'] + token + ['"'])
+					yield ''.join(['"'] + self.__hex_escape(token) + ['"'])
 					token.clear()
 					#yield '"'
 					stream.shift(1)
@@ -845,6 +1106,8 @@ class CSSParser:
 				result.append(self.parse_expression(ts))
 		else:
 			result = ts
+		
+		#print("css expression", tokens, repr(result))
 		
 		if op:
 			return StyleNode('expression', result)

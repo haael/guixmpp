@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" height="100%" width="100%" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1000 800">
+  <rect x="0" y="0" width="1000" height="800" stroke="blue" fill="none"/>
+  <rect x="100" y="100" width="800" height="200" stroke="blue" fill="none"/>
+  <rect x="100" y="400" width="800" height="200" stroke="blue" fill="none"/>
+  <foreignObject x="105" y="405" width="790" height="190">
+    <body xmlns="http://www.w3.org/1999/xhtml">
+      aaaa bbbb cccc dd dd    aaaa bbbb cccc dd dd    aaaa bbbb cccc dd dd    aaaa bbbb cccc dd dd    aaaa bbbb cccc dddd    aaaa bbbb cccc dddd    aaaa bbbb cccc dddd    aaaa bbbb cccc dddd
+      aaaa bbbb cccc dd dd    aaaa bbbb cccc dd dd    aaaa bbbb cccc dd dd    aaaa bbbb cccc dd dd    aaaa bbbb cccc dddd    aaaa bbbb cccc dddd    aaaa bbbb cccc dddd    aaaa bbbb cccc dddd
+      aaaa bbbb cccc dd dd    aaaa bbbb cccc dd dd    aaaa bbbb cccc dd dd    aaaa bbbb cccc dd dd    aaaa bbbb cccc dddd    aaaa bbbb cccc dddd    aaaa bbbb cccc dddd    aaaa bbbb cccc dddd
+      aaaa bbbb cccc dd dd    aaaa bbbb cccc dd dd    aaaa bbbb cccc dd dd    aaaa bbbb cccc dd dd    aaaa bbbb cccc dddd    aaaa bbbb cccc dddd    aaaa bbbb cccc dddd    aaaa bbbb cccc dddd
+    </body>
+  </foreignObject>
+</svg>

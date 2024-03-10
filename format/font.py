@@ -2,7 +2,7 @@
 #-*- coding:utf-8 -*-
 
 
-__all__ = 'WOFFFont',
+__all__ = 'FondDocument', 'FontFormat'
 
 
 from io import BytesIO
@@ -140,7 +140,7 @@ AAA='''
 			else:
 				raise NotImplementedError
 	
-	model = Model()	
+	model = Model()
 	font = model.create_document(b64decode(data), 'font/woff')
 	assert font.name == "slick"
 	font.name = "burp"

@@ -49,10 +49,12 @@ class DisplayView:
 	def update(self, widget):
 		if hasattr(widget, '_DisplayView__surface') and widget.__surface:
 			widget.__surface.finish()
+			del widget.__surface
 		widget.__surface = widget.draw_image(self)
 		widget.queue_draw()
 	
 	def draw(self, widget, ctx):
-		ctx.set_source_surface(widget.__surface)
+		if hasattr(widget, '_DisplayView__surface') and widget.__surface:
+			ctx.set_source_surface(widget.__surface)
 		ctx.paint()
 

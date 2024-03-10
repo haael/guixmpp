@@ -11,13 +11,13 @@ protocol/http/client.py
 format/plain.py   # plain document model
 format/xml.py     # xml tree document model
 format/css.py     # css syntax tree document model
-format/xforms.py  # xforms
 format/font.py    # fonts
-format/html.py    # html (litehtml)
 
-image/svg.py      # svg parser
-image/png.py      # png reader (cairo)
-image/pixbuf.py   # image reader (gdk)
+render/svg.py     # svg parser
+render/png.py     # png reader (cairo)
+render/pixbuf.py  # image reader (gdk)
+#render/html.py   # html
+#render/xforms.py # xforms
 
 download/data.py  # inline (data:) link support
 download/file.py  # filesystem (file:) link support (dangerous)

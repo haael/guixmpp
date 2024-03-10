@@ -8,7 +8,7 @@ from gi.repository import Gtk, Gdk, GObject, GLib, GdkPixbuf
 #from locale import gettext
 from mainloop import *
 from domwidget import DOMWidget
-from document import CreationError
+#from document import CreationError
 from aiopath import Path
 from asyncio import sleep
 
@@ -196,10 +196,8 @@ class Browser(BuilderExtension):
 				self.drawingarea_avatar_preview.close_document()
 				self.drawingarea_avatar_preview.main_url = None
 			
-			try:
-				await self.drawingarea_avatar_preview.open_document(Path(filename).as_uri())
-			except CreationError:
-				self.drawingarea_avatar_preview.main_url = None
+			
+			await self.drawingarea_avatar_preview.open_document(Path(filename).as_uri())
 	
 	@asynchandler
 	async def set_avatar(self, widget):
@@ -210,10 +208,7 @@ class Browser(BuilderExtension):
 				self.drawingarea_avatar.close_document()
 				self.drawingarea_avatar.main_url = None
 			
-			try:
-				await self.drawingarea_avatar.open_document(Path(filename).as_uri())
-			except CreationError:
-				self.drawingarea_avatar.main_url = None
+			await self.drawingarea_avatar.open_document(Path(filename).as_uri())
 		
 		self.filechooser_avatar.hide()
 	

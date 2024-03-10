@@ -75,6 +75,18 @@ class PixbufRender:
 		else:
 			return NotImplemented
 	
+	def image_width_for_height(self, view, document, height):
+		if not self.is_image_document(document):
+			return NotImplemented
+		p_width, p_height = self.image_dimensions(view, document)
+		return height * p_width / p_height
+	
+	def image_height_for_width(self, view, document, width):
+		if not self.is_image_document(document):
+			return NotImplemented
+		p_width, p_height = self.image_dimensions(view, document)
+		return width * p_height / p_width
+	
 	def draw_image(self, view, document, ctx, box):
 		if not self.is_image_document(document):
 			return NotImplemented

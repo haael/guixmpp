@@ -7,7 +7,8 @@ __all__ = 'SVGWidget',
 
 import gi
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, Gdk, GObject, GLib
+gi.require_version('Gio', '2.0')
+from gi.repository import Gtk, Gdk, GObject, GLib, Gio
 
 import cairo
 
@@ -24,12 +25,13 @@ from format.null import NullFormat
 from format.plain import PlainFormat
 from format.xml import XMLFormat
 from format.css import CSSFormat
-from format.xforms import XFormsFormat
 from format.font import FontFormat
 
 from render.svg import SVGRender
 from render.png import PNGRender
 from render.pixbuf import PixbufRender
+from render.html import HTMLRender
+#from format.xforms import XFormsFormat
 
 from download.data import DataDownload
 from download.file import FileDownload
@@ -65,7 +67,7 @@ class DOMWidget(Gtk.DrawingArea):
 		features = []
 		if keyboard_input: features.append(KeyboardView)
 		if pointer_input: features.append(PointerView)
-		if xforms: features.append(XFormsFormat)
+		#if xforms: features.append(XFormsFormat)
 		if file_download: features.append(FileDownload)
 		if http_download: features.append(HTTPDownload)
 		if chrome:
@@ -73,7 +75,7 @@ class DOMWidget(Gtk.DrawingArea):
 		else:
 			features.append(ChromeDownload)
 		
-		self.model = Model.features('<local>.DOMWidgetModel', DisplayView, SVGRender, PNGRender, PixbufRender, FontFormat, *features, XMLFormat, CSSFormat, PlainFormat, NullFormat, DataDownload)()
+		self.model = Model.features('<local>.DOMWidgetModel', DisplayView, SVGRender, PNGRender, PixbufRender, HTMLRender, FontFormat, *features, XMLFormat, CSSFormat, PlainFormat, NullFormat, DataDownload)()
 		self.main_url = None
 		
 		self.connect('draw', self.model.draw)
@@ -98,11 +100,9 @@ class DOMWidget(Gtk.DrawingArea):
 		"Close current image, reverting to default state."
 		await self.model.close_document(self)
 	
-	#def confirm_closed(self):
-	#	self.model.confirm_closed()
-	
 	def set_image(self, image):
 		"Set current image to the document provided."
+		print("set_image", image)
 		self.model.set_image(self, image)
 	
 	def get_image(self):
@@ -114,8 +114,8 @@ class DOMWidget(Gtk.DrawingArea):
 		viewport_width = model.get_viewport_width(self)
 		viewport_height = model.get_viewport_height(self)
 		
-		surface = cairo.RecordingSurface(cairo.Content.COLOR_ALPHA, (0, 0, viewport_width, viewport_height))
-		#surface = cairo.ImageSurface(cairo.Format.ARGB32, viewport_width, viewport_height)
+		surface = cairo.RecordingSurface(cairo.Content.COLOR_ALPHA, (0, 0, viewport_width, viewport_height)) # more memory friendly, but slower
+		#surface = cairo.ImageSurface(cairo.Format.ARGB32, viewport_width, viewport_height) # faster, but uses more memory (as much as unscaled image size, which can lead to exploits)
 		context = cairo.Context(surface)
 		
 		image = self.model.get_image(self)
@@ -123,18 +123,24 @@ class DOMWidget(Gtk.DrawingArea):
 		if (image is not None) and (viewport_width > 0) and (viewport_height > 0):
 			try:
 				w, h = self.model.image_dimensions(self, image)
-				if w / h <= viewport_width / viewport_height:
-					bw = (w / h) * viewport_height
+				
+				if w <= viewport_width and h <= viewport_height:
+					bw = w
+					bh = h
+				elif w / h <= viewport_width / viewport_height:
+					bw = self.model.image_width_for_height(self, image, viewport_height)
 					bh = viewport_height
 				else:
 					bw = viewport_width
-					bh = (h / w) * viewport_width
+					bh = self.model.image_height_for_width(self, image, viewport_width)	
 				
 				model.draw_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh))
-			except NotImplementedError:
+			
+			except NotImplementedError as error:
+				self.model.emit_warning(self, f"NotImplementedError: {error}", image)
 				pass # draw placeholder for non-image formats
 		
-		#print("draw image", image)
+		print("draw image", image)
 		return surface
 	
 	def poke_image(self, px, py):
@@ -153,16 +159,21 @@ class DOMWidget(Gtk.DrawingArea):
 		if (image is not None) and (viewport_width > 0) and (viewport_height > 0):			
 			try:
 				w, h = self.model.image_dimensions(self, image)
-				if w / h <= viewport_width / viewport_height:
-					bw = (w / h) * viewport_height
+				
+				if w <= viewport_width and h <= viewport_height:
+					bw = w
+					bh = h
+				elif w / h <= viewport_width / viewport_height:
+					bw = self.model.image_width_for_height(self, image, viewport_height)
 					bh = viewport_height
 				else:
 					bw = viewport_width
-					bh = (h / w) * viewport_width
+					bh = self.model.image_height_for_width(self, image, viewport_width)	
 				
 				qx, qy = context.device_to_user(px, py)
 				nop = self.model.poke_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh), px, py)
 			except NotImplementedError:
+				self.model.emit_warning(self, f"NotImplementedError: {error}", image)
 				pass
 		
 		surface.finish()
@@ -218,6 +229,7 @@ if __debug__ and __name__ == '__main__':
 		
 		elif event.type_ == 'opening':
 			async with doc_cond:
+				#print("opening", event.detail)
 				widget.main_url = event.detail
 				doc_cond.notify_all()
 		
@@ -229,8 +241,9 @@ if __debug__ and __name__ == '__main__':
 						widget.set_image(event.target)
 					else:
 						widget.set_image(widget.image)
-				except DocumentNotFound:
-					pass
+				except DocumentNotFound as error:
+					widget.model.emit_warning(widget, f"DocumentNotFound: {error}", event.target)
+					widget.set_image(None)
 		
 		elif event.type_ == 'closing':
 			async with doc_cond:
@@ -257,9 +270,10 @@ if __debug__ and __name__ == '__main__':
 		widget.model.font_dir = await Path('~/.cache/guixmpp-fonts').expanduser()
 		await widget.model.font_dir.mkdir(parents=True, exist_ok=True)
 		
-		async for image in (Path.cwd() / 'examples/gfx').iterdir():
-			if image.suffix not in ('.txt', '.css', '.xml', '.svg_'):
-				images.append(image.as_uri())
+		async for dir_ in (Path.cwd() / 'examples').iterdir():
+			async for doc in dir_.iterdir():
+				if doc.suffix not in ('.css', '.svg_'):
+					images.append(doc.as_uri())
 		
 		#images.sort(key=(lambda x: f'{len(x):03d}' + x.lower()))
 		images.sort(key=(lambda x: x.lower()))

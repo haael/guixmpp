@@ -19,33 +19,30 @@ if _library == '':
 	
 	class HTTPDownload:
 		async def begin_downloads(self):
-			#print('begin_downloads')
 			assert not hasattr(self, '_HTTPDownload__client')
 			self.__client = {}
 		
 		async def end_downloads(self):
-			#print('end_downloads')
 			await gather(*[_connection.close() for _connection in self.__client.values()])
 			del self.__client
 		
 		async def download_document(self, url):
-			if url.startswith('http:') or url.startswith('https:'):
-				_, _, host, *path = url.split('/')
-				path = '/'.join(path)
-				
-				if host in self.__client:
-					connection = self.__client[host]
-				else:
-					connection = self.__client[host] = Connection2(f'https://{host}')
-					await connection.open()
-				
-				async with connection.Url(path).get() as request:
-					status, headers = await request.response()
-					request.raise_for_status(status)
-					return (await request.read()), headers['content-type'].split(';')[0].strip()
-			
-			else:
+			if not (url.startswith('http:') or url.startswith('https:')):
 				return NotImplemented
+			
+			_, _, host, *path = url.split('/')
+			path = '/'.join(path)
+			
+			if host in self.__client:
+				connection = self.__client[host]
+			else:
+				connection = self.__client[host] = Connection2(f'https://{host}')
+				await connection.open()
+			
+			async with connection.Url(path).get() as request:
+				status, headers = await request.response()
+				request.raise_for_status(status)
+				return (await request.read()), headers['content-type'].split(';')[0].strip()
 
 
 elif _library == 'aiohttp':
@@ -61,12 +58,11 @@ elif _library == 'aiohttp':
 			del self.__client
 		
 		async def download_document(self, url):
-			if url.startswith('http:') or url.startswith('https:'):
-				async with self.__client.get(url) as response:
-					response.raise_for_status()
-					return (await response.read()), response.headers['content-type'].split(';')[0].strip()
-			else:
+			if not (url.startswith('http:') or url.startswith('https:')):
 				return NotImplemented
+			async with self.__client.get(url) as response:
+				response.raise_for_status()
+				return (await response.read()), response.headers['content-type'].split(';')[0].strip()
 
 
 elif _library == 'httpx':
@@ -82,11 +78,10 @@ elif _library == 'httpx':
 			del self.__client
 		
 		async def download_document(self, url):
-			if url.startswith('http:') or url.startswith('https:'):
-				result = await self.__client.get(url)
-				return result.content, result.headers['content-type'].split(';')[0].strip()
-			else:
+			if not (url.startswith('http:') or url.startswith('https:')):
 				return NotImplemented
+			result = await self.__client.get(url)
+			return result.content, result.headers['content-type'].split(';')[0].strip()
 
 
 if __debug__ and __name__ == '__main__':

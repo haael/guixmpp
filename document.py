@@ -9,15 +9,10 @@ from collections import defaultdict
 from asyncio import gather, create_task, wait, FIRST_EXCEPTION, Lock, Event
 
 from domevents import UIEvent, CustomEvent
-from download.utils import DownloadError
 
 
 class DocumentNotFound(Exception):
 	pass
-
-
-#class CreationError(Exception):
-#	pass
 
 
 class Model:
@@ -32,7 +27,6 @@ class Model:
 		self.emitted_warnings = set()
 		self.__downloading = {}
 		self.__start_downloading = Lock()
-		#self.__closed = Event()
 		self.__chain_impl('__init__', args, kwargs)
 	
 	async def open_document(self, view, url):
@@ -55,14 +49,10 @@ class Model:
 		url = view.__location
 		view.emit('dom_event', CustomEvent('closing', target=view.__document, view=view, detail=url))
 		self.__unload_document(view, url)
-		#await self.__closed.wait()
 		view.emit('dom_event', CustomEvent('close', target=None, view=view, detail=url))
 		view.__location = None
 		view.__document = None
 		self.documents.clear() # TODO
-	
-	#def confirm_closed(self):
-	#	self.__closed.set()
 	
 	def current_location(self, view):
 		try:
@@ -107,6 +97,7 @@ class Model:
 			
 			result = method(self, *args, **kwargs)
 			if result != NotImplemented:
+				#print("method", method_name, cls.__name__)
 				return result
 		else:
 			raise NotImplementedError(f"Could not find implementation for method {method_name}. Arguments: {args}")
@@ -287,7 +278,7 @@ class Model:
 		except KeyError:
 			pass
 		
-		raise DocumentNotFound(f"No document found for the provided url: {url}")
+		raise DocumentNotFound(f"No document found for the provided url: `{url}`. Perhaps you forgot to list a download link?")
 	
 	def get_document(self, url):
 		if url.startswith('data:'):
@@ -330,7 +321,16 @@ class Model:
 		return self.__find_impl('scan_document_links', [document])
 	
 	def image_dimensions(self, view, document):
+		"Return image natural width and height, that may depend on viewport size."
 		return self.__find_impl('image_dimensions', [view, document])
+	
+	def image_width_for_height(self, view, document, height):
+		"Return image optimal width as calculated for the provided height."
+		return self.__find_impl('image_width_for_height', [view, document, height])
+	
+	def image_height_for_width(self, view, document, width):
+		"Return image optimal height as calculated for the provided width."
+		return self.__find_impl('image_height_for_width', [view, document, width])
 	
 	def draw_image(self, view, document, ctx, box):
 		return self.__find_impl('draw_image', [view, document, ctx, box])
@@ -422,7 +422,7 @@ if __debug__ and __name__ == '__main__':
 				dimensions = model.image_dimensions(view, document)
 			except NotImplementedError:
 				pass
-			model.close_document(view)
+			await model.close_document(view)
 			view.clear()
 	
 	run(test_main())

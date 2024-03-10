@@ -26,7 +26,8 @@ gi.require_version('Pango', '1.0')
 gi.require_version('PangoCairo', '1.0')
 from gi.repository import Pango, PangoCairo
 
-from format.xml import XMLDocument, OverlayElement
+from format.xml import XMLFormat, XMLDocument, OverlayElement
+from format.css import CSSFormat
 
 
 try:
@@ -41,165 +42,26 @@ class NotANumber(BaseException):
 		self.original = original
 
 
+def parse_float(f): # TODO: move to utils
+	if f is None:
+		return None
+	elif f == 'null':
+		return 0
+	else:
+		return float(f)
+
+
 class SVGRender:
-	xmlns_xml = 'http://www.w3.org/XML/1998/namespace'
+	xmlns_xml = XMLFormat.xmlns_xml
+	xmlns_xlink = XMLFormat.xmlns_xlink
 	xmlns_svg = 'http://www.w3.org/2000/svg'
-	xmlns_xlink = 'http://www.w3.org/1999/xlink'
 	xmlns_sodipodi = 'http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd'
 	xmlns_inkscape = 'http://www.inkscape.org/namespaces/inkscape'
 	
-	supported_svg_features = frozenset(['http://www.w3.org/TR/SVG11/feature#Shape'])
-	supported_svg_extensions = frozenset()
+	web_colors = CSSFormat.web_colors
 	
-	web_colors = {
-		'aliceblue': '#F0F8FF',
-		'antiquewhite': '#FAEBD7',
-		'aqua': '#00FFFF',
-		'aquamarine': '#7FFFD4',
-		'azure': '#F0FFFF',
-		'beige': '#F5F5DC',
-		'bisque': '#FFE4C4',
-		'black': '#000000',
-		'blanchedalmond': '#FFEBCD',
-		'blue': '#0000FF',
-		'blueviolet': '#8A2BE2',
-		'brown': '#A52A2A',
-		'burlywood': '#DEB887',
-		'cadetblue': '#5F9EA0',
-		'chartreuse': '#7FFF00',
-		'chocolate': '#D2691E',
-		'coral': '#FF7F50',
-		'cornflowerblue': '#6495ED',
-		'cornsilk': '#FFF8DC',
-		'crimson': '#DC143C',
-		'cyan': '#00FFFF',
-		'darkblue': '#00008B',
-		'darkcyan': '#008B8B',
-		'darkgoldenrod': '#B8860B',
-		'darkgray': '#A9A9A9',
-		'darkgreen': '#006400',
-		'darkgrey': '#A9A9A9',
-		'darkkhaki': '#BDB76B',
-		'darkmagenta': '#8B008B',
-		'darkolivegreen': '#556B2F',
-		'darkorange': '#FF8C00',
-		'darkorchid': '#9932CC',
-		'darkred': '#8B0000',
-		'darksalmon': '#E9967A',
-		'darkseagreen': '#8FBC8F',
-		'darkslateblue': '#483D8B',
-		'darkslategray': '#2F4F4F',
-		'darkslategrey': '#2F4F4F',
-		'darkturquoise': '#00CED1',
-		'darkviolet': '#9400D3',
-		'deeppink': '#FF1493',
-		'deepskyblue': '#00BFFF',
-		'dimgray': '#696969',
-		'dimgrey': '#696969',
-		'dodgerblue': '#1E90FF',
-		'firebrick': '#B22222',
-		'floralwhite': '#FFFAF0',
-		'forestgreen': '#228B22',
-		'fuchsia': '#FF00FF',
-		'gainsboro': '#DCDCDC',
-		'ghostwhite': '#F8F8FF',
-		'gold': '#FFD700',
-		'goldenrod': '#DAA520',
-		'gray': '#808080',
-		'green': '#008000',
-		'greenyellow': '#ADFF2F',
-		'grey': '#808080',
-		'honeydew': '#F0FFF0',
-		'hotpink': '#FF69B4',
-		'indianred': '#CD5C5C',
-		'indigo': '#4B0082',
-		'ivory': '#FFFFF0',
-		'khaki': '#F0E68C',
-		'lavender': '#E6E6FA',
-		'lavenderblush': '#FFF0F5',
-		'lawngreen': '#7CFC00',
-		'lemonchiffon': '#FFFACD',
-		'lightblue': '#ADD8E6',
-		'lightcoral': '#F08080',
-		'lightcyan': '#E0FFFF',
-		'lightgoldenrodyellow': '#FAFAD2',
-		'lightgray': '#D3D3D3',
-		'lightgreen': '#90EE90',
-		'lightgrey': '#D3D3D3',
-		'lightpink': '#FFB6C1',
-		'lightsalmon': '#FFA07A',
-		'lightseagreen': '#20B2AA',
-		'lightskyblue': '#87CEFA',
-		'lightslategray': '#778899',
-		'lightslategrey': '#778899',
-		'lightsteelblue': '#B0C4DE',
-		'lightyellow': '#FFFFE0',
-		'lime': '#00FF00',
-		'limegreen': '#32CD32',
-		'linen': '#FAF0E6',
-		'magenta': '#FF00FF',
-		'maroon': '#800000',
-		'mediumaquamarine': '#66CDAA',
-		'mediumblue': '#0000CD',
-		'mediumorchid': '#BA55D3',
-		'mediumpurple': '#9370DB',
-		'mediumseagreen': '#3CB371',
-		'mediumslateblue': '#7B68EE',
-		'mediumspringgreen': '#00FA9A',
-		'mediumturquoise': '#48D1CC',
-		'mediumvioletred': '#C71585',
-		'midnightblue': '#191970',
-		'mintcream': '#F5FFFA',
-		'mistyrose': '#FFE4E1',
-		'moccasin': '#FFE4B5',
-		'navajowhite': '#FFDEAD',
-		'navy': '#000080',
-		'oldlace': '#FDF5E6',
-		'olive': '#808000',
-		'olivedrab': '#6B8E23',
-		'orange': '#FFA500',
-		'orangered': '#FF4500',
-		'orchid': '#DA70D6',
-		'palegoldenrod': '#EEE8AA',
-		'palegreen': '#98FB98',
-		'paleturquoise': '#AFEEEE',
-		'palevioletred': '#DB7093',
-		'papayawhip': '#FFEFD5',
-		'peachpuff': '#FFDAB9',
-		'peru': '#CD853F',
-		'pink': '#FFC0CB',
-		'plum': '#DDA0DD',
-		'powderblue': '#B0E0E6',
-		'purple': '#800080',
-		'red': '#FF0000',
-		'rosybrown': '#BC8F8F',
-		'royalblue': '#4169E1',
-		'saddlebrown': '#8B4513',
-		'salmon': '#FA8072',
-		'sandybrown': '#F4A460',
-		'seagreen': '#2E8B57',
-		'seashell': '#FFF5EE',
-		'sienna': '#A0522D',
-		'silver': '#C0C0C0',
-		'skyblue': '#87CEEB',
-		'slateblue': '#6A5ACD',
-		'slategray': '#708090',
-		'slategrey': '#708090',
-		'snow': '#FFFAFA',
-		'springgreen': '#00FF7F',
-		'steelblue': '#4682B4',
-		'tan': '#D2B48C',
-		'teal': '#008080',
-		'thistle': '#D8BFD8',
-		'tomato': '#FF6347',
-		'turquoise': '#40E0D0',
-		'violet': '#EE82EE',
-		'wheat': '#F5DEB3',
-		'white': '#FFFFFF',
-		'whitesmoke': '#F5F5F5',
-		'yellow': '#FFFF00',
-		'yellowgreen': '#9ACD32'
-	}
+	supported_svg_features = frozenset({'http://www.w3.org/TR/SVG11/feature#Shape'})
+	supported_svg_extensions = frozenset()
 	
 	def create_document(self, data, mime_type):
 		if mime_type == 'image/svg+xml' or mime_type == 'image/svg':
@@ -212,22 +74,7 @@ class SVGRender:
 			if self.is_svg_document(document):
 				return document
 			else:
-				msg = []
-				if self.is_xml_document(document):
-					try:
-						root = document.getroot()
-					except:
-						msg.append("root:no")
-					else:
-						msg.append("root:yes")
-						msg.append("tag:" + repr(root.tag))
-						if root.tag.startswith('{' + self.xmlns_svg + '}'):
-							msg.append("SVG:yes")
-						else:
-							msg.append("SVG:no")
-				else:
-					msg.append("XML:no")
-				raise ValueError("Not an SVG document. " + "; ".join(msg))
+				raise ValueError("Not an SVG document.")
 		else:
 			return NotImplemented
 	
@@ -250,6 +97,7 @@ class SVGRender:
 				yield from self.__data_internal_links(self.__style_attrs(document))
 				yield from self.__data_internal_links(self.__style_tags(document))
 				#yield from self.__script_tags(document)
+				yield from self.__foreign_objects(document)
 			return links()
 		else:
 			return NotImplemented
@@ -275,8 +123,9 @@ class SVGRender:
 			yield 'data:text/css,' + url_quote(style)
 		
 		for styledtag in document.findall('.//*[@style]'):
-			style = '* {' + styledtag.attrib['style'] + '}'
-			yield 'data:text/css,' + url_quote(style)
+			if styledtag.tag.startswith(f'{{{self.xmlns_svg}}}'):
+				style = '* {' + styledtag.attrib['style'] + '}'
+				yield 'data:text/css,' + url_quote(style)
 	
 	def __style_tags(self, document):
 		for styletag in document.findall(f'.//{{{self.xmlns_svg}}}style'):
@@ -295,6 +144,15 @@ class SVGRender:
 				mime = 'text/javascript'
 			script = scripttag.text
 			yield f'data:{mime},' + url_quote(script)
+	
+	def __foreign_objects(self, document):
+		for foreigntag in document.findall(f'.//{{{self.xmlns_svg}}}foreignObject'):
+			try:
+				foreign_object = [_child for _child in foreigntag if isinstance(_child.tag, str)][0]
+			except IndexError:
+				pass
+			else:
+				yield from self.scan_document_links(XMLDocument(foreign_object))
 	
 	def __xlink_hrefs(self, document):
 		for linkedtag in document.findall(f'.//*[@{{{self.xmlns_xlink}}}href]'):
@@ -337,7 +195,7 @@ class SVGRender:
 		except AttributeError:
 			pass
 		
-		em_size = 12 # FIXME
+		em_size = 16
 		
 		if any(node.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__shape_tags):
 			self.__render_shape(view, document, ctx, box, node, em_size, None)
@@ -350,7 +208,7 @@ class SVGRender:
 		elif node.tag == f'{{{self.xmlns_svg}}}foreignObject':
 			self.__render_foreign_object(view, document, ctx, box, node, em_size, None)
 		else:
-			self.emit_warning(view, f"Unsupported node: {node.tag}", node)	
+			self.emit_warning(view, f"Unsupported node: {node.tag}", node)
 	
 	def poke_image(self, view, document, ctx, box, px, py):
 		if not self.is_svg_document(document):
@@ -362,7 +220,7 @@ class SVGRender:
 			node = document
 			document = XMLDocument(node.getroottree().getroot())
 		
-		em_size = 12
+		em_size = 16
 		
 		if any(node.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__shape_tags):
 			return self.__render_shape(view, document, ctx, box, node, em_size, (px, py))
@@ -378,7 +236,7 @@ class SVGRender:
 			self.emit_warning(view, f"Unsupported node: {node.tag}", node)
 			return []
 	
-	__presentation_attributes = frozenset([
+	__presentation_attributes = frozenset({
 		'alignment-baseline',
 		'baseline-shift',
 		'clip',
@@ -443,16 +301,18 @@ class SVGRender:
 		'visibility',
 		'word-spacing',
 		'writing-mode'
-	])
+	})
 	
-	__group_tags = frozenset(['svg', 'g', 'a', 'symbol'])
-	__shape_tags = frozenset(['polygon', 'line', 'ellipse', 'circle', 'rect', 'path', 'polyline'])
-	__skip_tags = frozenset(['defs', 'title', 'desc', 'metadata', 'style', 'linearGradient', 'radialGradient', 'pattern', 'script', 'animate', 'filter', 'switch'])
+	__group_tags = frozenset({'svg', 'g', 'a', 'symbol'})
+	__shape_tags = frozenset({'polygon', 'line', 'ellipse', 'circle', 'rect', 'path', 'polyline'})
+	__skip_tags = frozenset({'defs', 'title', 'desc', 'metadata', 'style', 'linearGradient', 'radialGradient', 'pattern', 'script', 'animate', 'filter', 'switch'})
 	
 	def __media_test(self, view):
 		return False
 	
-	def __pseudoclass_test(self, view, pseudoclass, node):
+	def __pseudoclass_test(self, view, pseudoclass, node, pseudoelement):
+		assert pseudoelement is None, "SVG does not use pseudoelements."
+		
 		if pseudoclass == 'hover' and hasattr(self, 'get_pointed'):
 			pointed = self.get_pointed(view)
 			if pointed is not None:
@@ -500,12 +360,8 @@ class SVGRender:
 	def __search_attribute(self, view, document, node, attr):
 		"Search for effective presentation attribute. This will either be an explicit XML attribute, or attribute of one of ancestors, or CSS value."
 		
-		#if node and node.tag == '{http://www.w3.org/2000/svg}tspan' and attr == 'fill':
-		#	print("search attribute", node.tag, node.attrib.get('class', None), attr)
-		
 		if node is not None:
 			try:
-				#view.__attr_cache[node][attr]
 				return view.__attr_cache[node][attr]
 			except KeyError:
 				pass
@@ -519,7 +375,7 @@ class SVGRender:
 				pass
 			else:
 				css = self.get_document('data:text/css,' + url_quote('* {' + style + '}'))
-				css_attrs = css.match_element(node, (lambda *args: False), (lambda *args: False), self.xmlns_svg)
+				css_attrs = css.match_element(node, None, (lambda *args: False), (lambda *args: False), self.xmlns_svg)
 				if attr in css_attrs:
 					view.__attr_cache[node][attr] = css_attrs[attr][0]
 					return css_attrs[attr][0]
@@ -535,16 +391,14 @@ class SVGRender:
 			css_priority = None
 			
 			for stylesheet in stylesheets:
-				css_attrs = stylesheet.match_element(node, (lambda *args: self.__media_test(view, *args)), (lambda *args: self.__pseudoclass_test(view, *args)), self.xmlns_svg)
+				css_attrs = stylesheet.match_element(node, None, (lambda *args: self.__media_test(view, *args)), (lambda _pseudoclass, _xml_element, _pseudoelement: self.__pseudoclass_test(view, _pseudoclass, _xml_element, _pseudoelement)), self.xmlns_svg)
 				if attr in css_attrs:
 					value, priority = css_attrs[attr]
-					#print(" attrs:", node.tag, node.attrib, attr, value, repr(priority), css_priority)
 					if css_priority == None or priority >= css_priority:
 						css_value = value
 						css_priority = priority
 			
 			if css_value is not None:
-				#print("attr:", node.tag, node.attrib.get('class', '-'), attr, css_value)
 				view.__attr_cache[node][attr] = css_value
 				return css_value
 			
@@ -567,8 +421,6 @@ class SVGRender:
 	def __render_group(self, view, document, ctx, box, node, em_size, pointer): # FIXME: improve speed for deep documents
 		"Render SVG group element and its subelements."
 		
-		#print("render_group", node.tag)
-		
 		em_size = self.__font_size(view, document, ctx, box, node, em_size)
 		
 		display = self.__get_attribute(view, document, ctx, box, node, em_size, 'display', 'block').lower()
@@ -581,8 +433,8 @@ class SVGRender:
 		
 		transform = node.attrib.get('transform', None)
 		
-		x = self.__units(view, node.attrib.get('x', 0), percentage=width, em_size=em_size)
-		y = self.__units(view, node.attrib.get('y', 0), percentage=height, em_size=em_size)
+		x = self.units(view, node.attrib.get('x', 0), percentage=width, em_size=em_size)
+		y = self.units(view, node.attrib.get('y', 0), percentage=height, em_size=em_size)
 		
 		if transform or ((node.getparent() is not None) and (x or y)) or node.tag == f'{{{self.xmlns_svg}}}svg' or node.tag == f'{{{self.xmlns_svg}}}symbol':
 			ctx.save()
@@ -591,8 +443,8 @@ class SVGRender:
 			if (left or top) and (node.getparent() is None):
 				ctx.translate(left, top)
 			
-			svg_width = self.__units(view, node.attrib.get('width', width), percentage=width, em_size=em_size)
-			svg_height = self.__units(view, node.attrib.get('height', height), percentage=height, em_size=em_size)
+			svg_width = self.units(view, node.attrib.get('width', width), percentage=width, em_size=em_size)
+			svg_height = self.units(view, node.attrib.get('height', height), percentage=height, em_size=em_size)
 			
 			try:
 				vb_x, vb_y, vb_w, vb_h = node.attrib.get('viewBox', None).split()
@@ -603,10 +455,10 @@ class SVGRender:
 				viewbox_h = svg_height
 			else:
 				# TODO: correct calculations
-				viewbox_x = self.__units(view, vb_x, percentage=width, em_size=em_size)
-				viewbox_y = self.__units(view, vb_y, percentage=height, em_size=em_size)
-				viewbox_w = self.__units(view, vb_w, percentage=width, em_size=em_size)
-				viewbox_h = self.__units(view, vb_h, percentage=height, em_size=em_size)
+				viewbox_x = self.units(view, vb_x, percentage=width, em_size=em_size)
+				viewbox_y = self.units(view, vb_y, percentage=height, em_size=em_size)
+				viewbox_w = self.units(view, vb_w, percentage=width, em_size=em_size)
+				viewbox_h = self.units(view, vb_h, percentage=height, em_size=em_size)
 			
 			if (node.getparent() is None):
 				x_scale = width / viewbox_w
@@ -726,6 +578,8 @@ class SVGRender:
 		return hover_nodes
 	
 	def __render_shape(self, view, document, ctx, box, node, em_size, pointer):
+		"Render one of SVG shapes."
+		
 		left, top, width, height = box
 		
 		display = self.__get_attribute(view, document, ctx, box, node, em_size, 'display', 'block').lower()
@@ -758,8 +612,8 @@ class SVGRender:
 		
 		
 		if node.tag == f'{{{self.xmlns_svg}}}rect':
-			x, w, rx = [self.__units(view, node.attrib.get(_a, 0), percentage=width, em_size=em_size) for _a in ('x', 'width', 'rx')]
-			y, h, ry = [self.__units(view, node.attrib.get(_a, 0), percentage=height, em_size=em_size) for _a in ('y', 'height', 'ry')]
+			x, w, rx = [self.units(view, node.attrib.get(_a, 0), percentage=width, em_size=em_size) for _a in ('x', 'width', 'rx')]
+			y, h, ry = [self.units(view, node.attrib.get(_a, 0), percentage=height, em_size=em_size) for _a in ('y', 'height', 'ry')]
 			
 			rx = max(rx, 0)
 			ry = max(ry, 0)
@@ -770,16 +624,16 @@ class SVGRender:
 				ctx.rectangle(x, y, w, h)
 		
 		elif node.tag == f'{{{self.xmlns_svg}}}circle':
-			cx = self.__units(view, node.attrib.get('cx', 0), percentage=width, em_size=em_size)
-			cy = self.__units(view, node.attrib.get('cy', 0), percentage=height, em_size=em_size)
-			r = self.__units(view, node.attrib['r'], percentage=(width + height) / 2, em_size=em_size)
+			cx = self.units(view, node.attrib.get('cx', 0), percentage=width, em_size=em_size)
+			cy = self.units(view, node.attrib.get('cy', 0), percentage=height, em_size=em_size)
+			r = self.units(view, node.attrib['r'], percentage=(width + height) / 2, em_size=em_size)
 			ctx.arc(cx, cy, r, 0, 2 * math.pi)
 		
 		elif node.tag == f'{{{self.xmlns_svg}}}ellipse':
-			cx = self.__units(view, node.attrib.get('cx', 0), percentage=width, em_size=em_size)
-			cy = self.__units(view, node.attrib.get('cy', 0), percentage=height, em_size=em_size)
-			rx = self.__units(view, node.attrib['rx'], percentage=width, em_size=em_size)
-			ry = self.__units(view, node.attrib['ry'], percentage=height, em_size=em_size)
+			cx = self.units(view, node.attrib.get('cx', 0), percentage=width, em_size=em_size)
+			cy = self.units(view, node.attrib.get('cy', 0), percentage=height, em_size=em_size)
+			rx = self.units(view, node.attrib['rx'], percentage=width, em_size=em_size)
+			ry = self.units(view, node.attrib['ry'], percentage=height, em_size=em_size)
 			ctx.save()
 			ctx.translate(cx, cy)
 			ctx.scale(rx, ry)
@@ -787,16 +641,16 @@ class SVGRender:
 			ctx.restore()
 		
 		elif node.tag == f'{{{self.xmlns_svg}}}line':
-			x1 = self.__units(view, node.attrib.get('x1', 0), percentage=width, em_size=em_size)
-			y1 = self.__units(view, node.attrib.get('y1', 0), percentage=height, em_size=em_size)
-			x2 = self.__units(view, node.attrib.get('x2', 0), percentage=width, em_size=em_size)
-			y2 = self.__units(view, node.attrib.get('y2', 0), percentage=height, em_size=em_size)
+			x1 = self.units(view, node.attrib.get('x1', 0), percentage=width, em_size=em_size)
+			y1 = self.units(view, node.attrib.get('y1', 0), percentage=height, em_size=em_size)
+			x2 = self.units(view, node.attrib.get('x2', 0), percentage=width, em_size=em_size)
+			y2 = self.units(view, node.attrib.get('y2', 0), percentage=height, em_size=em_size)
 			ctx.move_to(x1, y1)
 			ctx.line_to(x2, y2)
 		
 		elif node.tag == f'{{{self.xmlns_svg}}}polygon' or node.tag == f'{{{self.xmlns_svg}}}polyline':
-			x = self.__units(view, node.attrib.get('x', 0), percentage=width, em_size=em_size)
-			y = self.__units(view, node.attrib.get('y', 0), percentage=height, em_size=em_size)
+			x = self.units(view, node.attrib.get('x', 0), percentage=width, em_size=em_size)
+			y = self.units(view, node.attrib.get('y', 0), percentage=height, em_size=em_size)
 			
 			rpoints = node.attrib['points'].split()
 			points = []
@@ -811,8 +665,8 @@ class SVGRender:
 				#xs, ys, *_ = point.split(',')
 				xs = points[2 * n]
 				ys = points[2 * n + 1]
-				kx = self.__units(view, xs, percentage=width, em_size=em_size)
-				ky = self.__units(view, ys, percentage=height, em_size=em_size)
+				kx = self.units(view, xs, percentage=width, em_size=em_size)
+				ky = self.units(view, ys, percentage=height, em_size=em_size)
 				if first:
 					ctx.move_to(x + kx, y + ky)
 					first = False
@@ -913,80 +767,29 @@ class SVGRender:
 		node = document.getroot()
 		
 		try:
-			svg_width = self.__units(view, node.attrib['width'], percentage=self.get_viewport_width(view)) # TODO: default em size
+			svg_width = self.units(view, node.attrib['width'], percentage=self.get_viewport_width(view)) # TODO: default em size
 		except KeyError:
 			svg_width = self.get_viewport_width(view)
 		
 		try:
-			svg_height = self.__units(view, node.attrib['height'], percentage=self.get_viewport_height(view)) # TODO: default em size
+			svg_height = self.units(view, node.attrib['height'], percentage=self.get_viewport_height(view)) # TODO: default em size
 		except KeyError:
 			svg_height = self.get_viewport_height(view)
 		
 		return svg_width, svg_height
 	
-	def __units(self, view, spec, percentage=None, percentage_origin=0, em_size=None):
-		if not isinstance(spec, str):
-			return spec
-		
-		spec = spec.strip()
-		if not spec:
-			return 0
-		
-		dpi = self.get_dpi(view)
-		shift = 0
-		
-		if spec[-2:] == 'px':
-			scale = 1
-			value = spec[:-2]
-		elif spec[-2:] == 'ex':
-			if em_size == None:
-				raise ValueError("`em_size` not specified.")
-			scale = em_size * 1.2 # TODO
-			value = spec[:-2]
-		elif spec[-2:] == 'mm':
-			scale = dpi / 25.4
-			value = spec[:-2]
-		elif spec[-2:] == 'cm':
-			scale = dpi / 2.54
-			value = spec[:-2]
-		elif spec[-2:] == 'in':
-			scale = dpi
-			value = spec[:-2]
-		elif spec[-2:] == 'pc':
-			scale = dpi / 6
-			value = spec[:-2]
-		elif spec[-2:] == 'pt':
-			scale = dpi / 72
-			value = spec[:-2]
-		elif spec[-2:] == 'em':
-			if em_size == None:
-				raise ValueError("`em_size` not specified.")
-			scale = em_size * 2
-			value = spec[:-2]
-		elif spec[-1:] == 'Q':
-			scale = dpi / (2.54 * 40)
-			value = spec[:-1]
-		elif spec[-1:] == '%':
-			if percentage == None:
-				raise ValueError("Percentage not specified.")
-			scale = percentage / 100
-			shift = percentage_origin
-			value = spec[:-1]
-		else:
-			scale = 1
-			value = spec
-		
-		return self.__parse_float(value) * scale + shift
+	def image_width_for_height(self, view, document, height):
+		if not self.is_svg_document(document):
+			return NotImplemented
+		svg_width, svg_height = self.image_dimensions(view, document)
+		return height * svg_width / svg_height
 	
-	@staticmethod
-	def __parse_float(f):
-		if f is None:
-			return None
-		elif f == 'null':
-			return 0
-		else:
-			return float(f)
-	
+	def image_height_for_width(self, view, document, width):
+		if not self.is_svg_document(document):
+			return NotImplemented
+		svg_width, svg_height = self.image_dimensions(view, document)
+		return width * svg_height / svg_width
+		
 	__p_number = r'[+-]?(?:\d+\.?\d*|\d*\.?\d+)(?:[eE][+-]?\d+)?' # regex pattern matching a floating point number
 	__re_tokens = re.compile(fr'({__p_number}|[a-zA-Z])')
 	__re_matrix = re.compile(fr'matrix\s*\(\s*({__p_number})\s*,?\s*({__p_number})\s*,?\s*({__p_number})\s*,?\s*({__p_number})\s*,?\s*({__p_number})\s*,?\s*({__p_number})\s*\)')
@@ -1008,8 +811,8 @@ class SVGRender:
 		left, top, width, height = box
 		
 		origin = node.attrib.get('transform-origin', '0 0').split()
-		origin_x = self.__units(view, origin[0], percentage=width, em_size=em_size)
-		origin_y = self.__units(view, origin[1], percentage=height, em_size=em_size)
+		origin_x = self.units(view, origin[0], percentage=width, em_size=em_size)
+		origin_y = self.units(view, origin[1], percentage=height, em_size=em_size)
 		
 		if origin_x or origin_y:
 			ctx.translate(origin_x, origin_y)
@@ -1019,7 +822,7 @@ class SVGRender:
 		while n < len(text):
 			match = self.__re_matrix.search(text, n)
 			if match and self.__transform_separators(text[n:match.start()]):
-				m0, m1, m2, m3, m4, m5 = map(self.__parse_float, list(match.groups()))
+				m0, m1, m2, m3, m4, m5 = map(parse_float, list(match.groups()))
 				transformation = cairo.Matrix(m0, m1, m2, m3, m4, m5)
 				if (m0 or m1 or m2) and (m3 or m4 or m5): # TODO: hide view if matrix is singular
 					ctx.transform(transformation)
@@ -1028,21 +831,21 @@ class SVGRender:
 			
 			match = self.__re_translate1.search(text, n)
 			if match and self.__transform_separators(text[n:match.start()]):
-				x, = [self.__units(view, _spec, em_size=em_size) for _spec in match.groups()]
+				x, = [self.units(view, _spec, em_size=em_size) for _spec in match.groups()]
 				ctx.translate(x, 0)
 				n = match.end()
 				continue
 			
 			match = self.__re_translate.search(text, n)
 			if match and self.__transform_separators(text[n:match.start()]):
-				x, y = [self.__units(view, _spec, em_size=em_size) for _spec in match.groups()]
+				x, y = [self.units(view, _spec, em_size=em_size) for _spec in match.groups()]
 				ctx.translate(x, y)
 				n = match.end()
 				continue
 			
 			match = self.__re_scale1.search(text, n)
 			if match and self.__transform_separators(text[n:match.start()]):
-				s, = map(self.__parse_float, list(match.groups()))
+				s, = map(parse_float, list(match.groups()))
 				if s: # TODO: hide view if matrix is singular
 					ctx.scale(s, s)
 				n = match.end()
@@ -1050,7 +853,7 @@ class SVGRender:
 			
 			match = self.__re_scale2.search(text, n)
 			if match and self.__transform_separators(text[n:match.start()]):
-				sx, sy = map(self.__parse_float, list(match.groups()))
+				sx, sy = map(parse_float, list(match.groups()))
 				if sx and sy: # TODO: hide view if matrix is singular
 					ctx.scale(sx, sy)
 				n = match.end()
@@ -1058,14 +861,14 @@ class SVGRender:
 			
 			match = self.__re_rotate1.search(text, n)
 			if match and self.__transform_separators(text[n:match.start()]):
-				r, = map(self.__parse_float, list(match.groups()))
+				r, = map(parse_float, list(match.groups()))
 				ctx.rotate(math.radians(r))
 				n = match.end()
 				continue
 			
 			match = self.__re_rotate3.search(text, n)
 			if match and self.__transform_separators(text[n:match.start()]):
-				r, cx, cy = map(self.__parse_float, list(match.groups()))
+				r, cx, cy = map(parse_float, list(match.groups()))
 				ctx.translate(cx, cy)
 				ctx.rotate(math.radians(r))
 				ctx.translate(-cx, -cy)
@@ -1074,7 +877,7 @@ class SVGRender:
 			
 			match = self.__re_skewX.search(text, n)
 			if match and self.__transform_separators(text[n:match.start()]):
-				a, = map(self.__parse_float, list(match.groups()))
+				a, = map(parse_float, list(match.groups()))
 				transformation = cairo.Matrix(1, 0, math.tan(math.radians(a)), 1, 0, 0)
 				ctx.transform(transformation)
 				n = match.end()
@@ -1082,7 +885,7 @@ class SVGRender:
 			
 			match = self.__re_skewY.search(text, n)
 			if match and self.__transform_separators(text[n:match.start()]):
-				a, = map(self.__parse_float, list(match.groups()))
+				a, = map(parse_float, list(match.groups()))
 				transformation = cairo.Matrix(1, math.tan(math.radians(a)), 0, 1, 0, 0)
 				ctx.transform(transformation)
 				n = match.end()
@@ -1146,7 +949,7 @@ class SVGRender:
 			return False
 		
 		try:
-			stroke_width = self.__units(view, str(self.__get_attribute(view, document, ctx, box, node, em_size, 'stroke-width', 1)), em_size=em_size)
+			stroke_width = self.units(view, str(self.__get_attribute(view, document, ctx, box, node, em_size, 'stroke-width', 1)), em_size=em_size)
 		except ValueError:
 			self.emit_warning(view, f"Unsupported stroke spec: {self.__get_attribute(view, document, ctx, box, node, em_size, 'stroke-width')}.", node)
 			return False
@@ -1166,7 +969,7 @@ class SVGRender:
 		else:
 			self.emit_warning(view, f"Unsupported linecap `{linecap}`.", node)
 		
-		pathLength = self.__parse_float(node.attrib.get('pathLength', None))
+		pathLength = parse_float(node.attrib.get('pathLength', None))
 		if pathLength is None:
 			pathScale = 1
 		else:
@@ -1176,15 +979,15 @@ class SVGRender:
 		if dasharray == 'none' or dasharray == 'null':
 			ctx.set_dash([], 0)
 		else:
-			dashoffset = self.__parse_float(self.__get_attribute(view, document, ctx, box, node, em_size, 'stroke-dashoffset', 0)) * pathScale
+			dashoffset = parse_float(self.__get_attribute(view, document, ctx, box, node, em_size, 'stroke-dashoffset', 0)) * pathScale
 			
 			try:
-				ctx.set_dash([self.__parse_float(dasharray) * pathScale + 0], dashoffset)
+				ctx.set_dash([parse_float(dasharray) * pathScale + 0], dashoffset)
 			except ValueError:
 				try:
-					dashes = [_x * pathScale for _x in map(self.__parse_float, dasharray.split())]
+					dashes = [_x * pathScale for _x in map(parse_float, dasharray.split())]
 				except ValueError:
-					dashes = [_x * pathScale for _x in map(self.__parse_float, dasharray.split(','))]
+					dashes = [_x * pathScale for _x in map(parse_float, dasharray.split(','))]
 				ctx.set_dash(dashes, dashoffset)
 		
 		
@@ -1200,7 +1003,7 @@ class SVGRender:
 		
 		miterlimit = self.__get_attribute(view, document, ctx, box, node, em_size, 'stroke-miterlimit', '4')
 		try:
-			miterlimit = self.__parse_float(miterlimit)
+			miterlimit = parse_float(miterlimit)
 		except ValueError:
 			self.emit_warning(view, f"Miter limit float parse error `{miterlimit}`.", node)
 		else:
@@ -1216,14 +1019,14 @@ class SVGRender:
 			r, g, b = [int(_c, 16) / 255 for _c in (color[1:3], color[3:5], color[5:7])]
 							
 		elif color[:4] == 'rgb(' and color[-1] == ')':
-			r, g, b = [max(0, min(1, (self.__parse_float(_c) / 255 if _c.strip()[-1] != '%' else self.__parse_float(_c.strip()[:-1]) / 100))) for _c in color[4:-1].split(',')]
+			r, g, b = [max(0, min(1, (parse_float(_c) / 255 if _c.strip()[-1] != '%' else parse_float(_c.strip()[:-1]) / 100))) for _c in color[4:-1].split(',')]
 		
 		elif color[:4] == 'hsl(' and color[-1] == ')':
 			cc = color[4:-1].split(',')
 			
-			h = max(0, min(360, (self.__parse_float(cc[0])))) / 360
-			s = max(0, min(100, (self.__parse_float(cc[1] if cc[1][-1] != '%' else cc[1][:-1])))) / 100
-			l = max(0, min(100, (self.__parse_float(cc[2] if cc[2][-1] != '%' else cc[2][:-1])))) / 100
+			h = max(0, min(360, (parse_float(cc[0])))) / 360
+			s = max(0, min(100, (parse_float(cc[1] if cc[1][-1] != '%' else cc[1][:-1])))) / 100
+			l = max(0, min(100, (parse_float(cc[2] if cc[2][-1] != '%' else cc[2][:-1])))) / 100
 			
 			r, g, b = hls_to_rgb(h, l, s)
 		
@@ -1262,7 +1065,7 @@ class SVGRender:
 		if opacity == 'null':
 			a = None # None means 1 (full opacity), not 0 (full transparency)
 		else:
-			a = self.__parse_float(opacity)
+			a = parse_float(opacity)
 		
 		if a == 0:
 			return False
@@ -1363,9 +1166,9 @@ class SVGRender:
 				try:
 					spec = target.attrib['x1']
 					if spec[-1] == '%':
-						x1 = self.__parse_float(spec[:-1]) / 100 * gwidth
+						x1 = parse_float(spec[:-1]) / 100 * gwidth
 					else:
-						x1 = self.__parse_float(spec) * gscalex
+						x1 = parse_float(spec) * gscalex
 				except KeyError:
 					x1 = 0
 				except ValueError:
@@ -1375,9 +1178,9 @@ class SVGRender:
 				try:
 					spec = target.attrib['y1']
 					if spec[-1] == '%':
-						y1 = self.__parse_float(spec[:-1]) / 100 * gheight
+						y1 = parse_float(spec[:-1]) / 100 * gheight
 					else:
-						y1 = self.__parse_float(spec) * gscaley
+						y1 = parse_float(spec) * gscaley
 				except KeyError:
 					y1 = 0
 				except ValueError:
@@ -1387,9 +1190,9 @@ class SVGRender:
 				try:
 					spec = target.attrib['x2']
 					if spec[-1] == '%':
-						x2 = self.__parse_float(spec[:-1]) / 100 * gwidth
+						x2 = parse_float(spec[:-1]) / 100 * gwidth
 					else:
-						x2 = self.__parse_float(spec) * gscalex
+						x2 = parse_float(spec) * gscalex
 				except KeyError:
 					x2 = gwidth
 				except ValueError:
@@ -1399,9 +1202,9 @@ class SVGRender:
 				try:
 					spec = target.attrib['y2']
 					if spec[-1] == '%':
-						y2 = self.__parse_float(spec[:-1]) / 100 * gheight
+						y2 = parse_float(spec[:-1]) / 100 * gheight
 					else:
-						y2 = self.__parse_float(spec) * gscaley
+						y2 = parse_float(spec) * gscaley
 				except KeyError:
 					y2 = 0
 				except ValueError:
@@ -1414,9 +1217,9 @@ class SVGRender:
 				try:
 					spec = target.attrib['r']
 					if spec[-1] == '%':
-						r = self.__parse_float(spec[:-1]) / 100 * (gwidth + gheight) / 2
+						r = parse_float(spec[:-1]) / 100 * (gwidth + gheight) / 2
 					else:
-						r = self.__parse_float(spec) * (gscalex + gscaley) / 2
+						r = parse_float(spec) * (gscalex + gscaley) / 2
 				except KeyError:
 					r = (gwidth + gheight) / 2
 				except ValueError:
@@ -1426,9 +1229,9 @@ class SVGRender:
 				try:
 					spec = target.attrib['cx']
 					if spec[-1] == '%':
-						cx = self.__parse_float(spec[:-1]) / 100 * gwidth
+						cx = parse_float(spec[:-1]) / 100 * gwidth
 					else:
-						cx = self.__parse_float(spec) * gscalex
+						cx = parse_float(spec) * gscalex
 				except KeyError:
 					cx = gwidth / 2
 				except ValueError:
@@ -1438,9 +1241,9 @@ class SVGRender:
 				try:
 					spec = target.attrib['cy']
 					if spec[-1] == '%':
-						cy = self.__parse_float(spec[:-1]) / 100 * gheight
+						cy = parse_float(spec[:-1]) / 100 * gheight
 					else:
-						cy = self.__parse_float(spec) * gscaley
+						cy = parse_float(spec) * gscaley
 				except KeyError:
 					cy = gheight / 2
 				except ValueError:
@@ -1450,9 +1253,9 @@ class SVGRender:
 				try:
 					spec = target.attrib['fr']
 					if spec[-1] == '%':
-						fr = self.__parse_float(spec[:-1]) / 100 * (gwidth + gheight) / 2
+						fr = parse_float(spec[:-1]) / 100 * (gwidth + gheight) / 2
 					else:
-						fr = self.__parse_float(spec) * (gscalex + gscaley) / 2
+						fr = parse_float(spec) * (gscalex + gscaley) / 2
 				except KeyError:
 					fr = 0
 				except ValueError:
@@ -1462,9 +1265,9 @@ class SVGRender:
 				try:
 					spec = target.attrib['fx']
 					if spec[-1] == '%':
-						fx = self.__parse_float(spec[:-1]) / 100 * gwidth
+						fx = parse_float(spec[:-1]) / 100 * gwidth
 					else:
-						fx = self.__parse_float(spec) * gscalex
+						fx = parse_float(spec) * gscalex
 				except KeyError:
 					fx = cx
 				except ValueError:
@@ -1474,9 +1277,9 @@ class SVGRender:
 				try:
 					spec = target.attrib['fy']
 					if spec[-1] == '%':
-						fy = self.__parse_float(spec[:-1]) / 100 * gheight
+						fy = parse_float(spec[:-1]) / 100 * gheight
 					else:
-						fy = self.__parse_float(spec) * gscaley
+						fy = parse_float(spec) * gscaley
 				except KeyError:
 					fy = cy
 				except ValueError:
@@ -1490,9 +1293,9 @@ class SVGRender:
 				try:
 					offset_spec = colorstop.attrib['offset']
 					if offset_spec[-1] == '%':
-						offset = self.__parse_float(offset_spec[:-1]) / 100
+						offset = parse_float(offset_spec[:-1]) / 100
 					else:
-						offset = self.__parse_float(offset_spec)
+						offset = parse_float(offset_spec)
 				except KeyError:
 					offset = last_offset
 				except ValueError:
@@ -1508,7 +1311,7 @@ class SVGRender:
 					self.emit_warning(view, "Stop color of linear gradient not found.", colorstop)
 					continue
 				
-				stop_opacity = self.__parse_float(self.__get_attribute(view, document, ctx, box, colorstop, em_size, 'stop-opacity', None))
+				stop_opacity = parse_float(self.__get_attribute(view, document, ctx, box, colorstop, em_size, 'stop-opacity', None))
 				
 				if not stop_color or stop_color.lower() in ('none', 'transparent'):
 					continue
@@ -1536,8 +1339,8 @@ class SVGRender:
 			ctx.set_source(gradient)
 		
 		elif target.tag == f'{{{self.xmlns_svg}}}pattern':
-			pattern_width = self.__units(view, target.attrib['width'], percentage=(width + height) / 2, em_size=em_size)
-			pattern_height = self.__units(view, target.attrib['height'], percentage=(width + height) / 2, em_size=em_size)
+			pattern_width = self.units(view, target.attrib['width'], percentage=(width + height) / 2, em_size=em_size)
+			pattern_height = self.units(view, target.attrib['height'], percentage=(width + height) / 2, em_size=em_size)
 			
 			surface = cairo.ImageSurface(cairo.Format.ARGB32, math.ceil(pattern_width), math.ceil(pattern_height))
 			
@@ -1726,10 +1529,10 @@ class SVGRender:
 	def __produce_text(self, view, document, ctx, box, node, em_size, whitespace, x, y, pango_layout):
 		left, top, width, height = box
 		
-		x = self.__units(view, node.attrib.get('x', str(x)).split()[0], percentage=width, em_size=em_size) # TODO: support sequences
-		y = self.__units(view, node.attrib.get('y', str(y)).split()[0], percentage=height, em_size=em_size) # TODO: support sequences
-		dx = self.__units(view, node.attrib.get('dx', '0').split()[0], percentage=width, em_size=em_size) # TODO: support sequences
-		dy = self.__units(view, node.attrib.get('dy', '0').split()[0], percentage=height, em_size=em_size) # TODO: support sequences
+		x = self.units(view, node.attrib.get('x', str(x)).split()[0], percentage=width, em_size=em_size) # TODO: support sequences
+		y = self.units(view, node.attrib.get('y', str(y)).split()[0], percentage=height, em_size=em_size) # TODO: support sequences
+		dx = self.units(view, node.attrib.get('dx', '0').split()[0], percentage=width, em_size=em_size) # TODO: support sequences
+		dy = self.units(view, node.attrib.get('dy', '0').split()[0], percentage=height, em_size=em_size) # TODO: support sequences
 		
 		whitespace = node.attrib.get(f'{{{self.xmlns_xml}}}space', whitespace)
 		strip = whitespace != 'preserve'
@@ -1922,7 +1725,7 @@ class SVGRender:
 			font_size_attrib = '1.1em'
 		
 		_, _, width, height = box
-		font_size = self.__units(view, font_size_attrib, percentage=(width + height) / 2, em_size=em_size)
+		font_size = self.units(view, font_size_attrib, percentage=(width + height) / 2, em_size=em_size)
 		return font_size
 	
 	def __draw_path(self, view, document, ctx, box, node, em_size):
@@ -1945,7 +1748,7 @@ class SVGRender:
 		
 		def next_coord(percentage=None):
 			try:
-				return self.__units(view, next_token(), percentage=percentage, em_size=em_size)
+				return self.units(view, next_token(), percentage=percentage, em_size=em_size)
 			except (ValueError, AttributeError, TypeError) as error:
 				raise NotANumber(error)
 		
@@ -2231,10 +2034,10 @@ class SVGRender:
 		url = self.resolve_url(href, self.get_document_url(document))
 		
 		left, top, width, height = box
-		x = self.__units(view, node.attrib.get('x', 0), percentage=width, em_size=em_size)
-		y = self.__units(view, node.attrib.get('y', 0), percentage=height, em_size=em_size)
-		w = self.__units(view, node.attrib.get('width', width), percentage=width, em_size=em_size)
-		h = self.__units(view, node.attrib.get('height', height), percentage=height, em_size=em_size)
+		x = self.units(view, node.attrib.get('x', 0), percentage=width, em_size=em_size)
+		y = self.units(view, node.attrib.get('y', 0), percentage=height, em_size=em_size)
+		w = self.units(view, node.attrib.get('width', width), percentage=width, em_size=em_size)
+		h = self.units(view, node.attrib.get('height', height), percentage=height, em_size=em_size)
 		box = x, y, w, h
 		
 		transform = node.attrib.get('transform', None)
@@ -2269,10 +2072,10 @@ class SVGRender:
 		"Render <foreignObject/>. Rendering of the child node must be implemented separately."
 		
 		left, top, width, height = box
-		x = self.__units(view, node.attrib.get('x', 0), percentage=width, em_size=em_size)
-		y = self.__units(view, node.attrib.get('y', 0), percentage=height, em_size=em_size)
-		w = self.__units(view, node.attrib.get('width', width), percentage=width, em_size=em_size)
-		h = self.__units(view, node.attrib.get('height', height), percentage=height, em_size=em_size)
+		x = self.units(view, node.attrib.get('x', 0), percentage=width, em_size=em_size)
+		y = self.units(view, node.attrib.get('y', 0), percentage=height, em_size=em_size)
+		w = self.units(view, node.attrib.get('width', width), percentage=width, em_size=em_size)
+		h = self.units(view, node.attrib.get('height', height), percentage=height, em_size=em_size)
 		box = x, y, w, h
 		
 		transform = node.attrib.get('transform', None)
@@ -2351,7 +2154,8 @@ if __debug__ and __name__ == '__main__':
 		
 		def text_extents(self, txt):
 			if self.print_out: print(f'{self.__name}.text_extents("{txt}")')
-			return cairo.Rectangle(0, 0, len(txt), 1)
+			return cairo.TextExtents(0, 0, len(txt), 12, len(txt), 0)
+			#return cairo.Rectangle(0, 0, len(txt), 1) # FIXME
 		
 		def set_dash(self, dashes, offset):
 			if self.print_out: print(f'{self.__name}.set_dash({repr(dashes)}, {repr(offset)})')
@@ -2375,6 +2179,9 @@ if __debug__ and __name__ == '__main__':
 				return XMLFormat.scan_document_links(self, document)
 			elif NullFormat.is_null_document(self, document):
 				return NullFormat.scan_document_links(self, document)
+			elif hasattr(document, 'tag') and isinstance(document.tag, str):
+				print("Unsupported XML tag: ", document)
+				return []
 			else:
 				raise NotImplementedError(f"Could not scan links in unsupported document type: {type(document)}")
 		
@@ -2430,6 +2237,8 @@ if __debug__ and __name__ == '__main__':
 
 		for filepath in example.iterdir():
 			if filepath.suffix != '.svg': continue
+			print()
+			print(filepath)
 			#if filepath.name != 'animated-text-fine-cravings.svg': continue
 			#nn += 1
 			#if nn > 1: break
@@ -2443,6 +2252,7 @@ if __debug__ and __name__ == '__main__':
 			
 			document = rnd.create_document(filepath.read_bytes(), 'image/svg')
 			l = list(rnd.scan_document_links(document))
+			print("links:", l)
 			
 			rnd.tree = document
 			try:
