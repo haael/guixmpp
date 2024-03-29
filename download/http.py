@@ -33,7 +33,7 @@ if _library == '':
 			_, _, host, *path = url.split('/')
 			path = '/'.join(path)
 			
-			if host in self.__client:
+			if (host in self.__client) and (not self.__client[host].is_eof()):
 				connection = self.__client[host]
 			else:
 				connection = self.__client[host] = Connection2(f'https://{host}')

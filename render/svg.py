@@ -15,6 +15,7 @@ import math
 from enum import Enum
 import cairo
 from collections import defaultdict, namedtuple
+from weakref import WeakKeyDictionary
 from itertools import chain, starmap
 from urllib.parse import quote as url_quote
 from colorsys import hls_to_rgb
@@ -26,8 +27,9 @@ gi.require_version('Pango', '1.0')
 gi.require_version('PangoCairo', '1.0')
 from gi.repository import Pango, PangoCairo
 
-from format.xml import XMLFormat, XMLDocument, OverlayElement
+from format.xml import XMLFormat, XMLDocument
 from format.css import CSSFormat
+from document import DocumentNotFound
 
 
 try:
@@ -62,6 +64,12 @@ class SVGRender:
 	
 	supported_svg_features = frozenset({'http://www.w3.org/TR/SVG11/feature#Shape'})
 	supported_svg_extensions = frozenset()
+	
+	use_pango = True
+	
+	def __init__(self, *args, **kwargs):
+		self.__css_matcher = WeakKeyDictionary()
+		self.__instantiated_symbols = []
 	
 	def create_document(self, data, mime_type):
 		if mime_type == 'image/svg+xml' or mime_type == 'image/svg':
@@ -188,7 +196,8 @@ class SVGRender:
 			node = document.getroot()
 		else:
 			node = document
-			document = XMLDocument(node.getroottree().getroot())
+			#document = XMLDocument(node.getroottree().getroot())
+			document = node.getroottree()
 		
 		try:
 			del view.__attr_cache
@@ -218,7 +227,8 @@ class SVGRender:
 			node = document.getroot()
 		else:
 			node = document
-			document = XMLDocument(node.getroottree().getroot())
+			#document = XMLDocument(node.getroottree().getroot())
+			document = node.getroottree()
 		
 		em_size = 16
 		
@@ -307,55 +317,40 @@ class SVGRender:
 	__shape_tags = frozenset({'polygon', 'line', 'ellipse', 'circle', 'rect', 'path', 'polyline'})
 	__skip_tags = frozenset({'defs', 'title', 'desc', 'metadata', 'style', 'linearGradient', 'radialGradient', 'pattern', 'script', 'animate', 'filter', 'switch'})
 	
-	def __media_test(self, view):
+	def __media_test(self, view, media):
 		return False
 	
-	def __pseudoclass_test(self, view, pseudoclass, node, pseudoelement):
-		assert pseudoelement is None, "SVG does not use pseudoelements."
-		
-		if pseudoclass == 'hover' and hasattr(self, 'get_pointed'):
+	def __get_pseudoclasses(self, view, node):
+		pseudoclasses = set()
+		if hasattr(self, 'get_pointed'):
 			pointed = self.get_pointed(view)
-			if pointed is not None:
-				#if self.are_nodes_ordered(node, pointed):
-				#	a = []
-				#	p = pointed
-				#	if isinstance(p, OverlayElement):
-				#		a.append('OOO')
-				#	while p is not None:
-				#		
-				#		n = 0 if p.getparent() is None else p.getparent().index(p.orig_one()) if hasattr(p, 'orig_one') else p.getparent().index(p)
-				#		#n = 0
-				#		a.insert(0, p.tag.split('}')[-1] + ('[' + str(n) + ']') + (''.join('.' + _class for _class in p.attrib['class'].split(' ')) if 'class' in p.attrib else '') + ('#' + p.attrib['id'] if 'id' in p.attrib else '') + ('*' if (p == node) else ''))
-				#		p = p.getparent()
-				#	print("hover:", a)
-				#print(node.tag, node.attrib, pointed.tag, pointed.attrib, self.are_nodes_ordered(node, pointed))
-				return self.are_nodes_ordered(node, pointed)
-		#if pseudoclass in ['hover', 'active', 'focus', 'focus-visible', 'focus-within', 'default', 'fullscreen']:
-		#	return node in view.hover_elements
-		#elif pseudoclass in ['any-link', 'local-link', 'link', 'visited']:
-		#	return node in view.link_elements
-		#elif pseudoclass in ['current', 'buffering', 'muted', 'paused', 'picture-in-picture', 'playing', 'seeking', 'stalled', 'volume-locked']:
-		#	return node in view.link_elements
-		#elif pseudoclass in ['autofill', 'blank', 'checked', 'disabled', 'enabled', 'in-range', 'indeterminate', 'invalid', 'modal', 'optional', 'out-of-range', 'placeholder-shown', 'read-only', 'read-write', 'required', 'user-invalid', 'user-valid', 'valid']:
-		#	return node in view.link_elements
-		#elif pseudoclass in ['empty', 'first', 'first-child', 'first-of-type', 'left', 'last-child', 'last-of-type', 'right', 'root', 'target', 'target-within']:
-		#	return node in view.link_elements
-		return False
+			if pointed is not None and self.are_nodes_ordered(node, pointed):
+				pseudoclasses.add('hover')
+		return pseudoclasses
+	
+	def __get_classes(self, node):
+		if 'class' in node.attrib:
+			return frozenset(node.attrib['class'].split(' '))
+		else:
+			return frozenset()
+	
+	def __get_id(self, node):
+		if 'id' in node.attrib:
+			return node.attrib['id']
+		elif f'{{{self.xmlns_xml}}}id' in node.attrib:
+			return node.attrib[f'{{{self.xmlns_xml}}}id']
+		else:
+			return None
 	
 	def __get_attribute(self, view, document, ctx, box, node, em_size, attr, default):
 		if attr not in self.__presentation_attributes:
 			raise ValueError(f"Not a presentation attribute: {attr}")
 		
-		try:
-			return self.__search_attribute(view, document, node, attr)
-		except KeyError:
+		result = self.__search_attribute(view, document, node, attr)
+		if result is not None:
+			return result
+		else:
 			return default
-		
-		#else:
-		#	if attr in node.attrib:
-		#		return node.attrib[attr]
-		#	else:
-		#		return default
 	
 	def __search_attribute(self, view, document, node, attr):
 		"Search for effective presentation attribute. This will either be an explicit XML attribute, or attribute of one of ancestors, or CSS value."
@@ -367,7 +362,7 @@ class SVGRender:
 				pass
 			except AttributeError:
 				view.__attr_cache = defaultdict(dict)
-						
+			
 			"inline style='...' attribute"
 			try:
 				style = node.attrib['style']
@@ -375,7 +370,11 @@ class SVGRender:
 				pass
 			else:
 				css = self.get_document('data:text/css,' + url_quote('* {' + style + '}'))
-				css_attrs = css.match_element(node, None, (lambda *args: False), (lambda *args: False), self.xmlns_svg)
+				
+				if css not in self.__css_matcher:
+					self.__css_matcher[css] = self.create_css_matcher(css, None, self.__get_id, None, None, None, node.tag.split('}')[1:] if node.tag[0] == '}' else '')
+				css_attrs = self.__css_matcher[css](node)
+				
 				if attr in css_attrs:
 					view.__attr_cache[node][attr] = css_attrs[attr][0]
 					return css_attrs[attr][0]
@@ -391,7 +390,10 @@ class SVGRender:
 			css_priority = None
 			
 			for stylesheet in stylesheets:
-				css_attrs = stylesheet.match_element(node, None, (lambda *args: self.__media_test(view, *args)), (lambda _pseudoclass, _xml_element, _pseudoelement: self.__pseudoclass_test(view, _pseudoclass, _xml_element, _pseudoelement)), self.xmlns_svg)
+				if stylesheet not in self.__css_matcher:
+					self.__css_matcher[stylesheet] = self.create_css_matcher(stylesheet, (lambda _media: self.__media_test(view, _media)), self.__get_id, self.__get_classes, (lambda _node: self.__get_pseudoclasses(view, _node)), None, self.xmlns_svg)
+				css_attrs = self.__css_matcher[stylesheet](node)
+				
 				if attr in css_attrs:
 					value, priority = css_attrs[attr]
 					if css_priority == None or priority >= css_priority:
@@ -416,16 +418,20 @@ class SVGRender:
 				view.__attr_cache[node][attr] = result
 			return result
 		else:
-			raise KeyError(f"Attribute {attr} not found in any of ancestors")
+			#raise KeyError(f"Attribute {attr} not found in any of ancestors")
+			return None
 	
 	def __render_group(self, view, document, ctx, box, node, em_size, pointer): # FIXME: improve speed for deep documents
 		"Render SVG group element and its subelements."
+		
+		#print("render group", node.tag, ('#' + node.attrib['id']) if 'id' in node.attrib else '', node.attrib.get('class', ''), box, len(list(node)))
 		
 		em_size = self.__font_size(view, document, ctx, box, node, em_size)
 		
 		display = self.__get_attribute(view, document, ctx, box, node, em_size, 'display', 'block').lower()
 		visibility = self.__get_attribute(view, document, ctx, box, node, em_size, 'visibility', 'visible').lower()
 		
+		#print(visibility, display)
 		if visibility == 'collapse' or display == 'none':
 			return defaultdict(list)
 		
@@ -508,13 +514,20 @@ class SVGRender:
 		
 		hover_nodes = []
 		
+		#print("iter children", node.tag)
 		for n, child in enumerate(node):
-			if not isinstance(child.tag, str) or child.tag == f'{{{self.xmlns_svg}}}symbol' or child.tag == f'{{{self.xmlns_sodipodi}}}namedview':
+			#print(" child", n, child.tag, ('#' + child.attrib['id']) if 'id' in child.attrib else '', "of", node.tag)
+			if not isinstance(child.tag, str) or (child.tag == f'{{{self.xmlns_svg}}}symbol' and child not in self.__instantiated_symbols) or child.tag == f'{{{self.xmlns_sodipodi}}}namedview':
 				continue
 			
 			while child.tag in [f'{{{self.xmlns_svg}}}use', f'{{{self.xmlns_svg}}}switch']:
 				if child.tag == f'{{{self.xmlns_svg}}}use':
-					child = self.__construct_use(document, child)
+					try:
+						#print("construct use")
+						child = self.__construct_use(document, child)
+					except DocumentNotFound as error:
+						self.emit_warning(view, "Root document not found.", node)
+						return []
 				if child.tag == f'{{{self.xmlns_svg}}}switch':
 					for subchild in child:
 						if not isinstance(subchild.tag, str): continue
@@ -569,12 +582,8 @@ class SVGRender:
 		if transform or ((node.getparent() is not None) and (x or y)) or node.tag == f'{{{self.xmlns_svg}}}svg' or node.tag == f'{{{self.xmlns_svg}}}symbol':
 			ctx.restore()
 		
-		x, y, w, h = box
-		#for idx, (rx, ry) in view.pointers.items():
-		if pointer:
-			rx, ry = pointer
-			if x <= rx <= x + w and y <= ry <= y + h and ctx.in_clip(*ctx.device_to_user(rx, ry)):
-				hover_nodes.insert(0, node)
+		if pointer and hover_nodes:
+			hover_nodes.insert(0, node)
 		return hover_nodes
 	
 	def __render_shape(self, view, document, ctx, box, node, em_size, pointer):
@@ -612,16 +621,21 @@ class SVGRender:
 		
 		
 		if node.tag == f'{{{self.xmlns_svg}}}rect':
-			x, w, rx = [self.units(view, node.attrib.get(_a, 0), percentage=width, em_size=em_size) for _a in ('x', 'width', 'rx')]
-			y, h, ry = [self.units(view, node.attrib.get(_a, 0), percentage=height, em_size=em_size) for _a in ('y', 'height', 'ry')]
+			x, w, rx = [self.units(view, node.attrib.get(_a, None), percentage=width, em_size=em_size) for _a in ('x', 'width', 'rx')]
+			y, h, ry = [self.units(view, node.attrib.get(_a, None), percentage=height, em_size=em_size) for _a in ('y', 'height', 'ry')]
 			
-			rx = max(rx, 0)
-			ry = max(ry, 0)
+			if not x: x = 0
+			if not y: y = 0
 			
-			if rx or ry:
-				self.__draw_rounded_rectangle(ctx, x, y, w, h, rx, ry)
+			if not w or not h:
+				self.emit_warning(view, f"Rect missing some required attributes: x={x} y={y} width={w} height={h}.", node)
 			else:
-				ctx.rectangle(x, y, w, h)
+				if rx or ry:
+					if rx is None: rx = ry
+					if ry is None: ry = rx
+					self.__draw_rounded_rectangle(ctx, x, y, w, h, rx, ry)
+				else:
+					ctx.rectangle(x, y, w, h)
 		
 		elif node.tag == f'{{{self.xmlns_svg}}}circle':
 			cx = self.units(view, node.attrib.get('cx', 0), percentage=width, em_size=em_size)
@@ -722,6 +736,7 @@ class SVGRender:
 		"Render a <use/> element, referencing another one."
 		
 		current_url = self.get_document_url(document)
+		
 		try:
 			href = node.attrib[f'{{{self.xmlns_xlink}}}href']
 		except KeyError:
@@ -732,29 +747,42 @@ class SVGRender:
 			self.emit_warning(view, f"Ref not found: {link}.", node)
 			raise KeyError
 		else:
-			original = original.getroot()
+			target = original.getroot().__copy__()
 		
 		add_attrib = {}
 		del_attrib = set()
 		
-		try:
-			add_attrib[f'{{{self.xmlns_xlink}}}href'] = original.attrib[f'{{{self.xmlns_xlink}}}href']
-		except KeyError:
-			del_attrib.add(f'{{{self.xmlns_xlink}}}href')
+		for attr in f'{{{self.xmlns_xlink}}}href', 'href':
+			try:
+				add_attrib[attr] = target.attrib[attr]
+			except KeyError:
+				del_attrib.add(attr)
 		
-		try:
-			add_attrib['href'] = original.attrib['href']
-		except KeyError:
-			del_attrib.add('href')
+		#for attr in 'id', f'{{{self.xmlns_xml}}}id':
+		#	try:
+		#		add_attrib[attr] = target.attrib[attr]
+		#	except KeyError:
+		#		pass
 		
-		if 'transform' in node.attrib:
-			add_attrib['transform'] = node.attrib['transform'] + original.attrib.get('transform', '')
+		for attr in 'transform', 'gradientTransform':
+			if attr in node.attrib:
+				add_attrib[attr] = node.attrib[attr] + target.attrib.get(attr, '')
 		
-		if 'gradientTransform' in node.attrib:
-			add_attrib['gradientTransform'] = node.attrib['gradientTransform'] + original.attrib.get('gradientTransform', '')
+		target.attrib.update(node.attrib)
+		target.attrib.update(add_attrib)
+		for key in del_attrib:
+			if key in target.attrib:
+				del target.attrib[key]
+		node.getparent().replace(node, target)
 		
-		target = OverlayElement(node.getparent(), node, original, original.tag, add_attrib, del_attrib)
+		#target = OverlayElement(node.getparent(), node, original, original.tag, add_attrib, del_attrib)
 		#print("construct use:", node, original, target.attrib)
+		
+		#if target.tag == f'{{{self.xmlns_svg}}}symbol':
+		#	target.tag = f'{{{self.xmlns_svg}}}g'
+		
+		if target.tag == f'{{{self.xmlns_svg}}}symbol':
+			self.__instantiated_symbols.append(target)
 		
 		return target
 	
@@ -1095,7 +1123,11 @@ class SVGRender:
 	def __apply_pattern(self, view, document, ctx, box, node, em_size, url):
 		"Set painting source to a pattern, i.e. a gradient, identified by url."
 		
-		current_url = self.get_document_url(document)
+		try:
+			current_url = self.get_document_url(document)
+		except DocumentNotFound:
+			self.emit_warning(view, "Url not found for current document.", node)
+			return False
 		href = self.resolve_url(url, current_url)
 		target_doc = self.get_document(href)
 		if target_doc == None:
@@ -1139,8 +1171,8 @@ class SVGRender:
 					self.emit_warning(view, f"Ref not found: {href}.", node)
 					return False
 				else:
-					next_gradient = next_gradient_doc.getroot()
-
+					next_gradient = next_gradient_doc.getroot().__copy__()
+					
 					add_attrib = {}
 					del_attrib = set()
 					
@@ -1160,7 +1192,14 @@ class SVGRender:
 					if 'gradientTransform' in orig_target.attrib:
 						add_attrib['gradientTransform'] = orig_target.attrib['gradientTransform'] + next_gradient.attrib.get('gradientTransform', '')
 					
-					target = OverlayElement(orig_target.getparent(), orig_target, next_gradient, orig_target.tag, add_attrib, del_attrib)
+					#target = OverlayElement(orig_target.getparent(), orig_target, next_gradient, orig_target.tag, add_attrib, del_attrib)
+					next_gradient.attrib.update(orig_target.attrib)
+					next_gradient.attrib.update(add_attrib)
+					for key in del_attrib:
+						if key in next_gradient.attrib:
+							del next_gradient.attrib[key]
+					#target.getparent().replace(target, next_gradient)
+					target = next_gradient
 			
 			if target.tag == f'{{{self.xmlns_svg}}}linearGradient':					
 				try:
@@ -1413,7 +1452,10 @@ class SVGRender:
 		return txt.lstrip()
 	
 	def __render_text(self, view, document, ctx, box, textnode, em_size, pointer):
-		pango_layout = PangoCairo.create_layout(ctx)
+		if self.use_pango:
+			pango_layout = PangoCairo.create_layout(ctx)
+		else:
+			pango_layout = None
 		textspec = self.__produce_text(view, document, ctx, box, textnode, em_size, '', 0, 0, pango_layout)
 		return self.__render_text_spec(view, document, ctx, box, textspec, em_size, None, pango_layout, pointer)
 	
@@ -1948,16 +1990,40 @@ class SVGRender:
 	
 	@staticmethod
 	def __draw_rounded_rectangle(ctx, x, y, w, h, rx, ry):
-		r = (rx + ry) / 2 # TODO: non-symmetric rounded corners
 		ctx.new_sub_path()
-		ctx.arc(x + r, y + r, r, math.radians(180), math.radians(270))
-		ctx.line_to(x + w - r, y)
-		ctx.arc(x + w - r, y + r, r, math.radians(-90), math.radians(0))
-		ctx.line_to(x + w, y + h - r)
-		ctx.arc(x + w - r, y + h - r, r, math.radians(0), math.radians(90))
-		ctx.line_to(x + r, y + h)
-		ctx.arc(x + r, y + h - r, r, math.radians(90), math.radians(180))
-		ctx.line_to(x, y + r)
+		
+		ctx.save()
+		ctx.translate(x, y)
+		ctx.scale(rx, ry)
+		ctx.arc(1, 1, 1, math.radians(180), math.radians(270))
+		ctx.restore()
+		
+		ctx.line_to(x + w - rx, y)
+		
+		ctx.save()
+		ctx.translate(x + w, y)
+		ctx.scale(rx, ry)
+		ctx.arc(-1, 1, 1, math.radians(-90), math.radians(0))
+		ctx.restore()
+		
+		ctx.line_to(x + w, y + h - ry)
+		
+		ctx.save()
+		ctx.translate(x + w, y + h)
+		ctx.scale(rx, ry)
+		ctx.arc(-1, -1, 1, math.radians(0), math.radians(90))
+		ctx.restore()
+		
+		ctx.line_to(x + rx, y + h)
+		
+		ctx.save()
+		ctx.translate(x, y + h)
+		ctx.scale(rx, ry)
+		ctx.arc(1, -1, 1, math.radians(90), math.radians(180))
+		ctx.restore()
+		
+		ctx.line_to(x, y + ry)
+		
 		ctx.close_path()
 	
 	@staticmethod
@@ -2051,21 +2117,18 @@ class SVGRender:
 			image = self.get_document(url)
 			if not pointer:
 				self.draw_image(view, image, ctx, box)
-			#else: # no events inside <image/>
-			#	hover_subnodes = self.poke_image(view, image, ctx, box, *pointer)
-			#	hover_nodes.extend(hover_subnodes)
+			else:
+				rx, ry = ctx.device_to_user(*pointer)
+				if x <= rx <= x + w and y <= ry <= y + h and ctx.in_clip(rx, ry):
+					hover_nodes.insert(0, node)
 		except (IndexError, KeyError):
 			self.emit_warning(view, f"Could not fetch url: {url}.", node)
 		except NotImplementedError:
 			self.emit_warning(view, f"Unsupported image format: {type(image).__name__}.", node)
-		finally:
-			if transform:
-				ctx.restore()
 		
-		if pointer:
-			rx, ry = ctx.device_to_user(*pointer)
-			if x <= rx <= x + w and y <= ry <= y + h and ctx.in_clip(rx, ry):
-				hover_nodes.insert(0, node)
+		if transform:
+			ctx.restore()
+		
 		return hover_nodes
 	
 	def __render_foreign_object(self, view, document, ctx, box, node, em_size, pointer):
@@ -2085,27 +2148,25 @@ class SVGRender:
 		
 		hover_nodes = []
 		
-		try:
-			for child in node:
-				try:
-					ctx.save()
-					if not pointer:
-						self.draw_image(view, child, ctx, box)
-					else:
-						hover_subnodes = self.poke_image(view, child, ctx, box, *pointer)
-						hover_nodes.extend(hover_subnodes)
-				except NotImplementedError:
-					self.emit_warning(view, f"Unsupported foreign object: `{child.tag}`.", child)
-				finally:
-					ctx.restore()
-		finally:
-			if transform:
+		for child in node:
+			try:
+				ctx.save()
+				if not pointer:
+					self.draw_image(view, child, ctx, box)
+				else:
+					hover_subnodes = self.poke_image(view, child, ctx, box, *pointer)
+					hover_nodes.extend(hover_subnodes)
+			except NotImplementedError:
+				self.emit_warning(view, f"Unsupported foreign object: `{child.tag}`.", child)
+			finally:
 				ctx.restore()
 		
-		if pointer:
-			rx, ry = ctx.device_to_user(*pointer)
-			if x <= rx <= x + w and y <= ry <= y + h and ctx.in_clip(rx, ry):
-				hover_nodes.insert(0, node)
+		if transform:
+			ctx.restore()
+		
+		if pointer and hover_nodes:
+			hover_nodes.insert(0, node)
+		
 		return hover_nodes
 
 
@@ -2114,7 +2175,7 @@ if __debug__ and __name__ == '__main__':
 	from pycallgraph2.output.graphviz import GraphvizOutput
 	
 	from pathlib import Path
-	from format.xml import XMLFormat, XMLDocument
+	from format.xml import XMLFormat #, XMLDocument
 	from format.css import CSSFormat, CSSDocument
 	from format.null import NullFormat
 	from download.data import DataDownload
@@ -2170,6 +2231,16 @@ if __debug__ and __name__ == '__main__':
 			return lambda *args: None
 	
 	class SVGRenderModel(SVGRender, CSSFormat, XMLFormat, DataDownload, NullFormat):
+		def __init__(self):
+			SVGRender.__init__(self)
+			CSSFormat.__init__(self)
+			XMLFormat.__init__(self)
+			DataDownload.__init__(self)
+			NullFormat.__init__(self)
+			self.__document_cache = {}
+		
+		use_pango = False
+		
 		def scan_document_links(self, document):
 			if SVGRender.is_svg_document(self, document):
 				return SVGRender.scan_document_links(self, document)
@@ -2193,7 +2264,7 @@ if __debug__ and __name__ == '__main__':
 			elif mime_type == 'image/svg':
 				return SVGRender.create_document(self, data, mime_type)
 			else:
-				raise NotImplementedError("Could not create unsupported document type.")
+				raise NotImplementedError("Could not create unsupported document type: " + mime_type)
 		
 		def resolve_url(self, rel_url, base_url):
 			return rel_url
@@ -2205,15 +2276,25 @@ if __debug__ and __name__ == '__main__':
 			return hasattr(document, 'getroot')
 		
 		def get_document_url(self, document):
-			return ''
+			return str(id(document))
+		
+		def set_document(self, url, document):
+			self.__document_cache[url] = document
 		
 		def get_document(self, url):
-			if url.startswith('#'):
-				return XMLDocument(self.tree.findall(f".//*[@id='{url[1:]}']")[0])
+			if url in self.__document_cache:
+				return self.__document_cache[url]
+			elif url.startswith('#'):
+				result = XMLDocument(self.tree.findall(f".//*[@id='{url[1:]}']")[0])
+				#result = ElementTree(self.tree.findall(f".//*[@id='{url[1:]}']")[0])
+				self.__document_cache[url] = result
+				return result
 			elif url.startswith('data:text/css'):
-				return CSSDocument(url_unquote(url[14:]).encode('utf-8'))
-			return None
-			#raise NotImplementedError("Could not fetch unsupported url scheme: " + url)
+				result = CSSDocument(url_unquote(url[14:]).encode('utf-8'))
+				self.__document_cache[url] = result
+				return result
+			else:
+				raise KeyError("Could not fetch unsupported url scheme: " + url)
 		
 		def draw_image(self, view, document, ctx, box):
 			r = super().draw_image(view, document, ctx, box)
@@ -2237,31 +2318,32 @@ if __debug__ and __name__ == '__main__':
 
 		for filepath in example.iterdir():
 			if filepath.suffix != '.svg': continue
-			print()
-			print(filepath)
-			#if filepath.name != 'animated-text-fine-cravings.svg': continue
+			#print()
+			#print(filepath)
+			if filepath.name != 'Grouping_Templates are Used a Lot!.svg': continue
 			#nn += 1
 			#if nn > 1: break
 			
-			#profiler = PyCallGraph(output=GraphvizOutput(output_file=f'profile/svg_{example.name}_{filepath.name}.png'))
-			#profiler.start()
+			profiler = PyCallGraph(output=GraphvizOutput(output_type='svg', output_file=f'"profile/svg_{example.name}_{filepath.name}.svg"'))
+			profiler.start()
 			
 			ctx = PseudoContext(f'Context("{str(filepath)}")')
 			rnd = SVGRenderModel()
 			view = PseudoView()
 			
 			document = rnd.create_document(filepath.read_bytes(), 'image/svg')
-			l = list(rnd.scan_document_links(document))
-			print("links:", l)
+			for link in rnd.scan_document_links(document):
+				if not any(link.startswith(_prefix) for _prefix in ['#', 'data:']):
+					if link.endswith('.css'):
+						mime = 'text/css'
+					else:
+						raise NotImplementedError(link)
+					rnd.set_document(link, rnd.create_document((example / link).read_bytes(), mime))
 			
 			rnd.tree = document
-			try:
-				rnd.draw_image(view, document, ctx, (0, 0, 1024, 768))
-			except TypeError: # error from Pango
-				pass
-			else:	
-				assert ctx.balance == 0
+			rnd.draw_image(view, document, ctx, (0, 0, 1024, 768))
+			assert ctx.balance == 0
 				
-			#profiler.done()
+			profiler.done()
 
 

@@ -17,7 +17,7 @@ class DocumentNotFound(Exception):
 
 class Model:
 	"A structure holding a collection of documents, capable of loading and unloading."
-	
+		
 	@staticmethod
 	def features(name, *classes):
 		return type(name, (Model,) + classes, {})
@@ -30,28 +30,37 @@ class Model:
 		self.__chain_impl('__init__', args, kwargs)
 	
 	async def open_document(self, view, url):
-		if hasattr(view, '_Model__document') and view.__document is not None:
+		if hasattr(view, '_Model__document'):
 			raise ValueError("Close previous document first.")
 		
+		view.__document = None
 		view.__referenced = defaultdict(set)
 		view.__location = url
-		view.emit('dom_event', CustomEvent('opening', target=None, view=view, detail=url))
+		event = CustomEvent('opening', target=None, view=view, detail=url)
+		view.emit('dom_event', event)
+		view.__load_tasks = []
 		await self.begin_downloads()
 		view.__document = await self.__load_document(view, url)
+		if view.__load_tasks:
+			await gather(*view.__load_tasks)
 		await self.end_downloads()
-		view.emit('dom_event', CustomEvent('open', target=view.__document, view=view, detail=url))
+		del view.__load_tasks
+		event = CustomEvent('open', target=view.__document, view=view, detail=url)
+		view.emit('dom_event', event)
 		return view.__document
 	
 	async def close_document(self, view):
-		if not (hasattr(view, '_Model__document') and view.__document is not None):
+		if not (hasattr(view, '_Model__document')):
 			raise ValueError("No document is open.")
 		
 		url = view.__location
-		view.emit('dom_event', CustomEvent('closing', target=view.__document, view=view, detail=url))
+		event = CustomEvent('closing', target=view.__document, view=view, detail=url)
+		view.emit('dom_event', event)
 		self.__unload_document(view, url)
-		view.emit('dom_event', CustomEvent('close', target=None, view=view, detail=url))
+		event = CustomEvent('close', target=None, view=view, detail=url)
+		view.emit('dom_event', event)
 		view.__location = None
-		view.__document = None
+		del view.__document
 		self.documents.clear() # TODO
 	
 	def current_location(self, view):
@@ -97,7 +106,6 @@ class Model:
 			
 			result = method(self, *args, **kwargs)
 			if result != NotImplemented:
-				#print("method", method_name, cls.__name__)
 				return result
 		else:
 			raise NotImplementedError(f"Could not find implementation for method {method_name}. Arguments: {args}")
@@ -167,17 +175,13 @@ class Model:
 		
 		async with self.__start_downloading:
 			if shurl not in self.__downloading:
-				#print("me downloading", shurl)
 				me_downloading = True
 				self.__downloading[shurl] = Event()
 			else:
-				#print("other downloading", shurl)
 				me_downloading = False
 		
 		if not me_downloading:
-			#print("wait for download", shurl)
 			await self.__downloading[shurl].wait()
-			#print("finished waiting for download", shurl)
 			
 			try:
 				return self.get_document(url)
@@ -192,19 +196,22 @@ class Model:
 			try:
 				try:
 					data, mime_type = await self.download_document(shurl)
-				except Exception as error:
-					self.emit_warning(view, f"Error downloading document: {str(error)}", url)
+				except RuntimeError: # RuntimeError is abnormal during download.
+					raise
+				except Exception as error: # Ignore all other errors, issue a warning.
+					self.emit_warning(view, f"Error downloading document: {type(error).__name__}: {str(error)}", url)
 					data, mime_type = None, 'application/x-null'
 				
 				try:
 					self.documents[shurl] = self.create_document(data, mime_type)
+				except RuntimeError:
+					raise
 				except Exception as error:
-					self.emit_warning(view, f"Error creating document: {str(error)}", url)
+					self.emit_warning(view, f"Error creating document: {type(error).__name__}: {str(error)}", url)
 					self.documents[shurl] = self.create_document(None, 'application/x-null')
 			
 			finally:
 				async with self.__start_downloading:
-					#print("finished downloading", shurl)
 					self.__downloading[shurl].set()
 					del self.__downloading[shurl]
 		
@@ -214,7 +221,6 @@ class Model:
 			return document
 		
 		view.emit('dom_event', CustomEvent('beforeload', target=document, view=view, detail=url))
-		loads = []
 		visited = set()
 		for link in self.scan_document_links(document):
 			if link in self.documents or link in visited:
@@ -222,25 +228,18 @@ class Model:
 			
 			if link.startswith('data:'):
 				try:
-					self.documents[link] = self.create_document(*(await self.download_document(link))) # TODO: possible exception
+					self.documents[link] = self.create_document(*(await self.download_document(link)))
+				except RuntimeError:
+					raise
 				except Exception as error:
-					self.emit_warning(view, f"Error creating document: {str(error)}", link)
+					self.emit_warning(view, f"Error creating document: {type(error).__name__}: {str(error)}", link)
 					self.documents[link] = self.create_document(None, 'application/x-null')
 			else:
 				absurl = self.resolve_url(link, url)
 				view.__referenced[absurl].add(url)
 				load = create_task(self.__load_document(view, absurl))
-				loads.append(load)
-			visited.add(link)
-		
-		if loads:
-			done, pending = await wait(loads)
-			errors = []
-			for t in done:
-				if t.exception() is not None:
-					errors.append(t.exception())
-			if errors:
-				raise ExceptionGroup("Errors in __load_document subtasks.", errors) # should not happen
+				view.__load_tasks.append(load)
+			visited.add(link)		
 		
 		view.emit('dom_event', UIEvent('load', target=document, view=view, detail=url))
 		return document
@@ -308,6 +307,9 @@ class Model:
 	def set_image(self, widget, image):
 		self.__chain_impl('set_image', (widget, image))
 	
+	def set_location(self, widget, url):
+		self.__chain_impl('set_location', (widget, url))
+	
 	async def download_document(self, url) -> (bytes, str):
 		return await self.__find_impl_async('download_document', [url])
 	
@@ -360,6 +362,7 @@ if __debug__ and __name__ == '__main__':
 	from format.font import FontFormat
 	
 	from render.svg import SVGRender
+	from render.html import HTMLRender
 	from render.png import PNGRender
 	from render.pixbuf import PixbufRender
 	
@@ -412,18 +415,19 @@ if __debug__ and __name__ == '__main__':
 	
 	async def test_main():
 		view = PseudoView()
-		TestModel = Model.features('TestModel', DisplayView, SVGRender, CSSFormat, PNGRender, PixbufRender, FontFormat, DataDownload, FileDownload, ChromeDownload, XMLFormat, PlainFormat, NullFormat)
+		TestModel = Model.features('TestModel', DisplayView, SVGRender, HTMLRender, CSSFormat, PNGRender, PixbufRender, FontFormat, DataDownload, FileDownload, ChromeDownload, XMLFormat, PlainFormat, NullFormat)
 		model = TestModel()
 		model.set_view(view)
-		async for filepath in (Path.cwd() / 'examples/gfx').iterdir():
-			document = await model.open_document(view, filepath.as_uri())
-			await view.receive('open')
-			try:
-				dimensions = model.image_dimensions(view, document)
-			except NotImplementedError:
-				pass
-			await model.close_document(view)
-			view.clear()
+		async for dirpath in (Path.cwd() / 'examples').iterdir():
+			async for filepath in dirpath.iterdir():
+				document = await model.open_document(view, filepath.as_uri())
+				await view.receive('open')
+				try:
+					dimensions = model.image_dimensions(view, document)
+				except NotImplementedError:
+					pass
+				await model.close_document(view)
+				view.clear()
 	
 	run(test_main())
 

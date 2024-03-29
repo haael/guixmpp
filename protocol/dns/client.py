@@ -91,7 +91,7 @@ class AsyncResolver(asyncio.protocols.DatagramProtocol):
 	
 	def prune_cache(self):
 		t = self.loop.time()
-		for addr, ttl in self.cache[name, type_]:
+		for addr, ttl in frozenset(self.cache[name, type_]):
 			if ttl <= t:
 				self.cache[name, type_].remove((addr, ttl))
 				if not self.cache[name, type_]:
@@ -100,7 +100,7 @@ class AsyncResolver(asyncio.protocols.DatagramProtocol):
 	async def resolve(self, name, type_):
 		t = self.loop.time()
 		result = []
-		for addr, ttl in self.cache[name, type_]:
+		for addr, ttl in frozenset(self.cache[name, type_]):
 			if ttl > t:
 				result.append(addr)
 			else:

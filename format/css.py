@@ -197,14 +197,6 @@ class CSSFormat:
 		else:
 			return NotImplemented
 	
-	#def image_dimensions(self, view, document):
-	#	"Return the SVG dimensions, that might depend on the view state."
-	#	
-	#	if not self.is_css_document(document):
-	#		return NotImplemented
-	#	
-	#	return self.get_viewport_width(view), self.get_viewport_height(view)
-	
 	def units(self, view, spec, percentage=None, percentage_origin=0, em_size=None):
 		"Convert a string with unit spec into a float metric in pixels. If the spec involves percentage or `em`, additional arguments must be supplied."
 		
@@ -260,6 +252,341 @@ class CSSFormat:
 			value = spec
 		
 		return parse_float(value) * scale + shift
+	
+	def create_css_matcher(self, document, media_test, get_id, get_classes, get_pseudoclasses, pseudoelement_test, default_namespace):
+		namespace = ('{' + default_namespace + '}') if default_namespace else ''
+		
+		def walk_node(css_node, args):
+			if isinstance(css_node, str):
+				return css_node
+			elif css_node.name == 'path-operator':
+				return args[0]
+			elif css_node.name == 'selector-tag':
+				if args[0] == '*':
+					return lambda _xml_node: True
+				else:
+					return (lambda _xml_node: _xml_node.tag == f'{namespace}{args[0]}'), ('tag', f'{namespace}{args[0]}')
+			elif css_node.name == 'selector-class':
+				return (lambda _xml_node: args[0] in get_classes(_xml_node) if (get_classes is not None) else False), ('class', args[0])
+			elif css_node.name == 'selector-pseudo-class':
+				if args[0] == 'empty':
+					print("Implement pseudoclass: ", args[0])
+					return False
+				elif args[0] == 'first-child':
+					print("Implement pseudoclass: ", args[0])
+					return False
+				elif args[0] == 'first-of-type':
+					print("Implement pseudoclass: ", args[0])
+					return False
+				elif args[0] == 'last-child':
+					print("Implement pseudoclass: ", args[0])
+					return False
+				elif args[0] == 'last-of-type':
+					print("Implement pseudoclass: ", args[0])
+					return False
+				elif args[0] == 'only-child':
+					print("Implement pseudoclass: ", args[0])
+					return False
+				elif args[0] == 'only-of-type':
+					print("Implement pseudoclass: ", args[0])
+					return False
+				elif args[0] == 'root':
+					print("Implement pseudoclass: ", args[0])
+					return False
+				else:
+					return (lambda _xml_node: (args[0] in get_pseudoclasses(_xml_node)) if (get_pseudoclasses is not None) else False), ('pseudoclass', args[0])
+			elif css_node.name == 'selector-pseudo-class-fn':
+				if args[0] == 'not':
+					print("Implement pseudoclass function: ", args[0])
+					return False
+				elif args[0] == 'is':
+					print("Implement pseudoclass function: ", args[0])
+					return False
+				elif args[0] == 'has':
+					print("Implement pseudoclass function: ", args[0])
+					return False
+				elif args[0] == 'with':
+					print("Implement pseudoclass function: ", args[0])
+					return False
+				elif args[0] == 'nth-child':
+					print("Implement pseudoclass function: ", args[0])
+					return False
+				elif args[0] == 'nth-last-child':
+					print("Implement pseudoclass function: ", args[0])
+					return False
+				elif args[0] == 'nth-last-of-type':
+					print("Implement pseudoclass function: ", args[0])
+					return False
+				elif args[0] == 'nth-of-type':
+					print("Implement pseudoclass function: ", args[0])
+					return False
+				else:
+					print("Implement pseudoclass function: ", args[0])
+					return False
+			elif css_node.name == 'selector-pseudo-element':
+				return lambda _xml_node: pseudoelement_test(_xml_node, args[0]) if (pseudoelement_test is not None) else False
+			elif css_node.name == 'selector-attr':
+				if args[1] == '=':
+					return lambda _xml_node: (args[0] in _xml_node.attrib) and (_xml_node.attrib[args[0]] == args[2])
+				elif args[1] == '~=':
+					return lambda _xml_node: (args[0] in _xml_node.attrib) and (args[2] in _xml_node.attrib[args[0]].split(' '))
+				elif args[1] == '*=':
+					return lambda _xml_node: (args[0] in _xml_node.attrib) and (args[2] in _xml_node.attrib[args[0]])
+				elif args[1] == '^=':
+					return lambda _xml_node: (args[0] in _xml_node.attrib) and (_xml_node.attrib[args[0]].startswith(args[2]))
+				elif args[1] == '$=':
+					return lambda _xml_node: (args[0] in _xml_node.attrib) and (_xml_node.attrib[args[0]].endswith(args[2]))
+				elif args[1] == '|=':
+					return lambda _xml_node: (args[0] in _xml_node.attrib) and (args[2] == _xml_node.attrib[args[0]] or _xml_node.attrib[args[0]].startswith(args[2] + '-'))
+				else:
+					print("Implement attribute selector operator:", repr(args[1]))
+					return lambda _xml_node: False
+			elif css_node.name == 'selector-id':
+				return (lambda _xml_node: args[0] == get_id(_xml_node) if (get_id is not None) else False), ('id', args[0])
+			elif css_node.name == 'selector-percentage': # TODO: keyframes
+				#print("Implement keyframes.")
+				return lambda _xml_node: False
+			elif css_node.name == 'selector-single':
+				assert all(callable(_check) if not isinstance(_check, tuple) else callable(_check[0]) for _check in args), str(args)
+				
+				tag = None
+				id_ = None
+				classes = set()
+				pseudoclasses = set()
+				for arg in args:
+					if not isinstance(arg, tuple): continue
+					typ, prop = arg[1]
+					match typ:
+						case 'tag':
+							tag = prop
+						case 'id':
+							id_ = prop
+						case 'class':
+							classes.add(prop)
+						case 'pseudoclass':
+							pseudoclasses.add(prop)
+						case _:
+							raise ValueError
+				
+				fargs = [_matcher[0] if isinstance(_matcher, tuple) else _matcher for _matcher in args]
+				
+				return (lambda _xml_node: all(_check(_xml_node) for _check in fargs)), (tag, id_, frozenset(classes), frozenset(pseudoclasses))
+			elif css_node.name == 'selector-seq':
+				def check_selector_seq(args, xml_node):
+					if xml_node is None or not args[-1](xml_node):
+						return False
+					
+					if len(args) == 1:
+						return True
+					elif args[-2] == '>':
+						return check_selector_seq(args[:-2], xml_node.getparent())
+					elif args[-2] == ' ':
+						ancestor = xml_node.getparent()
+						while ancestor is not None:
+							if check_selector_seq(args[:-2], ancestor):
+								return True
+							ancestor = ancestor.getparent()
+						else:
+							return False
+					elif args[-2] == '+':
+						return check_selector_seq(args[:-2], xml_node.getprevious())
+					elif args[-2] == '~':
+						senpai = xml_node.getprevious()
+						while senpai is not None:
+							if check_selector_seq(args[:-2], senpai):
+								return True
+							senpai = senpai.getprevious()
+						else:
+							return False
+					else:
+						print("Implement path operator:", args[-2])
+						return False
+				
+				fargs = [_matcher[0] if isinstance(_matcher, tuple) else _matcher for _matcher in args]
+				props = [_matcher[1] for _matcher in args if isinstance(_matcher, tuple)][-1]
+				
+				return (lambda _xml_node: check_selector_seq(fargs, _xml_node)), props
+			elif css_node.name == 'function':
+				return args[0] + '(' + ', '.join(args[1]) + ')'
+			elif css_node.name == 'url':
+				assert len(args) == 1
+				return f'url({args[0]})'
+			elif css_node.name == 'arguments':
+				return args
+			elif css_node.name == 'value':
+				return ''.join(args)
+			elif css_node.name == 'values':
+				return ', '.join(args)
+			elif css_node.name == 'rule':
+				return args
+			elif css_node.name == 'rules':
+				return dict((_kv[0], _kv[1:]) for _kv in args)
+			elif css_node.name == 'selector':
+				testers = []
+				properties = []
+				selectors = []
+				for sel, (tst, prop) in zip(css_node.args, args):
+					testers.append(tst)
+					properties.append(prop)
+					selectors.append(sel)
+				return list(zip(properties, testers, selectors))
+			elif css_node.name == 'style':
+				assert isinstance(args[0], list) and all(len(_el) == 3 for _el in args[0])
+				assert isinstance(args[1], dict)
+				return [_el + (args[1],) for _el in args[0]]
+			elif css_node.name == 'stylesheet' or css_node.name == 'scope':
+				per_tag = defaultdict(set)
+				per_id = defaultdict(set)
+				per_class = defaultdict(set)
+				per_pseudoclass = defaultdict(set)
+				per_selector = defaultdict(list)
+				all_selectors = set()
+								
+				for zarg in args:
+					if zarg is None: continue
+					for (tag, id_, classes, pseudoclasses), tester, selector, rules in zarg:
+						per_tag[tag].add(selector)
+						if tag is not None:
+							per_tag[True].add(selector)
+						
+						per_id[id_].add(selector)
+						if id_ is not None:
+							per_id[True].add(selector)
+						
+						if not classes:
+							per_class[None].add(selector)
+						else:
+							for class_ in classes:
+								per_class[class_].add(selector)
+							per_class[True].add(selector)
+						
+						if not pseudoclasses:
+							per_pseudoclass[None].add(selector)
+						else:
+							for pclass_ in pseudoclasses:
+								per_pseudoclass[pclass_].add(selector)
+							per_pseudoclass[True].add(selector)
+						
+						per_selector[selector].append((tester, self.css_selector_priority(document, selector), rules))
+						all_selectors.add(selector)
+				
+				def match_selector(xml_node):
+					# limit number of selectors to process
+					
+					tag = xml_node.tag
+					selectors = per_tag[None] | (per_tag[tag] if (tag in per_tag) else frozenset()) # only selectors with the right tag, or wildcard tag
+					
+					if selectors & per_id[True]: # any overlap with id selectors?
+						id_ = get_id(xml_node) if (get_id is not None) else None
+						selectors &= per_id[None] | (per_id[id_] if (id_ in per_id) else frozenset()) # only selectors with the right id, or no id
+					
+					if selectors & per_class[True]: # any overlap with class selectors?
+						classes = get_classes(xml_node) if (get_classes is not None) else frozenset()
+						selectors &= per_class[None] | frozenset().union(*[per_class[_clas] for _clas in classes if _clas in per_class]) # only selectors with the right class, or no class
+					
+					if selectors & per_pseudoclass[True]: # any overlap with pseudoclass selectors?
+						pseudoclasses = get_pseudoclasses(xml_node) if (get_pseudoclasses is not None) else frozenset()
+						selectors &= per_pseudoclass[None] | frozenset().union(*[per_pseudoclass[_clas] for _clas in pseudoclasses if _clas in per_pseudoclass]) # only selectors with the right pseudoclass, or no pseudoclass
+					
+					result = {}
+					for selector in selectors:
+						for matcher, priority, rules in per_selector[selector]:
+							if not matcher(xml_node): continue
+							
+							for key, value in rules.items():
+								if key in result:
+									cur_priority = result[key][1]
+								else:
+									cur_priority = 0
+								
+								if priority >= cur_priority:
+									if len(value) == 2 and value[1] == '!important':
+										priority += 10000
+									result[key] = value[0], priority
+					
+					return result
+				
+				return match_selector				
+			elif css_node.name == 'prelude':
+				return args
+			elif css_node.name == 'atrule-simple':
+				print("atrule-simple", args)
+				return None
+			elif css_node.name == 'atrule-style':
+				if args[0] == 'font-face':
+					return None
+				print("atrule-style", args)
+				return None
+			elif css_node.name == 'atrule-block':
+				if args[0] == 'keyframes':
+					#print("Implement keyframes")
+					return None
+				print("atrule-block", args)
+				return None
+			else:
+				print("Unimplemented CSS css_node:", css_node)
+				return css_node
+		
+		return document.traverse(document.css_tree, None, None, walk_node, None)
+	
+	def css_selector_priority(self, document, selector):
+		try:
+			return selector.__cache_selector_priority
+		except AttributeError:
+			pass
+		
+		def walk_node(node, args):
+			if isinstance(node, str):
+				return node
+			elif node.name == 'selector-tag':
+				if args[0] == '*':
+					return 1
+				else:
+					return 2
+			elif node.name == 'selector-class':
+				return 10
+			elif node.name == 'selector-attr':
+				return 20
+			elif node.name == 'selector-id':
+				return 30
+			elif node.name == 'selector-pseudo-class':
+				return 40
+			elif node.name == 'selector-pseudo-element':
+				return 100
+			elif node.name == 'selector-single':
+				return sum(args)
+			elif node.name == 'selector-seq':
+				return max(args)
+			elif node.name == 'path-operator':
+				pri = [0]
+				for arg in args:
+					match arg:
+						case ' ':
+							pri.append(1)
+						case '>':
+							pri.append(2)
+						case '~':
+							pri.append(5)
+						case '+':
+							pri.append(5)
+						case _:
+							print("Implement path operator priority:", arg)
+				return sum(pri)
+			else:
+				print("Implement selector priority:", node.name)
+				return 0
+		
+		def descend(node):
+			if isinstance(node, str):
+				return False
+			elif node.name in ['selector-class', 'selector-attr', 'selector-id', 'selector-pseudo-class']:
+				return False
+			else:
+				return True
+		
+		priority = document.traverse(selector, [], None, walk_node, descend)
+		selector.__cache_selector_priority = priority
+		return priority
 
 
 class StyleNode:
@@ -269,6 +596,15 @@ class StyleNode:
 	
 	def __repr__(self):
 		return f"<{self.__class__.__qualname__} {repr(self.name)} @{hex(id(self))}>"
+	
+	def __eq__(self, other):
+		try:
+			return self.name == other.name and self.args == other.args
+		except AttributeError:
+			return NotImplemented
+	
+	def __hash__(self):
+		return hash((self.name,) + tuple(hash(_arg) for _arg in self.args))
 
 
 class CSSDocument:
@@ -413,229 +749,7 @@ class CSSDocument:
 							...
 			except (AttributeError, IndexError):
 				pass
-	
-	def selector_priority(self, selector):
-		def walk_node(node, args):
-			if isinstance(node, str):
-				return node
-			elif hasattr(node, 'cache_selector_priority'):
-				return node.cache_selector_priority
-			elif node.name == 'selector-tag':
-				if args[0] == '*':
-					node.cache_selector_priority = 1
-					return 1
-				else:
-					node.cache_selector_priority = 2
-					return 2
-			elif node.name == 'selector-class':
-				return 10
-			elif node.name == 'selector-attr':
-				return 20
-			elif node.name == 'selector-id':
-				return 30
-			elif node.name == 'selector-pseudo-class':
-				return 40
-			elif node.name == 'selector-pseudo-element':
-				return 100
-			elif node.name == 'selector-single':
-				node.cache_selector_priority = sum(args)
-				return node.cache_selector_priority
-			elif node.name == 'selector-seq':
-				node.cache_selector_priority = max(args)
-				return node.cache_selector_priority
-			else:
-				print("Implement selector priority:", node.name)
-				return 0
 		
-		def descend(node):
-			if isinstance(node, str):
-				return False
-			elif node.name in ['selector-class', 'selector-attr', 'selector-id', 'selector-pseudo-class']:
-				return False
-			elif hasattr(node, 'cache_selector_priority'):
-				return False
-			else:
-				return True
-		
-		return self.traverse(selector, [], None, walk_node, descend)
-	
-	def match_element(self, xml_element, pseudoelement, media_test, pseudoclass_test, default_namespace): # TODO
-		if default_namespace is None:
-			namespace = ''
-		else:
-			namespace = '{' + default_namespace + '}'
-		
-		root_tree = XMLDocument(xml_element.getroottree().getroot())
-		xml_element_path = root_tree.getpath(xml_element)
-		
-		try:
-			pseudoclass_cache = self.__match_element_cache[xml_element_path, pseudoelement]
-		except AttributeError:
-			self.__match_element_cache = defaultdict(dict)
-		else:
-			#print("css.match_element cache", xml_element_path, pseudoelement)
-			for pseudoclasses, result in pseudoclass_cache.items():
-				for p_class, p_element_path, p_result in pseudoclasses:
-					#print("element_path", p_element_path)
-					if pseudoclass_test(p_class, root_tree.xpath(p_element_path)[0], pseudoelement) != p_result:
-						break
-				else:
-					return result
-			#print(" ...")
-			
-			#print("css.match_element", xml_element_path, pseudoelement, self.__match_element_cache[xml_element_path, pseudoelement])
-
-		
-		def is_class(node, classnames):
-			if ('class' in node.attrib) and (node.attrib['class'] in classnames):
-				return True
-			
-			#parent = node.getparent()
-			#if parent:
-			#	return is_class(parent, classnames)
-			
-			return False
-		
-		def walk_node(node, args):
-			#<print(node.name if hasattr(node, 'name') else node)
-			
-			if isinstance(node, str):
-				return node
-			elif hasattr(node, 'cache_match_element'):
-				return node.cache_match_element
-			elif node.name == 'path-operator':
-				return args[0]
-			elif node.name == 'selector-tag':
-				if args[0] == '*':
-					return lambda _xml_element, _pseudoelement, _pseudoclass_test: True
-				else:
-					return lambda _xml_element, _pseudoelement, _pseudoclass_test: _xml_element.tag == f"{namespace}{args[0]}"
-			elif node.name == 'selector-class':
-				return lambda _xml_element, _pseudoelement, _pseudoclass_test: is_class(_xml_element, args[0].split(' '))
-			elif node.name == 'selector-pseudo-class':
-				return lambda _xml_element, _pseudoelement, _pseudoclass_test: _pseudoclass_test(args[0], _xml_element, _pseudoelement)
-			elif node.name == 'selector-pseudo-element':
-				#print("selector-pseudo-element", args)
-				return lambda _xml_element, _pseudoelement, _pseudoclass_test: (args[0] == _pseudoelement)
-			elif node.name == 'selector-attr':
-				if args[1] == '=':
-					return lambda _xml_element, _pseudoelement, _pseudoclass_test: (args[0] in _xml_element.attrib) and (_xml_element.attrib[args[0]] == args[2])
-				elif args[1] == '~=':
-					return lambda _xml_element, _pseudoelement, _pseudoclass_test: (args[0] in _xml_element.attrib) and (args[2] in _xml_element.attrib[args[0]].split(' '))
-				else:
-					print("Implement attribute selector operator: " + repr(args[1]))
-					return lambda _xml_element, _pseudoelement, _pseudoclass_test: False
-					#raise NotImplementedError("Attribute selector operator: " + repr(args[1]))
-			elif node.name == 'selector-id':
-				return lambda _xml_element, _pseudoelement, _pseudoclass_test: ('id' in _xml_element.attrib) and (_xml_element.attrib['id'] == args[0])
-			elif node.name == 'selector-percentage': # TODO: keyframes
-				return lambda _xml_element, _pseudoelement, _pseudoclass_test: False
-			elif node.name == 'selector-single':
-				assert all(callable(_check) for _check in args), str(args)
-				return lambda _xml_element, _pseudoelement, _pseudoclass_test: all(_check(_xml_element, _pseudoelement, _pseudoclass_test) for _check in args)
-			elif node.name == 'selector-seq':
-				def check_me(xml_element, pseudoelement, pseudoclass_test):
-					#print("check_me", args, xml_element)
-					if len(args) == 1:
-						return args[0](xml_element, pseudoelement, pseudoclass_test)
-					elif len(args) == 3 and args[1] == ' ':
-						if not args[2](xml_element, pseudoelement, pseudoclass_test):
-							return False
-						target = xml_element.getparent()
-						while target is not None:
-							if args[0](target, None, pseudoclass_test):
-								return True
-							target = target.getparent()
-						return False
-					#raise NotImplementedError("Implement path operators. {args}")
-					print("Implement path operators", args)
-					return False
-				return check_me
-			elif node.name == 'function':
-				return args[0] + '(' + ', '.join(args[1]) + ')'
-			elif node.name == 'url':
-				assert len(args) == 1
-				return f'url({args[0]})'
-			elif node.name == 'arguments':
-				return args
-			elif node.name == 'value':
-				return ''.join(args)
-			elif node.name == 'values':
-				return ', '.join(args)
-			elif node.name == 'rule':
-				return args
-			elif node.name == 'rules':
-				rules = dict((_kv[0], _kv[1:]) for _kv in args)
-				node.cache_match_element = rules
-				return rules
-			elif node.name == 'selector':
-				check = lambda _xml_element, _pseudoelement, _pseudoclass_test: [_sel for (_sel, _tst) in zip(node.args, args) if _tst(_xml_element, _pseudoelement, _pseudoclass_test)]
-				node.cache_match_element = check
-				return check
-			elif node.name == 'style':
-				assert isinstance(args[1], dict)
-				def match_(xml_element, pseudoelement, pseudoclass_test):
-					matched = args[0](xml_element, pseudoelement, pseudoclass_test)
-					if matched:
-						return matched, args[1]
-					else:
-						return None
-				node.cache_match_element = match_
-				return match_
-			elif node.name == 'stylesheet':
-				def match_(xml_element, pseudoelement, pseudoclass_test):
-					values = {}
-					
-					for arg in args:
-						if not callable(arg):
-							continue
-						
-						matched = arg(xml_element, pseudoelement, pseudoclass_test)
-						if not (isinstance(matched, tuple) and len(matched) == 2 and isinstance(matched[1], dict)):
-							continue
-						
-						selectors = matched[0]
-						priority = max(self.selector_priority(_selector) for _selector in selectors)
-						style = matched[1]
-						
-						for key, value in style.items():
-							if key in values:
-								cur_priority = values[key][1]
-							else:
-								cur_priority = 0
-							
-							if priority >= cur_priority:
-								if len(value) == 2 and value[1] == '!important':
-									priority += 1000
-								values[key] = value[0], priority
-					
-					return values
-				node.cache_match_element = match_
-				return match_
-			else:
-				#print("Unimplemented CSS node:", node)
-				return node
-		
-		def descend(node):
-			if isinstance(node, str):
-				return False
-			elif hasattr(node, 'cache_match_element'):
-				return False
-			else:
-				return True
-		
-		pseudoclasses = set()
-		
-		def do_pseudoclass_test(pseudoclass, xml_element, pseudoelement):
-			result = pseudoclass_test(pseudoclass, xml_element, pseudoelement)
-			pseudoclasses.add((pseudoclass, root_tree.getpath(xml_element), result))
-			return result
-		
-		result = self.traverse(self.css_tree, [], None, walk_node, descend)(xml_element, pseudoelement, do_pseudoclass_test)
-		self.__match_element_cache[xml_element_path, pseudoelement][frozenset(pseudoclasses)] = result
-		#print("result", xml_element_path, pseudoelement, frozenset(pseudoclasses), result)
-		return result
-	
 	def scan_urls(self):
 		"Yield all urls in style values."
 		
@@ -1374,10 +1488,42 @@ if __debug__ and __name__ == '__main__':
 	from pycallgraph2.output.graphviz import GraphvizOutput
 	
 	from pathlib import Path
+	from lxml.etree import fromstring
 	
 	print("css format")
 	
 	model = CSSFormat()
+	
+	sample_css = model.create_document(b'''
+	 *.x { tag: '*'; selector: '*'; selector_all: 1 }
+	 a { tag: 'a'; selector: 'a'; selector_a: 2 }
+	 /*a * { tag: '*'; selector: 'a *'; selector_a_all: 3 }
+	 a > * { tag: '*'; selector: 'a > *'; selector_a_direct_all: 4 }*/
+	 b { tag: 'b'; selector: 'b'; selector_b: 5 }
+	 /*b * { tag: '*'; selector: 'b *'; selector_b_all: 6 }
+	 b > * { tag: 'b'; selector: 'b > *'; selector_b_direct_all: 7 }*/
+	 c { tag: 'c'; selector: 'c'; selector_c: 8 }
+	 d { tag: 'd'; selector: 'd'; selector_d: 9 }
+	 b c { tag: 'c'; selector: 'b c'; selector_b_c: 10 }
+	 b, c { tag: 'b,c'; selector: 'b, c'; selector_b_or_c: 11 }
+
+	''', 'text/css')
+	
+	sample_xml = XMLDocument(fromstring(b'''
+	<a>
+	 <b/>
+	 <b/>
+	 <c/>
+	 <b>
+	  <c/>
+	  <d/>
+	 </b>
+	</a>
+	'''))
+	
+	for element in sample_xml.iter():
+		value = sample_css.match_element(sample_xml, element, None, None, None, None, None)
+		print(element, value)
 	
 	tree = model.create_document(b'''
 		:root {

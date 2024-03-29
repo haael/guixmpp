@@ -15,6 +15,7 @@ import math
 from enum import Enum
 import cairo
 from collections import defaultdict, namedtuple
+from weakref import WeakKeyDictionary
 from itertools import chain, starmap
 from urllib.parse import quote as url_quote
 from colorsys import hls_to_rgb
@@ -26,7 +27,7 @@ gi.require_version('Pango', '1.0')
 gi.require_version('PangoCairo', '1.0')
 from gi.repository import Pango, PangoCairo
 
-from format.xml import XMLFormat, XMLDocument, OverlayElement
+from format.xml import XMLFormat, XMLDocument
 from format.css import CSSFormat
 
 
@@ -54,6 +55,9 @@ class HTMLRender:
 	xmlns_html2 = 'http://www.w3.org/2002/06/xhtml2'
 	
 	web_colors = CSSFormat.web_colors
+	
+	def __init__(self, *args, **kwargs):
+		self.__css_matcher = WeakKeyDictionary()
 	
 	def create_document(self, data, mime_type):
 		if mime_type == 'application/xhtml' or mime_type == 'application/xhtml+xml' or mime_type == 'text/html':
@@ -199,7 +203,7 @@ class HTMLRender:
 		body.style['x'] = 0
 		body.style['y'] = 0
 		
-		print("render box", box)
+		#print("render box", box)
 		
 		root = BoxTree(None, None, [body])
 		root.style['font-size'] = 16
@@ -209,7 +213,7 @@ class HTMLRender:
 		root.style['y'] = box[1]
 		
 		self.__position_box_inline(view, ctx, document, body, root)
-		body.debug_print()
+		#body.debug_print()
 		self.__position_box_block(view, ctx, document, body, root)
 		
 		self.__render_box(view, ctx, document, body, root)
@@ -334,6 +338,7 @@ class HTMLRender:
 							lchild.style['y'] = y + fh
 						y += lh
 						lh = 0
+						fh = 0
 						line.clear()
 					line.append(child)
 					child.style['x'] = x
@@ -348,6 +353,7 @@ class HTMLRender:
 					child.style['x'] = 0
 					child.style['y'] = y
 					lh = 0
+					fh = 0
 					line.clear()
 					x = 0
 					y += child.style['height']
@@ -387,15 +393,40 @@ class HTMLRender:
 				self.__render_box(view, ctx, document, child, box)
 	
 	def __get_attribute(self, view, document, node, pseudoelement, attr, default):
-		try:
-			value = self.__search_attribute(view, document, node, pseudoelement, attr)
-		except KeyError:
+		value = self.__search_attribute(view, document, node, pseudoelement, attr)
+		if value is None:
+			return default
+		elif value == 'initial':
 			return default
 		else:
-			if value == 'initial':
-				return default
-			else:
-				return value
+			return value
+	
+	def __media_test(self, view, media):
+		return False
+	
+	def __pseudoelement_test(self, view, pelem):
+		return False
+	
+	def __get_pseudoclasses(self, view, node):
+		#pseudoclasses = set()
+		#if hasattr(self, 'get_pointed'):
+		#	pointed = self.get_pointed(view)
+		#	if pointed is not None and self.are_nodes_ordered(node, pointed):
+		#		pseudoclasses.add('hover')
+		#return pseudoclasses
+		return []
+	
+	def __get_classes(self, node):
+		if 'class' in node.attrib:
+			return frozenset(node.attrib['class'].split(' '))
+		else:
+			return []
+	
+	def __get_id(self, node):
+		if 'id' in node.attrib:
+			return node.attrib['id']
+		else:
+			return None
 	
 	def __search_attribute(self, view, document, node, pseudoelement, attr):
 		xmlns_html = self.__xmlns(document)
@@ -415,7 +446,9 @@ class HTMLRender:
 				pass
 			else:
 				css = self.get_document('data:text/css,' + url_quote('* {' + style + '}'))
-				css_attrs = css.match_element(node, None, (lambda *args: False), (lambda *args: False), xmlns_html)
+				if css not in self.__css_matcher:
+					self.__css_matcher[css] = self.create_css_matcher(css, None, self.__get_id, None, None, None, node.tag.split('}')[1:] if node.tag[0] == '}' else '')
+				css_attrs = self.__css_matcher[css](node)
 				if attr in css_attrs:
 					view.__attr_cache[node, pseudoelement][attr] = css_attrs[attr][0]
 					return css_attrs[attr][0]
@@ -431,7 +464,11 @@ class HTMLRender:
 		css_priority = None
 		
 		for stylesheet in stylesheets:
-			css_attrs = stylesheet.match_element(node, pseudoelement, (lambda *args: self.__media_test(view, *args)), (lambda _pseudoclass, _xml_element, _pseudoelement: self.__pseudoclass_test(view, _pseudoclass, _xml_element, _pseudoelement)), xmlns_html)
+			if stylesheet not in self.__css_matcher:
+				self.__css_matcher[stylesheet] = self.create_css_matcher(stylesheet, (lambda _media: self.__media_test(view, _media)), self.__get_id, self.__get_classes, (lambda _node: self.__get_pseudoclasses(view, _node)), None, self.__xmlns(document))
+			css_attrs = self.__css_matcher[stylesheet](node)
+			
+			#css_attrs = stylesheet.match_element(document, node, (lambda _media: self.__media_test(view, _media)), self.__get_id, self.__get_classes, (lambda _node: self.__get_pseudoclasses(view, _node)), self.__pseudoelement_test)
 			if attr in css_attrs:
 				value, priority = css_attrs[attr]
 				if css_priority == None or priority >= css_priority:
@@ -448,7 +485,7 @@ class HTMLRender:
 			view.__attr_cache[node, pseudoelement][attr] = result
 			return result
 		else:
-			raise KeyError(f"Attribute {attr} not found in any of ancestors.")
+			return None
 	
 	def __stylesheets(self, document):
 		myurl = self.get_document_url(document)
@@ -468,16 +505,6 @@ class HTMLRender:
 			doc = self.get_document(absurl)
 			if self.is_css_document(doc):
 				yield doc
-	
-	def __media_test(self, view):
-		return False
-	
-	def __pseudoclass_test(self, view, pseudoclass, node, pseudoelement):
-		if pseudoclass == 'hover' and hasattr(self, 'get_pointed'):
-			pointed = self.get_pointed(view)
-			if pointed is not None:
-				return self.are_nodes_ordered(node, pointed)
-		return False
 
 
 if __debug__ and __name__ == '__main__':

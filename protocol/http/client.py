@@ -69,13 +69,19 @@ class Connection:
 		self.__arrived.clear()
 	
 	def start_body_reception(self):
-		self.__eof = False
+		self.__body_eof = False
+	
+	def stop_body_reception(self):
+		self.__body_eof = True
 	
 	def eof_received(self):
 		self.__eof = True
 	
 	def is_eof(self):
 		return self.__eof
+	
+	def is_body_eof(self):
+		return self.__body_eof
 	
 	def pause_writing(self):
 		self.__writing.clear()
@@ -90,7 +96,8 @@ class Connection:
 		self.loop = get_running_loop()
 		self.__writing = Event()
 		self.__arrived = Event()
-		self.__eof = True
+		self.__eof = False
+		self.__body_eof = True
 		
 		errors = []
 		for family, type_, proto, cname, addr_port in await self.loop.getaddrinfo(self.host, self.port):
@@ -118,7 +125,7 @@ class Connection:
 		except AttributeError: # error before connection established
 			pass
 		
-		del self.loop, self.__writing, self.__arrived, self.__eof
+		del self.loop, self.__writing, self.__arrived, self.__eof, self.__body_eof
 	
 	def begin_stream(self):
 		raise NotImplementedError
@@ -200,7 +207,7 @@ class Connection1(Connection):
 		if bufsize is not None and bufsize <= 0:
 			raise ValueError("`bufsize` must be > 0")
 		
-		if self.is_eof() and not self.__read_buffer:
+		if (self.is_eof() or self.is_body_eof()) and not self.__read_buffer:
 			return bytes()
 		
 		result = []
@@ -221,7 +228,7 @@ class Connection1(Connection):
 						result.append(chunk[:needed])
 						self.__read_buffer.insert(0, chunk[needed:])
 		
-		if not self.is_eof():
+		if not (self.is_eof() or self.is_body_eof()):
 			while (bufsize is None) or sum(len(_chunk) for _chunk in result) < bufsize:
 				event = self.__http.next_event()
 				while event is h11.NEED_DATA:
@@ -240,7 +247,7 @@ class Connection1(Connection):
 							result.append(chunk[:needed])
 							self.__read_buffer.append(chunk[needed:])
 				elif type(event) is h11.EndOfMessage:
-					self.eof_received()
+					self.stop_body_reception()
 					break
 		
 		return bytes().join(result)
@@ -260,7 +267,6 @@ class Connection2(Connection):
 	
 	async def begin_stream(self):
 		stream = self.__streams
-		#print('begin_stream', stream)
 		self.__streams += 2
 		lock = self.__locks[stream] = Lock()
 		self.__received_length[stream] = 0
@@ -268,7 +274,6 @@ class Connection2(Connection):
 		return stream
 	
 	async def end_stream(self, stream):
-		#print('end_stream', stream)
 		self.__locks[stream].release()
 		del self.__locks[stream], self.__received_length[stream]
 	
@@ -279,9 +284,6 @@ class Connection2(Connection):
 	
 	def data_received(self, data):
 		events = self.__http.receive_data(data)
-		#print([type(_event).__name__ + (('/' + str(_event.stream_id)) if hasattr(_event, 'stream_id') else '') for _event in events])
-		#for event in events:
-		#	print(event)
 		self.__events.extend(events)
 		super().data_received(data)
 	
@@ -301,14 +303,12 @@ class Connection2(Connection):
 				self.__events.remove(event)
 				if not isinstance(event, h2.events.SettingsAcknowledged):
 					continue
-				#print("Settings acknowledged", event, [type(_event).__name__ for _event in self.__events])
 				acked = True
 				break
 			else:
 				await self.wait_for_data()
 	
 	async def send_request(self, stream, method, path, headers):
-		#print('send_request', path)
 		headers = [
 			(':method', method),
 			(':path', path),
@@ -323,7 +323,6 @@ class Connection2(Connection):
 		await self.send_data(data)
 	
 	async def response(self, stream):
-		#print('response', stream)
 		self.__end_received[stream] = False
 		headers = None
 		while headers is None:
@@ -343,7 +342,6 @@ class Connection2(Connection):
 		pseudo_header = dict((_key.decode('ascii'), _value.decode('ascii')) for (_key, _value) in event.headers if _key.startswith(b':'))
 		headers = dict((_key.decode('ascii'), _value.decode('ascii')) for (_key, _value) in event.headers if not _key.startswith(b':'))
 		status_code = int(pseudo_header[':status'])
-		#print("", pseudo_header, headers)
 		
 		#self.__remaining[stream] = int(headers['content-length'])
 		
@@ -379,7 +377,6 @@ class Connection2(Connection):
 			for event in list(self.__events):
 				if hasattr(event, 'stream_id') and event.stream_id != stream:
 					continue
-				#print(event)
 				self.__events.remove(event)
 				if isinstance(event, h2.events.StreamEnded):
 					#self.__end_streams += 2
@@ -403,9 +400,7 @@ class Connection2(Connection):
 						result.append(chunk[:needed])
 						self.__read_buffer.insert(0, chunk[needed:])
 				
-				#print("stream_ended", event.stream_ended)
 				self.__received_length[stream] += len(chunk)
-				#print("remaining", self.__remaining[stream])
 				
 				#if event.stream_ended is not None:
 				#	self.eof_received()
@@ -607,6 +602,11 @@ if __debug__ and __name__ == '__main__':
 	from asyncio import run, sleep, gather
 	
 	async def main():
+		async with Connection1('https://www.w3.org') as w3org:
+			print(await w3org.Url('/Consortium/Offices/Presentations/SVG/0.svg').get())
+			print(await w3org.Url('/Consortium/Offices/Presentations/SVG/../xsltSlidemaker/AlternativeStyles/W3CSVG.css').get())
+			print()
+		
 		async with Connection2('https://cdn.svgator.com/images/2023/03/vr-girl.png') as vrgirl:
 			print(await vrgirl.Url().get())
 			print()

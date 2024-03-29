@@ -5,12 +5,14 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk, GObject, GLib, GdkPixbuf
 
-#from locale import gettext
+from locale import gettext
 from mainloop import *
 from domwidget import DOMWidget
-#from document import CreationError
 from aiopath import Path
-from asyncio import sleep
+from asyncio import sleep, Condition
+from secrets import choice as random_choice
+
+from client import XMPPClient
 
 
 class BuilderExtension:
@@ -37,7 +39,7 @@ class BuilderExtension:
 			#setattr(self, attr, widget)
 			return widget
 		else:
-			raise AttributeError("Attribute not found in object nor in builder:" + attr)
+			raise AttributeError("Attribute not found in object nor in builder: " + attr)
 	
 	def replace_widget(self, name, new_widget):
 		old_widget = getattr(self, name)
@@ -116,99 +118,223 @@ class DataForm:
 			grid.pack_start(Gtk.Entry())
 		box = Gtk.Box()
 		grid.pack_start(box, width=3)
-		box.pack_start(Gtk.Button("Cancel"))
-		box.pack_end(Gtk.Button("Submit"))
+		box.pack_start(Gtk.Button(gettext("Cancel")))
+		box.pack_end(Gtk.Button(gettext("Submit")))
 
 
 class Browser(BuilderExtension):
+	ERROR_ICON = 'error'
+	WARNING_ICON = 'important'
+	
 	def __init__(self, interface, translation):
 		super().__init__(interface, translation, ['window_main', 'entrybuffer_jid', 'popover_presence', 'filechooser_avatar', 'filefilter_images'], 'window_main')
 		
-		@asynchandler
-		async def dom_event(widget, event):
-			print(event)
-			
-			if event.type_ == 'opening':
-				widget.main_url = event.detail
-				widget.set_image(None)
-			
-			elif event.type_ == 'open':
-				if event.detail == widget.main_url:
-					widget.set_image(event.target)
-				else:
-					widget.set_image(widget.image)
-			
-			elif event.type_ == 'close':
-				widget.main_url = None
-				widget.set_image(None)
-		
-		size_request = self.drawingarea_avatar_preview.get_size_request()
-		self.replace_widget('drawingarea_avatar_preview', DOMWidget(file_download=True))		
-		self.drawingarea_avatar_preview.connect('dom_event', dom_event)		
-		self.drawingarea_avatar_preview.set_size_request(*size_request)
-		self.drawingarea_avatar_preview.show()
-		
-		size_request = self.drawingarea_avatar.get_size_request()
-		self.replace_widget('drawingarea_avatar', DOMWidget(file_download=True))		
-		self.drawingarea_avatar.connect('dom_event', dom_event)		
-		self.drawingarea_avatar.set_size_request(*size_request)
-		self.drawingarea_avatar.show()
+		for widget_name in 'drawingarea_avatar_preview', 'drawingarea_avatar':
+			size_request = getattr(self, widget_name).get_size_request()
+			self.replace_widget(widget_name, DOMWidget(file_download=True))
+			widget = getattr(self, widget_name)
+			widget.connect('dom_event', self.svg_view_dom_event)
+			widget.set_size_request(*size_request)
+			widget.show()
 		
 		self.network_spinner = Spinner([self.form_login, self.form_register, self.form_server_options])
-		self.stack_main.set_visible_child_name('page0')
+		
+		self.roster = []
+		self.listbox_main.add(BuilderExtension(interface, translation, ['roster_start'], 'roster_start').main_widget)
+		self.roster.append(('page_start', None))
+		self.listbox_main.add(BuilderExtension(interface, translation, ['roster_start'], 'roster_start').main_widget)
+		self.roster.append(('page_profile', None))
+	
+	@classmethod
+	def validate_username(cls, username):
+		if not all(_ch in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._" for _ch in username):
+			raise ValueError("Characters allowed in username are: alphanumeric, dot, hyphen and underscore.")
+	
+	@classmethod
+	def validate_host(cls, host):
+		if not all(_ch in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._" for _ch in host):
+			raise ValueError("Characters allowed in host are: alphanumeric, dot, hyphen and underscore.")
+	
+	@classmethod
+	def validate_resource(cls, resource):
+		if not all(_ch in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._" for _ch in resource):
+			raise ValueError("Characters allowed in resource are: alphanumeric, dot, hyphen and underscore.")
+	
+	@classmethod
+	def split_jid(cls, jid):
+		try:
+			username, rest = jid.split('@')
+			host, *resource = rest.split('/')
+		except ValueError:
+			raise ValueError("JID valid format is: username@host.addr/optional-resource")
+		
+		cls.validate_username(username)
+		cls.validate_host(host)
+		
+		if len(resource) == 0:
+			return username, host, None
+		elif len(resource) == 1:
+			cls.validate_resource(resource[0])
+			return username, host, resource[0]
+		else:
+			raise ValueError("Only 1 resource string allowed.")
 	
 	@asynchandler
 	async def login(self, widget):
+		if not self.entrybuffer_jid.get_text():
+			self.entry_login_jid.grab_focus()
+			self.entry_login_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.ERROR_ICON)
+			self.entry_login_jid.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext("Provide a JID."))
+			return
+		else:
+			self.entry_login_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+		
+		try:
+			username, host, resource = self.split_jid(self.entrybuffer_jid.get_text())
+		except ValueError as error:
+			self.entry_login_jid.grab_focus()
+			self.entry_login_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.ERROR_ICON)
+			self.entry_login_jid.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
+			return
+		else:
+			self.entry_login_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+		
+		jid = username + '@' + host
+		password = self.entry_login_password.get_text()
+		
+		alt_host = self.entry_host.get_text()
+		if alt_host:
+			try:
+				self.validate_host(alt_host)
+			except ValueError as error:
+				self.entry_host.grab_focus()
+				self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.ERROR_ICON)
+				self.entry_host.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
+				return
+			else:
+				self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+				host = alt_host
+		else:
+			self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+		
+		port = self.entry_port.get_text()
+		if not port:
+			port = self.entry_port.get_placeholder_text()
+		
 		with self.network_spinner:
-			print("login", widget, self.entrybuffer_jid.get_text(), self.entry_login_password.get_text())
+			print("login", widget, jid, host, port)
 			await sleep(2)
 	
 	@asynchandler
 	async def register(self, widget):
+		if not self.entrybuffer_jid.get_text():
+			self.entry_registration_jid.grab_focus()
+			self.entry_registration_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.ERROR_ICON)
+			self.entry_registration_jid.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext("Provide a JID."))
+			return
+		else:
+			self.entry_registration_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+		
+		try:
+			username, host, resource = self.split_jid(self.entrybuffer_jid.get_text())
+		except ValueError as error:
+			self.entry_registration_jid.grab_focus()
+			self.entry_registration_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.ERROR_ICON)
+			self.entry_registration_jid.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
+			return
+		else:
+			self.entry_registration_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+		
+		if len(self.entry_registration_password_1.get_text()) < 8:
+			self.entry_registration_password_1.grab_focus()
+			self.entry_registration_password_1.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.ERROR_ICON)
+			self.entry_registration_password_1.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext("Provide password at least 8 characters long."))
+			return
+		else:
+			self.entry_registration_password_1.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+		
+		if self.entry_registration_password_1.get_text() != self.entry_registration_password_2.get_text():
+			self.entry_registration_password_2.grab_focus()
+			self.entry_registration_password_2.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.ERROR_ICON)
+			self.entry_registration_password_2.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext("Passwords do not match."))
+			return
+		else:
+			self.entry_registration_password_2.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+		
+		jid = username + '@' + host
+		
+		alt_host = self.entry_host.get_text()
+		if alt_host:
+			try:
+				self.validate_host(alt_host)
+			except ValueError as error:
+				self.entry_host.grab_focus()
+				self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.ERROR_ICON)
+				self.entry_host.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
+				return
+			else:
+				self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+				host = alt_host
+		else:
+			self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+		
+		port = self.entry_port.get_text()
+		if not port:
+			port = self.entry_port.get_placeholder_text()
+		
 		with self.network_spinner:
-			print("register", widget, self.entrybuffer_jid.get_text(), self.entry_registration_password_1.get_text(), self.entry_registration_password_2.get_text())
+			
+			print("register", widget, jid, host, port)
 			await sleep(2)
 	
 	def choose_presence(self, widget):
 		self.popover_presence.show()
 	
 	def choose_avatar(self, widget):
+		"Open avatar selection dialog."
 		self.filechooser_avatar.show()
 	
 	def cancel_avatar(self, widget, sthelse=None):
-		print("cancel avatar")
+		"Close avatar selection dialog."
 		self.filechooser_avatar.hide()
-		return True # cancel widget destroy
+		return True # prevent widget destroy
 	
-	def unset_avatar(self, widget):
-		print("unset avatar")
+	@asynchandler
+	async def unset_avatar(self, widget):
+		"Remove user avatar from network."
+		
+		async with self.drawingarea_avatar.document_condition:
+			if self.drawingarea_avatar.main_url is not None:
+				await self.drawingarea_avatar.close_document()
+				await self.drawingarea_avatar.document_condition.wait_for(lambda: self.drawingarea_avatar.get_image() is None)
+		
 		self.filechooser_avatar.hide()
-		if self.drawingarea_avatar_preview.main_url:
-			self.drawingarea_avatar_preview.close_document()
-			self.drawingarea_avatar_preview.main_url = None
 	
 	@asynchandler
 	async def select_avatar(self, widget):
+		"Show preview in avatar selection dialog."
+		
 		filename = self.filechooser_avatar.get_filename()
 		if filename and not (await Path(filename).is_dir()):
-			print("select avatar", filename, self.drawingarea_avatar_preview.main_url)
-			if self.drawingarea_avatar_preview.main_url:
-				self.drawingarea_avatar_preview.close_document()
-				self.drawingarea_avatar_preview.main_url = None
-			
-			
-			await self.drawingarea_avatar_preview.open_document(Path(filename).as_uri())
+			async with self.drawingarea_avatar_preview.document_condition:
+				if self.drawingarea_avatar_preview.main_url is not None:
+					await self.drawingarea_avatar_preview.close_document()
+					await self.drawingarea_avatar_preview.document_condition.wait_for(lambda: self.drawingarea_avatar_preview.get_image() is None)
+				
+				print("select avatar", self.drawingarea_avatar_preview.main_url, self.drawingarea_avatar_preview.get_image(), self.drawingarea_avatar_preview._Model__document if hasattr(self.drawingarea_avatar_preview, '_Model__document') else None)
+				await self.drawingarea_avatar_preview.open_document(Path(filename).as_uri())
 	
 	@asynchandler
 	async def set_avatar(self, widget):
+		"Publish user avatar over the network."
+		
 		filename = self.filechooser_avatar.get_filename()
 		if filename and not (await Path(filename).is_dir()):
-			print("set avatar", filename, self.drawingarea_avatar)
-			if self.drawingarea_avatar.main_url:
-				self.drawingarea_avatar.close_document()
-				self.drawingarea_avatar.main_url = None
-			
-			await self.drawingarea_avatar.open_document(Path(filename).as_uri())
+			async with self.drawingarea_avatar.document_condition:
+				if self.drawingarea_avatar.main_url is not None:
+					await self.drawingarea_avatar.close_document()
+					await self.drawingarea_avatar.document_condition.wait_for(lambda: self.drawingarea_avatar.get_image() is None)
+				await self.drawingarea_avatar.open_document(Path(filename).as_uri())
 		
 		self.filechooser_avatar.hide()
 	
@@ -218,6 +344,73 @@ class Browser(BuilderExtension):
 			print(widget.props.name)
 			await sleep(1/20)
 			self.popover_presence.hide()
+	
+	@asynchandler
+	async def generate_password(self, widget):
+		if widget.get_active():
+			self.entry_registration_password_1.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			self.entry_registration_password_1.set_text("")
+			self.entry_registration_password_1.set_visibility(True)
+			self.entry_registration_password_1.set_sensitive(False)
+			wordlist = (await Path('wordlist.txt').read_text('utf-8')).split("\n")
+			pwd = []
+			for n in range(4):
+				pwd.append(random_choice(wordlist).strip())
+			self.entry_registration_password_1.set_text(" ".join(pwd))
+		else:
+			self.entry_registration_password_1.set_text("")
+			self.entry_registration_password_1.set_visibility(False)
+			self.entry_registration_password_1.set_sensitive(True)
+	
+	@asynchandler
+	async def entry_icon_press(self, widget, icon_pos, event):
+		widget.set_icon_from_icon_name(icon_pos, None)
+	
+	@asynchandler
+	async def allow_legacy_ssl(self, widget):
+		if widget.get_active():
+			self.entry_port.set_placeholder_text('5223')
+		else:
+			self.entry_port.set_placeholder_text('5222')
+	
+	@asynchandler
+	async def svg_view_dom_event(self, widget, event):
+		"DOM event handler for non-interactive SVG widgets."
+		
+		if event.type_ == 'opening':
+			async with widget.document_condition:
+				widget.main_url = event.detail
+				widget.document_condition.notify_all()
+		
+		elif event.type_ == 'open':
+			async with widget.document_condition:
+				await widget.document_condition.wait_for(lambda: widget.main_url is not None)
+				try:
+					if event.detail == widget.main_url:
+						widget.set_image(event.target)
+					else:
+						widget.set_image(widget.image)
+				except DocumentNotFound as error:
+					widget.model.emit_warning(widget, f"DocumentNotFound: {error}", event.target)
+					widget.set_image(None)
+		
+		elif event.type_ == 'closing':
+			async with widget.document_condition:
+				widget.main_url = None
+				widget.document_condition.notify_all()
+		
+		elif event.type_ == 'close':
+			async with widget.document_condition:
+				await widget.document_condition.wait_for(lambda: widget.main_url is None)
+				widget.set_image(None)
+				widget.document_condition.notify_all()
+	
+	@asynchandler
+	async def roster_row_select(self, listview, listrow):
+		page_name, *params = self.roster[listrow.get_index()]
+		self.stack_main.set_visible_child_name(page_name)
+		print("roster item selected:", page_name)
+
 
 
 if __name__ == '__main__':
@@ -234,6 +427,7 @@ if __name__ == '__main__':
 	browser = Browser('browser.glade', translation)
 	
 	async def main():
+		browser.listbox_main.select_row(browser.listbox_main.get_row_at_index(0))
 		browser.show()
 		try:
 			await loop_run()

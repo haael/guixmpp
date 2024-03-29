@@ -29,10 +29,9 @@ class QueryError(Exception):
 
 
 class XMPPClient:
-	def __init__(self, jid, password=None):
+	def __init__(self, jid, password=None, config=None):
 		self.jid = jid
 		self.password = password
-		self.register = False
 		
 		self.established = False
 		self.encrypted = False
@@ -54,29 +53,53 @@ class XMPPClient:
 		self.saved_stanzas = {}
 		
 		self.config = {
-			'ping': True
+			'register': False,
+			'ping': True,
+			'host': None,
+			'port': None,
+			'legacy_ssl': False,
+			'timeout': None
 		}
-	
-	async def connect(self, host=None, port=None, ssl=False, timeout=None):		
-		if not host: host = self.jid.split('@')[1].split('/')[0]
-		if not port: port = 5223 if ssl else 5222
 		
-		logger.info(f"Connecting to XMPP server {host}:{port}, ssl={ssl}.")
+		if config:
+			self.config.update(config)
+	
+	def ssl_context(self):
+		return create_default_context()
+	
+	async def connect(self):
+		"Open network connection to XMPP server."
+		
+		host = self.config['host']
+		if not host: host = self.jid.split('@')[1].split('/')[0]
+		
+		legacy_ssl = self.config['legacy_ssl']
+		
+		port = self.config['port']
+		if not port: port = 5223 if legacy_ssl else 5222
+		
+		timeout = self.config['timeout']
+		
+		logger.info(f"Connecting to XMPP server {host}:{port}, legacy_ssl={legacy_ssl}.")
 		
 		if not timeout:
-			self.reader, self.writer = await open_connection(host, port, ssl=ssl)
+			self.reader, self.writer = await open_connection(host, port, ssl=legacy_ssl)
 		else:
-			self.reader, self.writer = await wait_for(open_connection(host, port, ssl=ssl), timeout)
+			self.reader, self.writer = await wait_for(open_connection(host, port, ssl=legacy_ssl), timeout)
 		
-		self.encrypted = bool(ssl)
+		self.encrypted = bool(legacy_ssl)
 	
 	async def disconnect(self):
+		"Close network connection to XMPP server."
+		
 		logger.info("Disconnecting from XMPP server.")
 		self.writer.close()
 		await self.writer.wait_closed()
 		del self.reader, self.writer
 	
-	async def starttls(self, ssl=None, timeout=None, host=None):
+	async def starttls(self):
+		"Upgrade connection to TLS."
+		
 		async with (self.read_lock, self.write_lock):
 			self.established = False
 		
@@ -84,11 +107,12 @@ class XMPPClient:
 		
 		logger.info("Upgrading transport to TLS.")
 		
+		host = self.config['host']
 		if not host: host = self.jid.split('@')[1].split('/')[0]
-		if not ssl: ssl = create_default_context()
 		
-		#await self.writer.start_tls(ssl, server_hostname=host, ssl_handshake_timeout=timeout)
-		#self.reader._transport = self.writer.
+		ssl = self.ssl_context()
+		
+		timeout = self.config['timeout']
 		
 		loop = get_running_loop()
 		transport = self.writer.transport
@@ -106,6 +130,8 @@ class XMPPClient:
 		self.encrypted = True
 	
 	async def begin_stream(self, bare_jid=None, server=None):
+		"Send the opening tag in XMPP string."
+		
 		async with (self.read_lock, self.write_lock):
 			logger.info("Begin XMPP stream.")
 			
@@ -133,6 +159,8 @@ class XMPPClient:
 			self.authenticated = False
 	
 	async def end_stream(self):
+		"Send the ending tag in XMPP stream."
+		
 		async with self.write_lock:
 			logger.info("End XMPP stream.")
 			
@@ -150,6 +178,8 @@ class XMPPClient:
 			del self.parser
 	
 	async def send_stanza(self, stanza):
+		"Send raw stanza on the stream."
+		
 		async with self.write_lock:
 			if not self.established:
 				raise StreamError("Stream closed.")
@@ -158,6 +188,8 @@ class XMPPClient:
 			await self.writer.drain()
 	
 	async def recv_stanza(self):
+		"Receive raw stanza from the stream. Spawn a read task, then returns the stanza if received, None if server closed connection gracefully or Ellipsis if read task was cancelled."
+		
 		async with self.read_lock:
 			stanza_received = False
 			while not stanza_received:
@@ -185,6 +217,8 @@ class XMPPClient:
 		return self
 	
 	async def __aiter__(self):
+		"Iterator that yields stanzas from the stream."
+		
 		if self.running:
 			raise ValueError("Client already running.")
 		
@@ -246,6 +280,7 @@ class XMPPClient:
 		await self.disconnect()
 	
 	def stop(self):
+		"Stop yielding stanzas from main iterator."
 		self.running = False
 		if hasattr(self, 'read_task'):
 			self.read_task.cancel()
@@ -418,7 +453,7 @@ class XMPPClient:
 		return True
 	
 	async def on_register(self, feature):
-		if self.register:
+		if self.config['register']:
 			logger.info("Attempting account registration.")
 			return 'register'
 	
@@ -618,6 +653,7 @@ class XMPPClient:
 		await self.send_stanza(iq)
 	
 	async def get_password(self, jid, anonymous_ok):
+		"None - no login (for registration), empty string - anonymous login, normal string - SASL login"
 		return self.password
 	
 	async def ready(self):
@@ -710,19 +746,24 @@ if __name__ == '__main__':
 			#client.password = ''
 			
 			async for stanza in client:
-				if hasattr(stanza, 'tag'):
-					event = await client.on_stanza(stanza)
+				if stanza is None:
+					continue
+				elif hasattr(stanza, 'tag'):
+					event_struct = await client.on_stanza(stanza)
+					if event_struct is None:
+						continue
+					event, id_, from_, *elements = event_struct
+					if event is None:
+						continue
 				else:
 					event = stanza
-				type_ = None
+				
 				logger.debug(f"Main loop event: {event}.")
 				
-				if not event:
-					continue
-				
-				elif event == 'ready':
+				if event == 'ready':
 					if not client.authenticated or not client.established:
 						break
+					
 					@client.handle
 					async def get_roster(expect):
 						roster, = await client.query('get', None, fromstring(b'<query xmlns="jabber:iq:roster"/>'))
@@ -738,22 +779,11 @@ if __name__ == '__main__':
 							print("registration field:", tostring(child))
 						client.stop()
 				
-				elif isinstance(event, str):
-					logger.warning(f"Ignored event: {event}")
-					continue
-				
-				else:
-					type_, id_, from_, *elements = event
-				
-				
-				if type_ == None:
-					continue
-				
-				elif type_ == 'iq.get' and len(elements) == 1 and hasattr(elements[0], 'tag') and elements[0].tag == '{boom}boom':
+				elif event == 'iq.get' and len(elements) == 1 and hasattr(elements[0], 'tag') and elements[0].tag == '{boom}boom':
 					await client.answer('result', id_, from_, "boom")
 					client.unhandled = False
 				
-				elif type_ == 'iq.set' and len(elements) == 1 and hasattr(elements[0], 'tag') and elements[0].tag == '{boom}boom':
+				elif event == 'iq.set' and len(elements) == 1 and hasattr(elements[0], 'tag') and elements[0].tag == '{boom}boom':
 					@client.handle
 					async def boom_get(expect, type_=type_, id_=id_, from_=from_, elements=elements):
 						try:
@@ -765,11 +795,15 @@ if __name__ == '__main__':
 						else:
 							await client.answer('result', id_, from_, "boom!")
 				
-				elif type_ == 'iq.get' and len(elements) == 1 and hasattr(elements[0], 'tag') and elements[0].tag == '{boom}boom-boom-boom' and elements[0].attrib['n'] == '0':
+				elif event == 'iq.get' and len(elements) == 1 and hasattr(elements[0], 'tag') and elements[0].tag == '{boom}boom-boom-boom' and elements[0].attrib['n'] == '0':
 					@client.handle
 					async def boom_set(expect, id_=id_, from_=from_):
 						sstanza = await expect(lambda _stanza: True)
 						stype, sid, sfrom, *selements = await expect(lambda _stype, _sid, _sfrom, *_selements: _stype == 'iq.get' and _sid == id_ and _sfrom == from_)
+				
+				else:
+					logger.warning(f"Ignored event: {event}")
+
 	
 	run(main())
 

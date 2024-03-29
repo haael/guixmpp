@@ -7,7 +7,7 @@ __all__ = 'DisplayView',
 
 import gi
 gi.require_version('Gdk', '3.0')
-from gi.repository import Gdk
+from gi.repository import Gdk, GLib
 
 import cairo
 
@@ -19,12 +19,11 @@ class DisplayView:
 		widget.__viewport_height = alloc.height
 		widget.__dpi = 96 # TODO: get dpi from gtk
 		widget.__image = None
-		self.update(widget)
+		GLib.idle_add(self.update, widget)
 	
 	def set_image(self, widget, image):
-		#print("set_image", image)
 		widget.__image = image
-		self.update(widget)
+		GLib.idle_add(self.update, widget)
 	
 	def get_image(self, widget):
 		return widget.__image

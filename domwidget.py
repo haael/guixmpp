@@ -16,6 +16,7 @@ from enum import Enum
 from math import hypot
 from itertools import zip_longest, chain
 from collections import namedtuple, defaultdict
+from asyncio import Lock
 
 from domevents import *
 
@@ -56,6 +57,7 @@ class DOMWidget(Gtk.DrawingArea):
 		super().__init__()
 		
 		self.set_can_focus(True)
+		self.lock = Lock()
 		
 		self.add_events(Gdk.EventMask.POINTER_MOTION_MASK)
 		self.add_events(Gdk.EventMask.BUTTON_RELEASE_MASK)
@@ -92,22 +94,25 @@ class DOMWidget(Gtk.DrawingArea):
 		
 		self.model.set_view(self)
 	
-	async def open_document(self, url):
-		"Open image identified by the provided url. No image may be opened currently."
-		await self.model.open_document(self, url)
+	async def open(self, url):
+		"Open document identified by the provided url."
+		
+		async with self.lock:
+			if self.main_url is not None:
+				await self.model.close_document(self)
+			self.main_url = url
+			image = await self.model.open_document(self, url)
+			self.model.set_image(self, image)
 	
-	async def close_document(self):
-		"Close current image, reverting to default state."
-		await self.model.close_document(self)
-	
-	def set_image(self, image):
-		"Set current image to the document provided."
-		print("set_image", image)
-		self.model.set_image(self, image)
-	
-	def get_image(self):
-		self.model.get_image(self)
-	
+	async def close(self):
+		"Close current document, reverting to default state."
+		
+		async with self.lock:
+			if self.main_url is not None:
+				self.main_url = None
+				await self.model.close_document(self)
+				self.model.set_image(self, None)
+		
 	def draw_image(self, model):
 		"Draw the currently opened image to a Cairo surface. Returns the rendered surface."
 		
@@ -119,7 +124,6 @@ class DOMWidget(Gtk.DrawingArea):
 		context = cairo.Context(surface)
 		
 		image = self.model.get_image(self)
-		#print("draw_image", image)
 		if (image is not None) and (viewport_width > 0) and (viewport_height > 0):
 			try:
 				w, h = self.model.image_dimensions(self, image)
@@ -140,7 +144,6 @@ class DOMWidget(Gtk.DrawingArea):
 				self.model.emit_warning(self, f"NotImplementedError: {error}", image)
 				pass # draw placeholder for non-image formats
 		
-		print("draw image", image)
 		return surface
 	
 	def poke_image(self, px, py):
@@ -182,7 +185,7 @@ class DOMWidget(Gtk.DrawingArea):
 
 if __debug__ and __name__ == '__main__':
 	import signal
-	from asyncio import run, Condition
+	from asyncio import run, Lock
 	from aiopath import AsyncPath as Path
 	
 	from mainloop import *
@@ -197,7 +200,7 @@ if __debug__ and __name__ == '__main__':
 	window.connect('destroy', lambda window: loop_quit())
 	signal.signal(signal.SIGTERM, lambda signum, frame: loop_quit())
 	
-	doc_cond = Condition()
+	event_lock = Lock()
 	
 	@asynchandler
 	async def dom_event(widget, event):
@@ -206,55 +209,21 @@ if __debug__ and __name__ == '__main__':
 		if event.type_ == 'warning':
 			print(event)
 		
-		if event.type_ == 'keyup':
+		if event.type_ == 'keydown':
 			if (event.target == None) and (event.code == 'Escape'):
-				async with doc_cond:
-					await widget.close_document()
-					await doc_cond.wait_for(lambda: widget.get_image() is None)
+				async with event_lock:
+					await widget.close()
 					window.close()
 			elif (event.target == None) and (event.code == 'Left') and images:
-				async with doc_cond:
+				async with event_lock:
 					image_index -= 1
 					image_index %= len(images)
-					await widget.close_document()
-					await doc_cond.wait_for(lambda: widget.get_image() is None)
-					await widget.open_document(images[image_index])
+					await widget.open(images[image_index])
 			elif (event.target == None) and (event.code == 'Right') and images:
-				async with doc_cond:
+				async with event_lock:
 					image_index += 1
 					image_index %= len(images)
-					await widget.close_document()
-					await doc_cond.wait_for(lambda: widget.get_image() is None)
-					await widget.open_document(images[image_index])
-		
-		elif event.type_ == 'opening':
-			async with doc_cond:
-				#print("opening", event.detail)
-				widget.main_url = event.detail
-				doc_cond.notify_all()
-		
-		elif event.type_ == 'open':
-			async with doc_cond:
-				await doc_cond.wait_for(lambda: widget.main_url is not None)
-				try:
-					if event.detail == widget.main_url:
-						widget.set_image(event.target)
-					else:
-						widget.set_image(widget.image)
-				except DocumentNotFound as error:
-					widget.model.emit_warning(widget, f"DocumentNotFound: {error}", event.target)
-					widget.set_image(None)
-		
-		elif event.type_ == 'closing':
-			async with doc_cond:
-				widget.main_url = None
-				doc_cond.notify_all()
-		
-		elif event.type_ == 'close':
-			async with doc_cond:
-				await doc_cond.wait_for(lambda: widget.main_url is None)
-				widget.set_image(None)
-				doc_cond.notify_all()
+					await widget.open(images[image_index])
 	
 	widget.connect('dom_event', dom_event)
 	
@@ -277,7 +246,7 @@ if __debug__ and __name__ == '__main__':
 		
 		#images.sort(key=(lambda x: f'{len(x):03d}' + x.lower()))
 		images.sort(key=(lambda x: x.lower()))
-		await widget.open_document(images[image_index])
+		await widget.open(images[image_index])
 		
 		window.show_all()
 		await loop_run()
@@ -289,10 +258,33 @@ if __debug__ and __name__ == '__main__':
 		"Display image from http url."
 		for n in range(219):
 			images.append(f'https://www.w3.org/Consortium/Offices/Presentations/SVG/{n}.svg')
-		await widget.open_document(images[image_index])
+		await widget.open(images[image_index])
 		window.show_all()
 		await loop_run()
 		window.hide()
 	#'''
+	
+	'''
+	async def main():
+		"Display images from profile directory."
+		
+		global images, image_index, model
+		
+		widget.model.font_dir = await Path('~/.cache/guixmpp-fonts').expanduser()
+		await widget.model.font_dir.mkdir(parents=True, exist_ok=True)
+		
+		async for doc in (Path.cwd() / 'profile').iterdir():
+			if doc.suffix not in ('.css', '.svg_'):
+				images.append(doc.as_uri())
+		
+		#images.sort(key=(lambda x: f'{len(x):03d}' + x.lower()))
+		images.sort(key=(lambda x: x.lower()))
+		await widget.open_document(images[image_index])
+		
+		window.show_all()
+		await loop_run()
+		window.hide()
+	#'''
+
 	
 	run(main())
