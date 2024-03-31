@@ -17,7 +17,10 @@ import ssl
 from math import floor
 from collections import deque
 
-from protocol.dns import AsyncResolver
+if __name__ == '__main__':
+	from guixmpp.protocol.dns import AsyncResolver
+else:
+	from .protocol.dns import AsyncResolver
 
 
 class Handle(asyncio.events.Handle):

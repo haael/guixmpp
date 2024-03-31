@@ -9,9 +9,12 @@ import gi
 gi.require_version('Gdk', '3.0')
 from gi.repository import Gdk
 
-from domevents import MouseEvent
-
-from view.utils import *
+if __name__ == '__main__':
+	from guixmpp.domevents import MouseEvent
+	from guixmpp.view.utils import *
+else:
+	from ..domevents import MouseEvent
+	from .utils import *
 
 
 class PointerView:

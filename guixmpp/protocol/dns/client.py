@@ -1,8 +1,8 @@
 #!/usr/bin/python3
 
 """
-	This is a simple dnsclient that supports A, AAAA, MX, SOA, NS and CNAME
-	queries written in python.
+This is a simple dnsclient that supports A, AAAA, MX, SOA, NS and CNAME
+queries written in python.
 """
 
 import asyncio
@@ -63,20 +63,16 @@ class AsyncResolver(asyncio.protocols.DatagramProtocol):
 	def datagram_received(self, reply, addr):
 		while reply:
 			serial = get_serial(reply)
-			#print("dr", serial, len(reply), list(self.waiting.keys()))
 			
 			if serial not in self.waiting:
-				#print(f"serial {serial} not in waiting")
 				return # warning
 			
 			try:
 				result, l = parse_dns_reply(reply)
 			except Exception as error:
-				#print("exception", error)
 				self.waiting[serial].set_exception(error)
 				break
 			else:
-				#print("result", result, l)
 				self.waiting[serial].set_result(result)
 				reply = reply[l:]
 	
@@ -122,17 +118,12 @@ class AsyncResolver(asyncio.protocols.DatagramProtocol):
 		while serial in self.waiting:
 			serial = randrange(2**16)
 		
-		#print('resolve', name, type_, serial)
-		
 		query = create_dns_query(name, type_, serial)
 		self.waiting[serial] = self.loop.create_future()
-		#print("send", serial, len(query))
 		self.transport.sendto(query)
 		
 		try:
-			#print("waiting...", serial)
 			result = await asyncio.wait_for(self.waiting[serial], timeout=self.timeout)
-			#print("got result", serial)
 		finally:
 			del self.waiting[serial]
 		
@@ -190,7 +181,7 @@ if __debug__ and __name__ == "__main__":
 			hotmail = resolver.resolve('hotmail.com', 'MX')
 			interia = resolver.resolve('interia.pl', 'MX')
 			wp = resolver.resolve('wp.pl', 'MX')
-			print(await asyncio.gather(gh1, gh2, google, hotmail, interia, wp))
+			print(await asyncio.gather(gh1, gh2, google, hotmail, interia, wp)) # resolve in parallel
 			
 			gh1 = resolver.resolve('gist.githubusercontent.com', 'AAAA')
 			gh2 = resolver.resolve('gist.githubusercontent.com', 'A')
@@ -198,7 +189,7 @@ if __debug__ and __name__ == "__main__":
 			hotmail = resolver.resolve('hotmail.com', 'MX')
 			interia = resolver.resolve('interia.pl', 'MX')
 			wp = resolver.resolve('wp.pl', 'MX')
-			print(await asyncio.gather(gh1, gh2, google, hotmail, interia, wp))
+			print(await asyncio.gather(gh1, gh2, google, hotmail, interia, wp)) # resolve again to test caching
 	
 	asyncio.run(main())
 

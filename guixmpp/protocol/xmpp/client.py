@@ -1,5 +1,18 @@
 #!/usr/bin/python3
 
+
+"""
+Simple XMPP client for asyncio.
+
+This is a complete rewrite based on: <https://github.com/stan-janssen/tinyxmpp>.
+"""
+
+__author__ = 'https://github.com/haael'
+__credits__ = 'https://github.com/stan-janssen', 'https://github.com/staseek'
+__license__ = 'Apache 2.0'
+__all__ = 'XMPPClient', 'XMPPError', 'ProtocolError', 'StreamError', 'AuthenticationError', 'QueryError'
+
+
 from logging import getLogger
 logger = getLogger(__name__)
 
@@ -12,19 +25,23 @@ from secrets import token_urlsafe
 from collections import Counter, deque
 
 
-class ProtocolError(Exception):
+class XMPPError(Exception):
 	pass
 
 
-class StreamError(Exception):
+class ProtocolError(XMPPError):
 	pass
 
 
-class AuthenticationError(Exception):
+class StreamError(XMPPError):
 	pass
 
 
-class QueryError(Exception):
+class AuthenticationError(XMPPError):
+	pass
+
+
+class QueryError(XMPPError):
 	pass
 
 
@@ -743,7 +760,10 @@ if __name__ == '__main__':
 	
 	async def main():
 		async with XMPPClient('haael@dw.live/discovery') as client:
-			#client.password = ''
+			#client.config['register'] = True
+			#client.password = None
+			## or
+			#client.password = 'password'
 			
 			async for stanza in client:
 				if stanza is None:
@@ -762,6 +782,7 @@ if __name__ == '__main__':
 				
 				if event == 'ready':
 					if not client.authenticated or not client.established:
+						"Connection failed."
 						break
 					
 					@client.handle
@@ -803,7 +824,6 @@ if __name__ == '__main__':
 				
 				else:
 					logger.warning(f"Ignored event: {event}")
-
 	
 	run(main())
 

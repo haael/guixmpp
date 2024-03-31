@@ -10,11 +10,23 @@ if __name__ == '__main__':
 	del sys.path[0] # needs to be removed because this module is called "http"
 
 
-_library = ''
+_library = '2' # 1, 2, aiohttp, httpx
 
 
-if _library == '':
-	from protocol.http.client import Connection1, Connection2, HTTPError, ResolveError
+if _library in ['1', '2']:
+	if __name__ == '__main__':
+		from guixmpp.protocol.http.client import HTTPError, ResolveError
+		if _library == '1':
+			from guixmpp.protocol.http.client import Connection1 as Connection
+		elif _library == '2':
+			from guixmpp.protocol.http.client import Connection2 as Connection
+	else:
+		from ..protocol.http.client import HTTPError, ResolveError
+		if _library == '1':
+			from ..protocol.http.client import Connection1 as Connection
+		elif _library == '2':
+			from ..protocol.http.client import Connection2 as Connection
+	
 	from asyncio import gather
 	
 	class HTTPDownload:
@@ -36,7 +48,7 @@ if _library == '':
 			if (host in self.__client) and (not self.__client[host].is_eof()):
 				connection = self.__client[host]
 			else:
-				connection = self.__client[host] = Connection2(f'https://{host}')
+				connection = self.__client[host] = Connection(f'https://{host}')
 				await connection.open()
 			
 			async with connection.Url(path).get() as request:
@@ -86,9 +98,9 @@ elif _library == 'httpx':
 
 if __debug__ and __name__ == '__main__':
 	from asyncio import run, set_event_loop_policy
-	from gtkaio import GtkAioEventLoopPolicy
+	from guixmpp.mainloop import loop_init
 	
-	set_event_loop_policy(GtkAioEventLoopPolicy())
+	loop_init()
 	
 	print("http download")
 	
@@ -107,6 +119,14 @@ if __debug__ and __name__ == '__main__':
 			print(line.decode('utf-8'))
 		
 		assert await model.download_document('https://gist.githubusercontent.com/prabansal/115387/raw/0e5911c791c03f2ffb9708d98cac70dd2c1bf0ba/HelloWorld.txt') == (b"Hi there", 'text/plain')
+		
+		try:
+			data, mime = await model.download_document('https://www.google.com/nonexistent-url.whatever')
+		except Exception as error:
+			print("Nonexistent url error:", error)
+		else:
+			assert False, "Should return 404 error."
+		
 		await model.end_downloads()
 	
 	run(test_main())

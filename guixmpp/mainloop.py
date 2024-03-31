@@ -5,9 +5,23 @@ __all__ = 'asynchandler', 'loop_init', 'loop_run', 'loop_quit'
 
 
 from asyncio import set_event_loop_policy, get_running_loop, create_task, sleep, wait, FIRST_EXCEPTION, CancelledError
-#import gbulb
-#import asyncio_glib
-from gtkaio import GtkAioEventLoopPolicy
+
+
+_library = ''
+
+if _library == '':
+	if __name__ == '__main__':
+		from guixmpp.gtkaio import GtkAioEventLoopPolicy
+	else:
+		from .gtkaio import GtkAioEventLoopPolicy
+
+elif _library == 'gbulb':
+	import gbulb
+
+elif _library == 'asyncio_glib':
+	import asyncio_glib
+
+
 import gi
 from gi.repository import Gtk
 
@@ -17,21 +31,40 @@ app_tasks = []
 app_future = None
 
 
-def loop_init():
-	set_event_loop_policy(GtkAioEventLoopPolicy())
-	#set_event_loop_policy(asyncio_glib.GLibEventLoopPolicy())
-	#gbulb.install(gtk=True)
+if _library == '':
+	def loop_init():
+		set_event_loop_policy(GtkAioEventLoopPolicy())
+
+elif _library == 'gbulb':
+	def loop_init():
+		set_event_loop_policy(asyncio_glib.GLibEventLoopPolicy())
+
+elif _library == 'asyncio_glib':
+	def loop_init():
+		gbulb.install(gtk=True)
 
 
 def asynchandler(coro):
 	"Takes a coroutine and changes it into normal method that schedules the coroutine and adds the task to the main app task list."
 	
 	def method(self, *args, **kwargs):
-		#print("handler", coro, args, kwargs)
-		app_tasks.append(create_task(coro(self, *args, **kwargs)))
-		#print(" ", app_task, app_task.done() if app_task else "-")
+		future = get_running_loop().create_future()
+		
+		async def guarded_coro(self, *args, **kwargs):
+			try:
+				value = await coro(self, *args, **kwargs)
+			except Exception as error:
+				future.set_exception(error)
+				raise
+			else:
+				future.set_result(value)
+				return value
+		
+		task = create_task(guarded_coro(self, *args, **kwargs))
+		app_tasks.append(task)
 		if app_task and not app_task.done():
 			app_task.cancel()
+		return future
 	
 	method.__name__ = coro.__name__
 	
@@ -47,15 +80,12 @@ async def loop_run():
 	app_future = get_running_loop().create_future()
 	
 	while True:
-		#print("iterate")
 		app_task = create_task(wait(app_tasks + [app_future], return_when=FIRST_EXCEPTION))
 		
 		Gtk.main_iteration_do(False)
 		try:
-			#print("tasks:", app_tasks)
 			await app_task
 		except CancelledError:
-			#print("cancel")
 			pass
 		else:
 			if app_future.done():
@@ -76,3 +106,4 @@ def loop_quit(result=None):
 	"Request to quit the loop. The loop will wait for all tasks to finish. The optional `result` will be returned from `loop_run`."
 	
 	app_future.set_result(result)
+

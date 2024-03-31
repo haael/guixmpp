@@ -5,14 +5,14 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk, GObject, GLib, GdkPixbuf
 
+
+from guixmpp import *
+
+
 from locale import gettext
-from mainloop import *
-from domwidget import DOMWidget
+from secrets import choice as random_choice
 from aiopath import Path
 from asyncio import sleep, Condition
-from secrets import choice as random_choice
-
-from client import XMPPClient
 
 
 class BuilderExtension:
@@ -133,7 +133,7 @@ class Browser(BuilderExtension):
 			size_request = getattr(self, widget_name).get_size_request()
 			self.replace_widget(widget_name, DOMWidget(file_download=True))
 			widget = getattr(self, widget_name)
-			widget.connect('dom_event', self.svg_view_dom_event)
+			#widget.connect('dom_event', self.svg_view_dom_event)
 			widget.set_size_request(*size_request)
 			widget.show()
 		
@@ -302,12 +302,7 @@ class Browser(BuilderExtension):
 	@asynchandler
 	async def unset_avatar(self, widget):
 		"Remove user avatar from network."
-		
-		async with self.drawingarea_avatar.document_condition:
-			if self.drawingarea_avatar.main_url is not None:
-				await self.drawingarea_avatar.close_document()
-				await self.drawingarea_avatar.document_condition.wait_for(lambda: self.drawingarea_avatar.get_image() is None)
-		
+		await self.drawingarea_avatar.close()
 		self.filechooser_avatar.hide()
 	
 	@asynchandler
@@ -315,14 +310,11 @@ class Browser(BuilderExtension):
 		"Show preview in avatar selection dialog."
 		
 		filename = self.filechooser_avatar.get_filename()
-		if filename and not (await Path(filename).is_dir()):
-			async with self.drawingarea_avatar_preview.document_condition:
-				if self.drawingarea_avatar_preview.main_url is not None:
-					await self.drawingarea_avatar_preview.close_document()
-					await self.drawingarea_avatar_preview.document_condition.wait_for(lambda: self.drawingarea_avatar_preview.get_image() is None)
-				
-				print("select avatar", self.drawingarea_avatar_preview.main_url, self.drawingarea_avatar_preview.get_image(), self.drawingarea_avatar_preview._Model__document if hasattr(self.drawingarea_avatar_preview, '_Model__document') else None)
-				await self.drawingarea_avatar_preview.open_document(Path(filename).as_uri())
+		if filename:
+			if await Path(filename).is_file():
+				await self.drawingarea_avatar_preview.open(Path(filename).as_uri())
+			else:
+				await self.drawingarea_avatar_preview.close()
 	
 	@asynchandler
 	async def set_avatar(self, widget):
@@ -330,11 +322,7 @@ class Browser(BuilderExtension):
 		
 		filename = self.filechooser_avatar.get_filename()
 		if filename and not (await Path(filename).is_dir()):
-			async with self.drawingarea_avatar.document_condition:
-				if self.drawingarea_avatar.main_url is not None:
-					await self.drawingarea_avatar.close_document()
-					await self.drawingarea_avatar.document_condition.wait_for(lambda: self.drawingarea_avatar.get_image() is None)
-				await self.drawingarea_avatar.open_document(Path(filename).as_uri())
+			await self.drawingarea_avatar.open(Path(filename).as_uri())
 		
 		self.filechooser_avatar.hide()
 	
@@ -362,55 +350,29 @@ class Browser(BuilderExtension):
 			self.entry_registration_password_1.set_visibility(False)
 			self.entry_registration_password_1.set_sensitive(True)
 	
-	@asynchandler
-	async def entry_icon_press(self, widget, icon_pos, event):
+	def entry_icon_press(self, widget, icon_pos, event):
 		widget.set_icon_from_icon_name(icon_pos, None)
 	
-	@asynchandler
-	async def allow_legacy_ssl(self, widget):
+	def allow_legacy_ssl(self, widget):
 		if widget.get_active():
 			self.entry_port.set_placeholder_text('5223')
 		else:
 			self.entry_port.set_placeholder_text('5222')
 	
-	@asynchandler
-	async def svg_view_dom_event(self, widget, event):
-		"DOM event handler for non-interactive SVG widgets."
-		
-		if event.type_ == 'opening':
-			async with widget.document_condition:
-				widget.main_url = event.detail
-				widget.document_condition.notify_all()
-		
-		elif event.type_ == 'open':
-			async with widget.document_condition:
-				await widget.document_condition.wait_for(lambda: widget.main_url is not None)
-				try:
-					if event.detail == widget.main_url:
-						widget.set_image(event.target)
-					else:
-						widget.set_image(widget.image)
-				except DocumentNotFound as error:
-					widget.model.emit_warning(widget, f"DocumentNotFound: {error}", event.target)
-					widget.set_image(None)
-		
-		elif event.type_ == 'closing':
-			async with widget.document_condition:
-				widget.main_url = None
-				widget.document_condition.notify_all()
-		
-		elif event.type_ == 'close':
-			async with widget.document_condition:
-				await widget.document_condition.wait_for(lambda: widget.main_url is None)
-				widget.set_image(None)
-				widget.document_condition.notify_all()
+	#@asynchandler
+	#async def svg_view_dom_event(self, widget, event):
+	#	"DOM event handler for non-interactive SVG widgets."
+	#	
+	#	if event.type_ == 'open':
+	#		widget.set_image(event.target)
+	#	
+	#	elif event.type_ == 'close':
+	#		widget.set_image(None)
 	
-	@asynchandler
-	async def roster_row_select(self, listview, listrow):
+	def roster_row_select(self, listview, listrow):
 		page_name, *params = self.roster[listrow.get_index()]
 		self.stack_main.set_visible_child_name(page_name)
 		print("roster item selected:", page_name)
-
 
 
 if __name__ == '__main__':
@@ -420,11 +382,11 @@ if __name__ == '__main__':
 	
 	loop_init()
 	
-	translation = 'haael_svg_browser'
+	translation = 'haael_svg_messenger'
 	bindtextdomain(translation, 'locale')
 	textdomain(translation)
 	
-	browser = Browser('browser.glade', translation)
+	browser = Browser('messenger.glade', translation)
 	
 	async def main():
 		browser.listbox_main.select_row(browser.listbox_main.get_row_at_index(0))

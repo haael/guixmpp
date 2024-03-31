@@ -27,8 +27,12 @@ gi.require_version('Pango', '1.0')
 gi.require_version('PangoCairo', '1.0')
 from gi.repository import Pango, PangoCairo
 
-from format.xml import XMLFormat, XMLDocument
-from format.css import CSSFormat
+if __name__ == '__main__':
+	from guixmpp.format.xml import XMLFormat, XMLDocument
+	from guixmpp.format.css import CSSFormat
+else:
+	from ..format.xml import XMLFormat, XMLDocument
+	from ..format.css import CSSFormat
 
 
 class BoxTree:
@@ -512,12 +516,13 @@ if __debug__ and __name__ == '__main__':
 	from pycallgraph2.output.graphviz import GraphvizOutput
 	
 	from pathlib import Path
-	from format.xml import XMLFormat, XMLDocument
-	from format.css import CSSFormat, CSSDocument
-	from format.null import NullFormat
-	from download.data import DataDownload
-	from download.chrome import ChromeDownload
 	from urllib.parse import unquote as url_unquote
+	
+	from guixmpp.format.xml import XMLFormat, XMLDocument
+	from guixmpp.format.css import CSSFormat, CSSDocument
+	from guixmpp.format.null import NullFormat
+	from guixmpp.download.data import DataDownload
+	from guixmpp.download.chrome import ChromeDownload
 	
 	print("html render")
 	

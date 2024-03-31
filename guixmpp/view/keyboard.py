@@ -9,9 +9,12 @@ import gi
 gi.require_version('Gdk', '3.0')
 from gi.repository import Gdk
 
-from domevents import KeyboardEvent
-
-from view.utils import *
+if __name__ == '__main__':
+	from guixmpp.domevents import KeyboardEvent
+	from guixmpp.view.utils import *
+else:
+	from ..domevents import KeyboardEvent
+	from .utils import *
 
 
 def key_location(keyval_name):

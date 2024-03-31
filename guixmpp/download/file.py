@@ -35,9 +35,9 @@ class FileDownload:
 
 if __debug__ and __name__ == '__main__':
 	from asyncio import run, set_event_loop_policy
-	from gtkaio import GtkAioEventLoopPolicy
+	from guixmpp.mainloop import loop_init
 	
-	set_event_loop_policy(GtkAioEventLoopPolicy())
+	loop_init()
 	
 	print("file download")
 	
@@ -67,6 +67,13 @@ if __debug__ and __name__ == '__main__':
 					assert data == b"hello, void\n"
 			else:
 				raise NotImplementedError(filepath)
+		
+		try:
+			data, mime_type = await download.download_document((Path.cwd() / 'nonexistent-file.whatever').as_uri())
+		except Exception as error:
+			print("Error for nonexistent file:", error)
+		else:
+			assert False, "Should raise error for nonexistent file."
 		
 		await download.end_downloads()
 	

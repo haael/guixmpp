@@ -9,13 +9,15 @@ if __name__ == '__main__':
 	import sys
 	del sys.path[0] # needs to be removed because this module is called "xml"
 
-
 from collections import namedtuple, defaultdict
 from enum import Enum
-from itertools import chain
-		
+from itertools import chain		
 from lxml.etree import tostring
-from format.xml import XMLDocument
+
+if __name__ == '__main__':
+	from guixmpp.format.xml import XMLDocument
+else:
+	from .xml import XMLDocument
 
 
 def parse_float(f): # TODO: move to utils
@@ -188,6 +190,7 @@ class CSSFormat:
 		return hasattr(document, 'css_tree')
 	
 	def scan_document_links(self, document):
+		#print("css.scan_document_links")
 		if self.is_css_document(document):
 			return chain(
 				document.scan_imports(),
@@ -756,6 +759,7 @@ class CSSDocument:
 		result = []
 		
 		def walk_node(node, ancestors):
+			#print("walk node", ancestors)
 			if ancestors == ['stylesheet', 'style', 'rules', 'rule', 'values', 'url'] and isinstance(node, str):
 				result.append(node)
 			
@@ -1521,8 +1525,9 @@ if __debug__ and __name__ == '__main__':
 	</a>
 	'''))
 	
+	matcher = model.create_css_matcher(sample_css, None, None, None, None, None, None)
 	for element in sample_xml.iter():
-		value = sample_css.match_element(sample_xml, element, None, None, None, None, None)
+		value = matcher(element)
 		print(element, value)
 	
 	tree = model.create_document(b'''

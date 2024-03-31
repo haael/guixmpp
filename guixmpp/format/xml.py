@@ -54,7 +54,7 @@ class XMLFormat:
 		if fragment:
 			return XMLDocument(fragment[0])
 		else:
-			raise IndexError("Fragment not found")
+			raise IndexError(f"Fragment not found: {href}")
 	
 	def scan_document_links(self, document):
 		if self.is_xml_document(document):

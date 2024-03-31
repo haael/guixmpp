@@ -6,9 +6,13 @@ __all__ = 'DocumentModel',
 
 
 from collections import defaultdict
-from asyncio import gather, create_task, wait, FIRST_EXCEPTION, Lock, Event
+from asyncio import gather, Lock, Event, TaskGroup, CancelledError
+from inspect import isawaitable
 
-from domevents import UIEvent, CustomEvent
+if __name__ == '__main__':
+	from guixmpp.domevents import UIEvent, CustomEvent
+else:
+	from .domevents import UIEvent, CustomEvent
 
 
 class DocumentNotFound(Exception):
@@ -36,17 +40,33 @@ class Model:
 		view.__document = None
 		view.__referenced = defaultdict(set)
 		view.__location = url
+		
 		event = CustomEvent('opening', target=None, view=view, detail=url)
-		view.emit('dom_event', event)
-		view.__load_tasks = []
+		result = view.emit('dom_event', event)
+		if isawaitable(result):
+			result = await result
+		if result == False:
+			del view.__document, view.__referenced, view.__location
+			return None
+		
 		await self.begin_downloads()
-		view.__document = await self.__load_document(view, url)
-		if view.__load_tasks:
-			await gather(*view.__load_tasks)
-		await self.end_downloads()
-		del view.__load_tasks
+		try:
+			view.__document = await self.__load_document(view, url)
+		except CancelledError:
+			event = CustomEvent('cancelled', target=view.__document, view=view, detail=url)
+			view.emit('dom_event', event)
+			raise
+		finally:
+			await self.end_downloads()
+		
 		event = CustomEvent('open', target=view.__document, view=view, detail=url)
-		view.emit('dom_event', event)
+		result = view.emit('dom_event', event)
+		if isawaitable(result):
+			result = await result
+		if result == False:
+			del view.__document, view.__referenced, view.__location
+			return None
+		
 		return view.__document
 	
 	async def close_document(self, view):
@@ -54,13 +74,26 @@ class Model:
 			raise ValueError("No document is open.")
 		
 		url = view.__location
+		
 		event = CustomEvent('closing', target=view.__document, view=view, detail=url)
-		view.emit('dom_event', event)
-		self.__unload_document(view, url)
+		result = view.emit('dom_event', event)
+		if isawaitable(result):
+			result = await result
+		if result == False:
+			del view.__document, view.__referenced, view.__location
+			return
+		
+		await self.__unload_document(view, url)
+		
 		event = CustomEvent('close', target=None, view=view, detail=url)
-		view.emit('dom_event', event)
-		view.__location = None
-		del view.__document
+		result = view.emit('dom_event', event)
+		if isawaitable(result):
+			result = await result
+		if result == False:
+			del view.__document, view.__referenced, view.__location
+			return
+		
+		del view.__document, view.__referenced, view.__location
 		self.documents.clear() # TODO
 	
 	def current_location(self, view):
@@ -79,7 +112,9 @@ class Model:
 	def resolve_url(rel_url, base_url):
 		"Provided the relative url and the base url, return an absolute url."
 		
-		if ('/' in rel_url) and (':' in rel_url) and (':' in rel_url.split('/')[0]):
+		if rel_url.startswith('data:'):
+			return rel_url
+		elif ('/' in rel_url) and (':' in rel_url) and (':' in rel_url.split('/')[0]):
 			return rel_url
 		elif base_url and base_url[-1] == '/':
 			return base_url + rel_url
@@ -161,106 +196,162 @@ class Model:
 		
 		await gather(*gens)
 	
-	async def __load_document(self, view, url):
+	@staticmethod
+	def __url_root(url):
+		if url.startswith('data:'):
+			return url
+		
+		u = url.split('#')
+		if len(u) > 1:
+			return '#'.join(u[:-1])
+		else:
+			return url
+	
+	async def __load_document(self, view, url, redirected=False):
 		try:
 			return self.get_document(url)
 		except DocumentNotFound:
 			pass
 		
-		u = url.split('#')
-		if len(u) > 1:
-			shurl = '#'.join(url.split('#')[:-1])
-		else:
-			shurl = url
-		
 		async with self.__start_downloading:
-			if shurl not in self.__downloading:
+			if url not in self.__downloading:
 				me_downloading = True
-				self.__downloading[shurl] = Event()
+				self.__downloading[url] = Event()
 			else:
 				me_downloading = False
 		
-		if not me_downloading:
-			await self.__downloading[shurl].wait()
+		try:
+			if not me_downloading:
+				await self.__downloading[url].wait()
+				try:
+					return self.get_document(url)
+				except DocumentNotFound as error:
+					view.emit_warning(view, f"Download not attempted: {type(error).__name__} {str(error)}", url)
+					return
+			
+			if not redirected:
+				result = view.emit('dom_event', CustomEvent('download', target=url, view=view))
+				if isawaitable(result):
+					result = await result
+				if result == False:
+					self.documents[url] = None
+					return
+				if result not in [None, True, False]:
+					new_url = self.__url_root(result)
+					if new_url != url:
+						result = view.emit('dom_event', CustomEvent('redirect', target=url, view=view, detail=new_url))
+						if isawaitable(result):
+							result = await result
+						if result != False:
+							document = self.documents[url] = await self.__load_document(view, new_url, True)
+							return document
 			
 			try:
-				return self.get_document(url)
-			except DocumentNotFound:
-				pass
+				data, mime_type = await self.download_document(url)
+			except Exception as error: # Ignore all other errors, issue a warning.
+				self.emit_warning(view, f"Error downloading document: {type(error).__name__}: {str(error)}", url)
+				data, mime_type = None, 'application/x-null'
 			
-			self.emit_warning(view, "Document download not attempted.", url)
+			#print("download result", data)
+			if data is None:
+				result = view.emit('dom_event', UIEvent('error', target=None, view=view, detail=url))
+				if isawaitable(result):
+					result = await result
+				if result == False:
+					self.documents[url] = None
+					return
+				if result not in [None, True, False]:
+					if isinstance(result, type) and len(result) == 2 and isinstance(result[0], bytes) and isinstance(result[1], str):
+						data, mime_type = result
+					elif isinstance(result, bytes):
+						data = result
+						mime_type = 'application/octet-stream'
+					else:
+						self.emit_warning(view, "Expected (data:bytes, mime:str) tuple or data:bytes blob.", result)
 			
-			return None
-		
-		else:
 			try:
-				try:
-					data, mime_type = await self.download_document(shurl)
-				except RuntimeError: # RuntimeError is abnormal during download.
-					raise
-				except Exception as error: # Ignore all other errors, issue a warning.
-					self.emit_warning(view, f"Error downloading document: {type(error).__name__}: {str(error)}", url)
-					data, mime_type = None, 'application/x-null'
-				
-				try:
-					self.documents[shurl] = self.create_document(data, mime_type)
-				except RuntimeError:
-					raise
-				except Exception as error:
-					self.emit_warning(view, f"Error creating document: {type(error).__name__}: {str(error)}", url)
-					self.documents[shurl] = self.create_document(None, 'application/x-null')
+				self.documents[url] = self.create_document(data, mime_type)
+			except Exception as error:
+				self.emit_warning(view, f"Error creating document: {type(error).__name__}: {str(error)}", url)
+				self.documents[url] = self.create_document(None, 'application/x-null')
+				result = view.emit('dom_event', CustomEvent('parseerror', target=data, view=view, detail=url))
+				if isawaitable(result):
+					await result
+				return
 			
-			finally:
-				async with self.__start_downloading:
-					self.__downloading[shurl].set()
-					del self.__downloading[shurl]
+			document = self.get_document(url)
+			if document is None:
+				return
+			
+			result = view.emit('dom_event', CustomEvent('beforeload', target=document, view=view, detail=url))
+			if isawaitable(result):
+				result = await result
+			if result == False:
+				return
+			if result not in [None, True, False]:
+				self.documents[url] = document = result
 		
-		document = self.get_document(url)
-		if document is None:
-			view.emit('dom_event', UIEvent('error', target=document, view=view, detail=url))
+		finally:
+			async with self.__start_downloading:
+				self.__downloading[url].set()
+				del self.__downloading[url]
+		
+		if url.startswith('data:'):
 			return document
 		
-		view.emit('dom_event', CustomEvent('beforeload', target=document, view=view, detail=url))
-		visited = set()
-		for link in self.scan_document_links(document):
-			if link in self.documents or link in visited:
-				continue
-			
-			if link.startswith('data:'):
-				try:
-					self.documents[link] = self.create_document(*(await self.download_document(link)))
-				except RuntimeError:
-					raise
-				except Exception as error:
-					self.emit_warning(view, f"Error creating document: {type(error).__name__}: {str(error)}", link)
-					self.documents[link] = self.create_document(None, 'application/x-null')
-			else:
-				absurl = self.resolve_url(link, url)
+		async with TaskGroup() as group:
+			tasks = []
+			visited = set()
+			for link in self.scan_document_links(document):
+				absurl = self.resolve_url(link, self.__url_root(url))
+				if absurl in self.documents or absurl in visited:
+					continue
+				
 				view.__referenced[absurl].add(url)
-				load = create_task(self.__load_document(view, absurl))
-				view.__load_tasks.append(load)
-			visited.add(link)		
+				
+				task = group.create_task(self.__load_document(view, absurl))
+				if absurl.startswith('data:'):
+					await task
+				tasks.append(task)
+				
+				visited.add(absurl)
 		
-		view.emit('dom_event', UIEvent('load', target=document, view=view, detail=url))
+		result = view.emit('dom_event', UIEvent('load', target=document, view=view, detail=url))
+		if isawaitable(result):
+			result = await result
+		if result == False:
+			return
+		if result not in [None, True, False]:
+			self.documents[url] = document = result
+		
 		return document
 	
-	def __unload_document(self, view, url):
+	async def __unload_document(self, view, url):
 		try:
 			document = self.get_document(url)
 		except DocumentNotFound:
 			return
 		
-		view.emit('dom_event', CustomEvent('beforeunload', target=document, view=view, detail=url))
-		for link in self.scan_document_links(document):
-			if link.startswith('data:'):
-				#del self.documents[link]
-				continue
-			absurl = self.resolve_url(link, url)
-			if url in view.__referenced[absurl]:
-				view.__referenced[absurl].remove(url)
-				if not view.__referenced[absurl]:
-					self.__unload_document(view, absurl)
-		view.emit('dom_event', UIEvent('unload', target=document, view=view, detail=url))
+		result = view.emit('dom_event', CustomEvent('beforeunload', target=document, view=view, detail=url))
+		if isawaitable(result):
+			result = await result
+		if result == False:
+			return
+		
+		async with TaskGroup() as group:
+			tasks = []
+			for link in self.scan_document_links(document):
+				if link.startswith('data:'):
+					continue
+				absurl = self.resolve_url(link, url)
+				if url in view.__referenced[absurl]:
+					view.__referenced[absurl].remove(url)
+					if not view.__referenced[absurl]:
+						tasks.append(group.create_task(self.__unload_document(view, absurl)))
+		
+		result = view.emit('dom_event', UIEvent('unload', target=document, view=view, detail=url))
+		if isawaitable(result):
+			await result
 	
 	def get_document_url(self, document):
 		try:
@@ -355,22 +446,22 @@ if __debug__ and __name__ == '__main__':
 	from asyncio import run, Event
 	from aiopath import AsyncPath as Path
 	
-	from format.plain import PlainFormat
-	from format.xml import XMLFormat
-	from format.css import CSSFormat
-	from format.null import NullFormat
-	from format.font import FontFormat
+	from guixmpp.format.plain import PlainFormat
+	from guixmpp.format.xml import XMLFormat
+	from guixmpp.format.css import CSSFormat
+	from guixmpp.format.null import NullFormat
+	from guixmpp.format.font import FontFormat
 	
-	from render.svg import SVGRender
-	from render.html import HTMLRender
-	from render.png import PNGRender
-	from render.pixbuf import PixbufRender
+	from guixmpp.render.svg import SVGRender
+	from guixmpp.render.html import HTMLRender
+	from guixmpp.render.png import PNGRender
+	from guixmpp.render.pixbuf import PixbufRender
 	
-	from download.data import DataDownload
-	from download.file import FileDownload
-	from download.chrome import ChromeDownload
+	from guixmpp.download.data import DataDownload
+	from guixmpp.download.file import FileDownload
+	from guixmpp.download.chrome import ChromeDownload
 	
-	from view.display import DisplayView
+	from guixmpp.view.display import DisplayView
 	
 	print("document")
 	
@@ -387,6 +478,7 @@ if __debug__ and __name__ == '__main__':
 			self.__update = Event()
 		
 		def emit(self, handler, event):
+			print(event)
 			if handler == 'dom_event':
 				self.__events.append(event)
 				self.__update.set()
@@ -420,6 +512,9 @@ if __debug__ and __name__ == '__main__':
 		model.set_view(view)
 		async for dirpath in (Path.cwd() / 'examples').iterdir():
 			async for filepath in dirpath.iterdir():
+				#if filepath.name != 'litehtml.css': continue
+				print()
+				print(filepath)
 				document = await model.open_document(view, filepath.as_uri())
 				await view.receive('open')
 				try:

@@ -27,9 +27,14 @@ gi.require_version('Pango', '1.0')
 gi.require_version('PangoCairo', '1.0')
 from gi.repository import Pango, PangoCairo
 
-from format.xml import XMLFormat, XMLDocument
-from format.css import CSSFormat
-from document import DocumentNotFound
+if __name__ == '__main__':
+	from guixmpp.format.xml import XMLFormat, XMLDocument
+	from guixmpp.format.css import CSSFormat
+	from guixmpp.document import DocumentNotFound
+else:
+	from ..format.xml import XMLFormat, XMLDocument
+	from ..format.css import CSSFormat
+	from ..document import DocumentNotFound
 
 
 try:
@@ -1162,10 +1167,12 @@ class SVGRender:
 				except KeyError:
 					href = target.attrib['href']
 			except KeyError:
-				pass
-			else:
+				href = None
+			
+			while href:
 				href = self.resolve_url(href, current_url)
-				orig_target = target
+				
+				orig_gradient = target
 				next_gradient_doc = self.get_document(href)
 				if next_gradient_doc == None:
 					self.emit_warning(view, f"Ref not found: {href}.", node)
@@ -1186,20 +1193,37 @@ class SVGRender:
 					except KeyError:
 						del_attrib.add('href')
 					
-					if 'transform' in orig_target.attrib:
-						add_attrib['transform'] = orig_target.attrib['transform'] + next_gradient.attrib.get('transform', '')
+					try:
+						add_attrib['id'] = orig_gradient.attrib['id']
+					except KeyError:
+						del_attrib.add('id')
 					
-					if 'gradientTransform' in orig_target.attrib:
-						add_attrib['gradientTransform'] = orig_target.attrib['gradientTransform'] + next_gradient.attrib.get('gradientTransform', '')
+					if 'transform' in orig_gradient.attrib:
+						add_attrib['transform'] = orig_gradient.attrib['transform'] + next_gradient.attrib.get('transform', '')
 					
-					#target = OverlayElement(orig_target.getparent(), orig_target, next_gradient, orig_target.tag, add_attrib, del_attrib)
-					next_gradient.attrib.update(orig_target.attrib)
-					next_gradient.attrib.update(add_attrib)
+					if 'gradientTransform' in orig_gradient.attrib:
+						add_attrib['gradientTransform'] = orig_gradient.attrib['gradientTransform'] + next_gradient.attrib.get('gradientTransform', '')
+					
+					orig_gradient.attrib.update(next_gradient.attrib)
+					orig_gradient.attrib.update(add_attrib)
 					for key in del_attrib:
-						if key in next_gradient.attrib:
-							del next_gradient.attrib[key]
-					#target.getparent().replace(target, next_gradient)
-					target = next_gradient
+						if key in orig_gradient.attrib:
+							del orig_gradient.attrib[key]
+					
+					for child in list(next_gradient):
+						orig_gradient.append(child)
+					
+					target = orig_gradient
+					
+					try:
+						try:
+							href = target.attrib[f'{{{self.xmlns_xlink}}}href']
+						except KeyError:
+							href = target.attrib['href']
+					except KeyError:
+						href = None
+			
+			#print("gradient", target.tag, target.attrib)
 			
 			if target.tag == f'{{{self.xmlns_svg}}}linearGradient':					
 				try:
@@ -2175,11 +2199,12 @@ if __debug__ and __name__ == '__main__':
 	from pycallgraph2.output.graphviz import GraphvizOutput
 	
 	from pathlib import Path
-	from format.xml import XMLFormat #, XMLDocument
-	from format.css import CSSFormat, CSSDocument
-	from format.null import NullFormat
-	from download.data import DataDownload
 	from urllib.parse import unquote as url_unquote
+	
+	from guixmpp.format.xml import XMLFormat
+	from guixmpp.format.css import CSSFormat, CSSDocument
+	from guixmpp.format.null import NullFormat
+	from guixmpp.download.data import DataDownload
 	
 	print("svg image")
 	

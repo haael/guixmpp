@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 #-*- coding: utf-8 -*-
 
+
 from time import time
 
 
@@ -94,13 +95,17 @@ class Event:
 
 
 class CustomEvent(Event):
-	_EVENTS = { "beforeload":{},
-				"beforeunload":{},
-				"open":{},
-				"close":{},
-				"opening":{},
-				"closing":{},
-				"warning":{}}
+	_EVENTS = { "download": { "cancelable":True },
+				"dataload": { "cancelable":False },
+				"beforeload":{ "cancelable":True },
+				"beforeunload":{ "cancelable":True },
+				"open":{ "cancelable":True },
+				"close":{ "cancelable":False },
+				"opening":{ "cancelable":True },
+				"closing":{ "cancelable":True },
+				"warning":{ "cancelable":False },
+				"cancelled": { "cancelable":False },
+				"parseerror": { "cancelable":False } }
 
 	def __init__(self, type_, **kwargs):
 		if type(self) == CustomEvent:
