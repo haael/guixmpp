@@ -28,11 +28,11 @@ gi.require_version('PangoCairo', '1.0')
 from gi.repository import Pango, PangoCairo
 
 if __name__ == '__main__':
-	from guixmpp.format.xml import XMLFormat, XMLDocument
+	from guixmpp.format.xml import XMLFormat
 	from guixmpp.format.css import CSSFormat
 	from guixmpp.document import DocumentNotFound
 else:
-	from ..format.xml import XMLFormat, XMLDocument
+	from ..format.xml import XMLFormat
 	from ..format.css import CSSFormat
 	from ..document import DocumentNotFound
 
@@ -165,7 +165,7 @@ class SVGRender:
 			except IndexError:
 				pass
 			else:
-				yield from self.scan_document_links(XMLDocument(foreign_object))
+				yield from self.scan_document_links(foreign_object.create_document())
 	
 	def __xlink_hrefs(self, document):
 		for linkedtag in document.findall(f'.//*[@{{{self.xmlns_xlink}}}href]'):
@@ -201,7 +201,6 @@ class SVGRender:
 			node = document.getroot()
 		else:
 			node = document
-			#document = XMLDocument(node.getroottree().getroot())
 			document = node.getroottree()
 		
 		try:
@@ -232,7 +231,6 @@ class SVGRender:
 			node = document.getroot()
 		else:
 			node = document
-			#document = XMLDocument(node.getroottree().getroot())
 			document = node.getroottree()
 		
 		em_size = 16
@@ -331,6 +329,9 @@ class SVGRender:
 			pointed = self.get_pointed(view)
 			if pointed is not None and self.are_nodes_ordered(node, pointed):
 				pseudoclasses.add('hover')
+				if self.get_buttons(view):
+					pseudoclasses.add('active')
+			#print("pseudoclasses", pseudoclasses, self.get_buttons(view))
 		return pseudoclasses
 	
 	def __get_classes(self, node):
@@ -375,14 +376,14 @@ class SVGRender:
 				pass
 			else:
 				css = self.get_document('data:text/css,' + url_quote('* {' + style + '}'))
-				
-				if css not in self.__css_matcher:
-					self.__css_matcher[css] = self.create_css_matcher(css, None, self.__get_id, None, None, None, node.tag.split('}')[1:] if node.tag[0] == '}' else '')
-				css_attrs = self.__css_matcher[css](node)
-				
-				if attr in css_attrs:
-					view.__attr_cache[node][attr] = css_attrs[attr][0]
-					return css_attrs[attr][0]
+				if self.is_css_document(css):
+					if css not in self.__css_matcher:
+						self.__css_matcher[css] = self.create_css_matcher(css, None, self.__get_id, None, None, None, node.tag.split('}')[1:] if node.tag[0] == '}' else '')
+					css_attrs = self.__css_matcher[css](node)
+					
+					if attr in css_attrs:
+						view.__attr_cache[node][attr] = css_attrs[attr][0]
+						return css_attrs[attr][0]
 			
 			"regular stylesheet (<style/> tag or external)"
 			try:
@@ -426,7 +427,7 @@ class SVGRender:
 			#raise KeyError(f"Attribute {attr} not found in any of ancestors")
 			return None
 	
-	def __render_group(self, view, document, ctx, box, node, em_size, pointer): # FIXME: improve speed for deep documents
+	def __render_group(self, view, document, ctx, box, node, em_size, pointer):
 		"Render SVG group element and its subelements."
 		
 		#print("render group", node.tag, ('#' + node.attrib['id']) if 'id' in node.attrib else '', node.attrib.get('class', ''), box, len(list(node)))
@@ -471,7 +472,7 @@ class SVGRender:
 				viewbox_w = self.units(view, vb_w, percentage=width, em_size=em_size)
 				viewbox_h = self.units(view, vb_h, percentage=height, em_size=em_size)
 			
-			if (node.getparent() is None):
+			if node.getparent() is None:
 				x_scale = width / viewbox_w
 				y_scale = height / viewbox_h
 				
@@ -778,7 +779,7 @@ class SVGRender:
 		for key in del_attrib:
 			if key in target.attrib:
 				del target.attrib[key]
-		node.getparent().replace(node, target)
+		node.getparent().replace(node, target) # TODO: shadow tree
 		
 		#target = OverlayElement(node.getparent(), node, original, original.tag, add_attrib, del_attrib)
 		#print("construct use:", node, original, target.attrib)
@@ -1211,7 +1212,7 @@ class SVGRender:
 							del orig_gradient.attrib[key]
 					
 					for child in list(next_gradient):
-						orig_gradient.append(child)
+						orig_gradient.append(child) # TODO: shadow tree
 					
 					target = orig_gradient
 					
@@ -2194,7 +2195,7 @@ class SVGRender:
 		return hover_nodes
 
 
-if __debug__ and __name__ == '__main__':
+if __name__ == '__main__':
 	from pycallgraph2 import PyCallGraph
 	from pycallgraph2.output.graphviz import GraphvizOutput
 	
@@ -2205,6 +2206,7 @@ if __debug__ and __name__ == '__main__':
 	from guixmpp.format.css import CSSFormat, CSSDocument
 	from guixmpp.format.null import NullFormat
 	from guixmpp.download.data import DataDownload
+	from guixmpp.download.unknown import UnknownDownload
 	
 	print("svg image")
 	
@@ -2255,12 +2257,13 @@ if __debug__ and __name__ == '__main__':
 			if self.print_out: return lambda *args: print(self.__name + '.' + attr + str(args))
 			return lambda *args: None
 	
-	class SVGRenderModel(SVGRender, CSSFormat, XMLFormat, DataDownload, NullFormat):
+	class SVGRenderModel(SVGRender, CSSFormat, XMLFormat, DataDownload, UnknownDownload, NullFormat):
 		def __init__(self):
 			SVGRender.__init__(self)
 			CSSFormat.__init__(self)
 			XMLFormat.__init__(self)
 			DataDownload.__init__(self)
+			UnknownDownload.__init__(self)
 			NullFormat.__init__(self)
 			self.__document_cache = {}
 		
@@ -2288,6 +2291,8 @@ if __debug__ and __name__ == '__main__':
 				return CSSFormat.create_document(self, data, mime_type)
 			elif mime_type == 'image/svg':
 				return SVGRender.create_document(self, data, mime_type)
+			elif mime_type == 'application/x-null':
+				return NullFormat.create_document(self, data, mime_type)
 			else:
 				raise NotImplementedError("Could not create unsupported document type: " + mime_type)
 		
@@ -2310,12 +2315,16 @@ if __debug__ and __name__ == '__main__':
 			if url in self.__document_cache:
 				return self.__document_cache[url]
 			elif url.startswith('#'):
-				result = XMLDocument(self.tree.findall(f".//*[@id='{url[1:]}']")[0])
+				result = self.tree.findall(f".//*[@id='{url[1:]}']")[0].create_document()
 				#result = ElementTree(self.tree.findall(f".//*[@id='{url[1:]}']")[0])
 				self.__document_cache[url] = result
 				return result
 			elif url.startswith('data:text/css'):
 				result = CSSDocument(url_unquote(url[14:]).encode('utf-8'))
+				self.__document_cache[url] = result
+				return result
+			elif url.startswith('data:'):
+				result = None
 				self.__document_cache[url] = result
 				return result
 			else:
@@ -2343,9 +2352,9 @@ if __debug__ and __name__ == '__main__':
 
 		for filepath in example.iterdir():
 			if filepath.suffix != '.svg': continue
-			#print()
-			#print(filepath)
-			if filepath.name != 'Grouping_Templates are Used a Lot!.svg': continue
+			print()
+			print(filepath)
+			#if filepath.name != 'Grouping_Templates are Used a Lot!.svg': continue
 			#nn += 1
 			#if nn > 1: break
 			
@@ -2361,9 +2370,18 @@ if __debug__ and __name__ == '__main__':
 				if not any(link.startswith(_prefix) for _prefix in ['#', 'data:']):
 					if link.endswith('.css'):
 						mime = 'text/css'
+						rnd.set_document(link, rnd.create_document((example / link).read_bytes(), mime))
 					else:
-						raise NotImplementedError(link)
-					rnd.set_document(link, rnd.create_document((example / link).read_bytes(), mime))
+						mime = 'application/x-null'
+						rnd.set_document(link, rnd.create_document(b'', mime))
+					#elif link.endswith('.js'):
+					#	mime = 'text/javascript'
+					#	rnd.set_document(link, rnd.create_document((example / link).read_bytes(), mime))
+					#elif link.startswith('http:') or link.startswith('https:'):
+					#	mime = 'application/x-null'
+					#	rnd.set_document(link, rnd.create_document(b'', mime))
+					#else:
+					#	raise NotImplementedError(link)
 			
 			rnd.tree = document
 			rnd.draw_image(view, document, ctx, (0, 0, 1024, 768))

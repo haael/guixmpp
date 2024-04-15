@@ -3,12 +3,13 @@
 
 import gi
 gi.require_version('Gtk', '3.0')
+gi.require_version('GLib', '2.0')
 from gi.repository import Gtk, GLib, Gio
 
 import asyncio.events
 import asyncio.transports
 
-from asyncio import Future, Task, iscoroutine, gather
+from asyncio import Future, Task, iscoroutine, gather, wrap_future, wait_for, Event
 from asyncio.tasks import current_task
 from asyncio.events import _set_running_loop
 
@@ -16,6 +17,8 @@ import socket
 import ssl
 from math import floor
 from collections import deque
+import concurrent.futures
+
 
 if __name__ == '__main__':
 	from guixmpp.protocol.dns import AsyncResolver
@@ -104,10 +107,10 @@ class BaseTransport(asyncio.transports.BaseTransport):
 			self.__watch_out = None
 	
 	def _data_in(self, channel):
-		raise NotImplementedError
+		raise NotImplementedError("BaseTransport._data_in")
 	
 	def _data_out(self, channel):
-		raise NotImplementedError
+		raise NotImplementedError("BaseTransport._data_out")
 	
 	@staticmethod
 	def _ret_false(old_fun):
@@ -253,7 +256,7 @@ class BaseTransport(asyncio.transports.BaseTransport):
 	
 	def set_protocol(self, protocol):
 		self.__protocol = protocol
-	
+
 
 class NetworkTransport(BaseTransport):
 	def __init__(self, gfamily, gstype, gproto, sock, flags):
@@ -289,11 +292,12 @@ class NetworkTransport(BaseTransport):
 	def _data_out(self, channel):
 		if hasattr(self, '_NetworkTransport__established'):
 			sock = self.get_extra_info('socket')
-			errno = sock.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
-			if not errno:
-				self.__established.set_result(None)
-			else:
-				self.__established.set_exception(OSError("Error establishing connection", errno))
+			self.__errno = sock.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+			self.__established.set()
+			#if not errno:
+			#	self.__established.set_result(None)
+			#else:
+			#	self.__established.set_exception(OSError("Error establishing connection", errno))
 			return False
 	
 	def bind(self, glocal_addr, reuse_addr):
@@ -314,10 +318,12 @@ class NetworkTransport(BaseTransport):
 		try:
 			sock.connect(remote_addr)
 		except BlockingIOError:
-			self.__established = loop.create_future()
+			self.__established = Event() #loop.create_future()
 			self.watch_out(True)
-			await self.__established
-			del self.__established
+			await self.__established.wait()
+			if self.__errno:
+				raise OSError("Error establishing connection", self.__errno)
+			del self.__established, self.__errno
 	
 	def start(self):
 		protocol = self.get_protocol()
@@ -375,18 +381,19 @@ class ReadTransport(BaseTransport, asyncio.transports.ReadTransport):
 	def _data_in(self, channel):
 		sock = self.get_extra_info('read_endpoint')
 		if not sock:
-			#print('not sock')
 			return False
 		
 		protocol = self.get_protocol()
 		if protocol is None:
-			#print('protocol is None')
 			return False
 		
 		while True:
 			try:
 				data = sock.recv(4096)
-				assert len(data) != 0
+				if not data:
+					if hasattr(protocol, 'eof_received'):
+						GLib.idle_add(self._ret_false(protocol.eof_received))
+					return False
 			except (BlockingIOError, ssl.SSLWantReadError):
 				break
 			GLib.idle_add(self._ret_false(protocol.data_received), data)
@@ -522,11 +529,11 @@ class WriteTransport(BaseTransport, asyncio.transports.WriteTransport):
 
 		Data may still be received.
 		"""
-		raise NotImplementedError
+		raise NotImplementedError("write_eof")
 
 	def can_write_eof(self):
 		"""Return True if this transport supports write_eof(), False if not."""
-		raise NotImplementedError
+		raise NotImplementedError("can_write_eof")
 
 
 class TCPTransport(NetworkTransport, ReadTransport, WriteTransport, asyncio.transports.Transport):
@@ -547,26 +554,26 @@ class SSLTransport(TCPTransport):
 	def __init__(self, *args):
 		super().__init__(*args)
 	
-	async def starttls(self, loop, ssl_context, server_hostname):
+	async def starttls(self, loop, ssl_context, server_side=False, server_hostname=None): # TODO: timeouts
 		sock = self.get_extra_info('socket')
 		if not sock:
 			return False
 		
-		sslsock = self.__ssl_socket = ssl_context.wrap_socket(sock, do_handshake_on_connect=False, server_hostname=server_hostname)
+		sslsock = self.__ssl_socket = ssl_context.wrap_socket(sock, do_handshake_on_connect=False, server_side=server_side, server_hostname=server_hostname)
 		
 		while True:
 			try:
 				sslsock.do_handshake()
 				break
 			except ssl.SSLWantReadError:
-				self.__hands_shaken_in = loop.create_future()
+				self.__hands_shaken_in = Event() #loop.create_future()
 				self.watch_in(True)
-				await self.__hands_shaken_in
+				await self.__hands_shaken_in.wait()
 				del self.__hands_shaken_in
 			except ssl.SSLWantWriteError:
-				self.__hands_shaken_out = loop.create_future()
+				self.__hands_shaken_out = Event() # loop.create_future()
 				self.watch_out(True)
-				await self.__hands_shaken_out
+				await self.__hands_shaken_out.wait()
 				del self.__hands_shaken_out
 	
 	def get_extra_info(self, name, default=None):
@@ -585,17 +592,79 @@ class SSLTransport(TCPTransport):
 	
 	def _data_out(self, channel):
 		if hasattr(self, '_SSLTransport__hands_shaken_out'):
-			self.__hands_shaken_out.set_result(None)
+			self.__hands_shaken_out.set() #.set_result(None)
 			return None
 		else:
 			return super()._data_out(channel)
 	
 	def _data_in(self, channel):
 		if hasattr(self, '_SSLTransport__hands_shaken_in'):
-			self.__hands_shaken_in.set_result(None)
+			self.__hands_shaken_in.set() #.set_result(None)
 			return None
 		else:
 			return super()._data_in(channel)
+
+
+'''
+class ConcurrentFuture(concurrent.futures.Future):
+	def cancel(self):
+		return super().cancel()
+
+
+class ThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
+	def __init__(self, max_workers=1):
+		user_data = None
+		error_ptr = None
+		
+		self.futures = []
+		
+		print(dir(GLib.ThreadPool))
+		pool = GLib.ThreadPool()
+		pool.func = self.__run
+		pool.set_max_threads(max_workers)
+		self.pool = pool
+	
+	def __run(self, data, user_data):
+		future, fun, args, kwargs = data
+		
+		try:
+			value = fun(*args, **kwargs)
+		except Exception as error:
+			future.set_exception(error)
+		else:
+			future.set_result(value)
+	
+	def __done(self, future):
+		self.futures.remove(future)
+	
+	def submit(self, fun, *args, **kwargs):
+		future = ConcurrentFuture()
+		self.futures.append(future)
+		future.add_done_callback(self.__done)
+		self.pool.push((future, fun, args, kwargs))
+		return future
+	
+	def map(self, fun, *iterables, timeout=None, chunksize=1):
+		futures = []
+		for iterable in iterables:
+			futures.append(self.submit(fun, iterable))
+		for future in futures:
+			yield future.result()
+	
+	def shutdown(self, wait=True, cancel_futures=False):
+		if wait:
+			for future in list(self.futures):
+				try:
+					future.result()
+				except:
+					pass
+		if cancel_futures:
+			for future in list(self.futures):
+				future.cancel()
+	
+	def __del__(self):
+		self.pool.free(True, False)
+'''
 
 
 class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
@@ -607,6 +676,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		self.__completing = None
 		self.__signal = {}
 		self.__resolver = AsyncResolver()
+		self.__executor = concurrent.futures.ThreadPoolExecutor() # TODO
 	
 	def run_forever(self):
 		"""Run the event loop until stop() is called."""
@@ -711,7 +781,8 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		pass # TODO
 	
 	async def shutdown_default_executor(self):
-		pass # TODO
+		if self.__executor:
+			self.__executor.shutdown()
 	
 	# Methods scheduling callbacks.  All these return Handles.
 	
@@ -748,25 +819,21 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 			return task
 
 	# Methods for interacting with threads.
-
-	#def call_soon_threadsafe(self, callback, *args):
-	#	raise NotImplementedError
+	
 	call_soon_threadsafe = call_soon
-
+	
 	def run_in_executor(self, executor, func, *args):
-		raise NotImplementedError
-
+		if executor is None:
+			executor = self.__executor
+		future = executor.submit(func, *args)
+		return wrap_future(future, loop=self)
+	
 	def set_default_executor(self, executor):
-		raise NotImplementedError
+		self.__executor = executor
 	
 	# Network I/O methods returning Futures.
 	
 	async def getaddrinfo(self, host, port, *, family=0, type=0, proto=0, flags=0):
-		#print('getaddrinfo', host, port, family, type, proto, flags)
-		#print(" AI_PASSIVE", bool(socket.AI_PASSIVE & flags))
-		#print(" AI_NUMERICHOST", bool(socket.AI_NUMERICHOST & flags))
-		#print(" AI_PASSIVE", bool(socket.AI_PASSIVE | flags))
-		
 		if family not in [0, socket.AF_UNSPEC, socket.AF_INET, socket.AF_INET6]:
 			raise ValueError("Invalid address family.")
 		
@@ -809,7 +876,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		return info
 	
 	def getnameinfo(self, sockaddr, flags=0):
-		raise NotImplementedError
+		raise NotImplementedError("getnameinfo")
 	
 	async def __open_resolver(self):
 		await self.__resolver.open(self)
@@ -817,53 +884,81 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 	async def __close_resolver(self):
 		await self.__resolver.close()
 	
+	async def __try_addrs(self, host, port, family, proto):
+		try:
+			gremote_addr = Gio.InetSocketAddress.new_from_string(host, port)
+		except TypeError:
+			pass
+		else:
+			yield gremote_addr, family, proto
+			return
+		
+		addrs = await self.getaddrinfo(host, port)
+		if not addrs:
+			raise ConnectionError(f"Could not resolve hostname: {host}")
+		
+		for nfamily, ntype_, nproto, cname, addr_port in addrs:
+			if family and family != nfamily: continue
+			#if proto and proto != nproto: continue
+			nhost = addr_port[0]
+			nport = addr_port[1]
+			gremote_addr = Gio.InetSocketAddress.new_from_string(nhost, nport)
+			yield gremote_addr, nfamily, proto
+	
 	async def create_connection(self, protocol_factory, host=None, port=None, *,
 						  ssl=None, family=0, proto=0, flags=0, sock=None,
 						  local_addr=None, server_hostname=None):
 		
-		gremote_addr = Gio.InetSocketAddress.new_from_string(host, port)
 		if local_addr is not None:
 			glocal_addr = Gio.InetSocketAddress.new_from_string(*local_addr)
 		else:
 			glocal_addr = None
 		
-		if family == socket.AF_INET:
-			gfamily = Gio.SocketFamily.IPV4
-		elif family == socket.AF_INET6:
-			gfamily = Gio.SocketFamily.IPV6
-		elif family in [socket.AF_UNSPEC, 0]:
-			gfamily = (glocal_addr.get_family() if glocal_addr else None) or (gremote_addr.get_family() if gremote_addr else None)
-		else:
-			raise ValueError("Unsupported address family.")
+		errors = []
 		
-		if gfamily is None:
-			raise ValueError("Address family not specified.")
-		if gremote_addr and gremote_addr.get_family() != gfamily:
-			raise ValueError("Remote address is not the right family.")
-		if glocal_addr and glocal_addr.get_family() != gfamily:
-			raise ValueError("Local address is not the right family.")
+		async for gremote_addr, family, proto in self.__try_addrs(host, port, family, proto):
+			try:
+				if family == socket.AF_INET:
+					gfamily = Gio.SocketFamily.IPV4
+				elif family == socket.AF_INET6:
+					gfamily = Gio.SocketFamily.IPV6
+				elif family in [socket.AF_UNSPEC, 0]:
+					gfamily = (glocal_addr.get_family() if glocal_addr else None) or (gremote_addr.get_family() if gremote_addr else None)
+				else:
+					raise ValueError("Unsupported address family.")
+				
+				if gfamily is None:
+					raise ValueError("Address family not specified.")
+				if gremote_addr and gremote_addr.get_family() != gfamily:
+					raise ValueError("Remote address is not the right family.")
+				if glocal_addr and glocal_addr.get_family() != gfamily:
+					raise ValueError("Local address is not the right family.")
+				
+				if proto != 0:
+					raise ValueError # TODO
+				else:
+					gproto = Gio.SocketProtocol.TCP
+				
+				if ssl:
+					transport = SSLTransport(gfamily, gproto, sock, flags)
+				else:
+					transport = TCPTransport(gfamily, gproto, sock, flags)
+				protocol = protocol_factory()
+				transport.set_protocol(protocol)
+				
+				if glocal_addr:
+					transport.bind(glocal_addr, False)
+				await transport.connect(self, gremote_addr)
+				if ssl:
+					await transport.starttls(self, ssl, False, server_hostname)
+				transport.start()
+			except Exception as error:
+				errors.append(error)
+			else:
+				return transport, protocol
 		
-		if proto != 0:
-			raise ValueError
-		else:
-			gproto = Gio.SocketProtocol.TCP
-		
-		if ssl:
-			transport = SSLTransport(gfamily, gproto, sock, flags)
-		else:
-			transport = TCPTransport(gfamily, gproto, sock, flags)
-		protocol = protocol_factory()
-		transport.set_protocol(protocol)
-		
-		if glocal_addr:
-			transport.bind(glocal_addr, False)
-		await transport.connect(self, gremote_addr)
-		if ssl:
-			await transport.starttls(self, ssl, server_hostname)
-		transport.start()
-		
-		return transport, protocol
-
+		raise ExceptionGroup(f"Could not establish connection to {host}:{port}", errors)
+	
 	'''
 	def create_server(self, protocol_factory, host=None, port=None, *,
 					  family=socket.AF_UNSPEC, flags=socket.AI_PASSIVE,
@@ -906,12 +1001,22 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		"""
 		raise NotImplementedError
 	'''
-
+	
+	async def start_tls(self, transport, protocol, sslcontext, *, server_side=False, server_hostname=None, ssl_handshake_timeout=None, ssl_shutdown_timeout=None):
+		"Upgrade existing TCP transport to TLS."
+		transport.watch_in(False)
+		transport.watch_out(False)
+		ssl_transport = SSLTransport(0, 0, transport.get_extra_info('socket'), 0)
+		ssl_transport.set_protocol(protocol)
+		await ssl_transport.starttls(self, sslcontext, server_side=server_side, server_hostname=server_hostname)
+		ssl_transport.watch_in(True)
+		return ssl_transport
+	
 	def create_unix_connection(self, protocol_factory, path, *,
 							   ssl=None, sock=None,
 							   server_hostname=None):
-		raise NotImplementedError
-
+		raise NotImplementedError("create_unix_connection")
+	
 	def create_unix_server(self, protocol_factory, path, *,
 						   sock=None, backlog=100, ssl=None):
 		"""A coroutine which creates a UNIX Domain Socket server.
@@ -931,7 +1036,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		ssl can be set to an SSLContext to enable SSL over the
 		accepted connections.
 		"""
-		raise NotImplementedError
+		raise NotImplementedError("create_unix_server")
 
 	async def create_datagram_endpoint(self, protocol_factory,
 								 local_addr=None, remote_addr=None, *,
@@ -1031,7 +1136,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		# is: we need to own pipe and close it at transport finishing
 		# Can got complicated errors if pass f.fileno(),
 		# close fd in pipe transport then close f and vise versa.
-		raise NotImplementedError
+		raise NotImplementedError("connect_read_pipe")
 
 	def connect_write_pipe(self, protocol_factory, pipe):
 		"""Register write pipe in event loop.
@@ -1146,7 +1251,7 @@ class GtkAioEventLoopPolicy(asyncio.events.AbstractEventLoopPolicy):
 		It should never return None."""
 		
 		if self.loop is None:
-			raise RuntimeError
+			raise RuntimeError("Loop is None. Call set_event_loop first.")
 		return self.loop
 
 	def set_event_loop(self, loop):
@@ -1158,17 +1263,16 @@ class GtkAioEventLoopPolicy(asyncio.events.AbstractEventLoopPolicy):
 		policy's rules. If there's need to set this loop as the event loop for
 		the current context, set_event_loop must be called explicitly."""
 		return GtkAioEventLoop()
-
+	
 	# Child processes handling (Unix only).
-
+	
 	def get_child_watcher(self):
 		"Get the watcher for child processes."
-		raise NotImplementedError
+		raise NotImplementedError("get_child_watcher")
 
 	def set_child_watcher(self, watcher):
 		"""Set the watcher for child processes."""
-		raise NotImplementedError
-
+		raise NotImplementedError("set_child_watcher")
 
 
 if __debug__ and __name__ == '__main__':
@@ -1176,6 +1280,32 @@ if __debug__ and __name__ == '__main__':
 	from protocol.http.client import Connection1
 	
 	set_event_loop_policy(GtkAioEventLoopPolicy())
+	
+	def some_work_1():
+		z = 0
+		for m in range(10):
+			print("1", m, z)
+			for n in range(100000):
+				z *= z + 1
+				z += n
+				z %= 3456789
+		return z
+	
+	def some_work_2():
+		z = 1
+		for m in range(10):
+			print("2", m, z)
+			for n in range(100000):
+				z *= z + 1
+				z += n
+				z %= 9876542
+		return z
+	
+	async def test_executors():
+		a = get_running_loop().run_in_executor(None, some_work_1)
+		b = get_running_loop().run_in_executor(None, some_work_2)
+		ab = await gather(a, b)
+		assert ab == [2394038, 882611]
 	
 	async def testA():
 		print("testA", 0)
@@ -1200,7 +1330,10 @@ if __debug__ and __name__ == '__main__':
 	
 	async def testB():
 		async with Connection1('http://www.google.com/') as google:
-			print((await google.Url().get())[:32])
+			print("http test:", (await google.Url().get())[:32])
+
+		async with Connection1('https://github.com/') as github:
+			print("https test:", (await github.Url().get())[:32])
 		
 		print("testB", 0)
 		await sleep(1)
@@ -1226,5 +1359,9 @@ if __debug__ and __name__ == '__main__':
 			await sleep(0.3)
 			print("testE", n)
 	
-	a = run(testA())
+	async def test():
+		await test_executors()
+		await testA()
+	
+	a = run(test())
 	print("a=", a)

@@ -16,7 +16,7 @@ __all__ = 'XMPPClient', 'XMPPError', 'ProtocolError', 'StreamError', 'Authentica
 from logging import getLogger
 logger = getLogger(__name__)
 
-from asyncio import open_connection, wait_for, create_task, Lock, CancelledError, Queue, get_running_loop, gather
+from asyncio import open_connection, wait_for, Lock, CancelledError, Queue, get_running_loop, gather, TaskGroup, create_task
 from ssl import create_default_context
 from lxml.etree import fromstring, tostring, XMLPullParser
 from scramp import ScramClient, ScramMechanism
@@ -60,7 +60,6 @@ class XMPPClient:
 		self.interrupt_message = None
 		
 		self.iq_requests = {}
-		self.tasks = TaskWatch()
 		self.unhandled = False
 		self.handlers_running = Counter()
 		self.expectations = []
@@ -128,21 +127,10 @@ class XMPPClient:
 		if not host: host = self.jid.split('@')[1].split('/')[0]
 		
 		ssl = self.ssl_context()
-		
+				
 		timeout = self.config['timeout']
 		
-		loop = get_running_loop()
-		transport = self.writer.transport
-		protocol = transport.get_protocol()
-		
-		if not timeout:
-			new_transport = await loop.start_tls(transport, protocol, ssl)
-		else:
-			new_transport = await wait_for(loop.start_tls(transport, protocol, ssl), timeout)
-		
-		# Replace the writers
-		self.writer._transport = new_transport
-		self.reader._transport = new_transport
+		await self.writer.start_tls(ssl, server_hostname=host, ssl_handshake_timeout=timeout)
 		
 		self.encrypted = True
 	
@@ -210,11 +198,11 @@ class XMPPClient:
 		async with self.read_lock:
 			stanza_received = False
 			while not stanza_received:
-				self.read_task = create_task(self.reader.readuntil(b'>'))
+				self.read_task = create_task(self.reader.readuntil(b'>'), name='read_task')
 				try:
 					data = await self.read_task
 				except CancelledError:
-					return ...
+					return Ellipsis
 				finally:
 					del self.read_task
 				
@@ -239,62 +227,79 @@ class XMPPClient:
 		if self.running:
 			raise ValueError("Client already running.")
 		
-		self.running = True
-		logger.info("Client stanza reception loop running.")
-		while self.running:			
-			stanza = await self.recv_stanza()
-			if stanza == None:
-				logger.warning("Received end tag from remote server.")
-				self.established = False
-				break
-			elif stanza == Ellipsis:
-				logger.info(f"Received loop interrupt request.")
-				if self.interrupt_message:
-					yield self.interrupt_message
-					self.interrupt_message = None
-					continue
-				else:
-					break
+		try:
+			async with TaskGroup() as task_group:
+				self.tasks = []
+				self.task_group = task_group
+				self.running = True
+				logger.info("Client stanza reception loop running.")
+				while self.running:
+					stanza = await self.recv_stanza()
+					
+					errors = []
+					for task in list(self.tasks):
+						if not task.done():
+							continue
+						self.tasks.remove(task)
+						exception = task.exception()
+						if exception:
+							errors.append(exception)
+					if errors:
+						raise ExceptionGroup("Error in subtask.", errors)
+					
+					if stanza == None:
+						logger.warning("Received end tag from remote server.")
+						self.established = False
+						break
+					elif stanza == Ellipsis:
+						logger.info(f"Received loop interrupt request.")
+						if self.interrupt_message:
+							yield self.interrupt_message
+							self.interrupt_message = None
+						else:
+							break
+					else:
+						yield stanza
+					
+					self.handlers_running = +self.handlers_running
+					if self.handlers_running:
+						save_from = min(self.handlers_running.keys())
+						for to_delete in [_serial for _serial in self.saved_stanzas.keys() if _serial < save_from]:
+							del self.saved_stanzas[to_delete]
+						self.saved_stanzas[self.recv_stanza_counter] = stanza
+					else:
+						self.saved_stanzas.clear()
+					
+					if self.unhandled:
+						await self.on_unhandled(stanza)
+					
+					self.recv_stanza_counter += 1
+				
+				logger.info("Client stanza reception loop stopped.")
+				self.running = False
+				
+				del self.task_group, self.tasks
+		except* GeneratorExit as error:
+			if len(error.exceptions) == 1:
+				raise error.exceptions[0]
 			else:
-				yield stanza
-			
-			self.handlers_running = +self.handlers_running
-			if self.handlers_running:
-				save_from = min(self.handlers_running.keys())
-				for to_delete in [_serial for _serial in self.saved_stanzas.keys() if _serial < save_from]:
-					del self.saved_stanzas[to_delete]
-				self.saved_stanzas[self.recv_stanza_counter] = stanza
-			else:
-				self.saved_stanzas.clear()
-			
-			if self.unhandled:
-				await self.on_unhandled(stanza)
-			
-			errors = self.tasks.errors()
-			if errors:
-				client.stop()
-				self.tasks.cancel()
-				await self.tasks.wait() # FIXME: ignore cancellation exceptions
-				errors.extend(self.tasks.errors())
-				raise ExceptionGroup("Errors in background tasks.", errors)
-			
-			self.recv_stanza_counter += 1
-		
-		errors = self.tasks.errors()
-		self.tasks.cancel()
-		await self.tasks.wait() # FIXME: ignore cancellation exceptions
-		errors.extend(self.tasks.errors())
-		if errors:
-			raise ExceptionGroup("Errors in background tasks.", errors)
-		
-		logger.info("Client stanza reception loop stopped.")
-		self.running = False
+				raise error
 	
-	async def __aexit__(self, exception, messagge, traceback):
-		if exception:
-			logger.warning(f"Exit context manager due to exception: <{exception}> {messagge}.")
+	async def __aexit__(self, exctype, exception, traceback):
 		await self.end_stream()
 		await self.disconnect()
+		if exception:
+			raise exception
+		
+		#if exception:
+		#	if isinstance(exception, ExceptionGroup) or isinstance(exception, BaseExceptionGroup):
+		#		logger.warning(f"Exit context manager due to multiple exceptions: {type(exception).__name__}: {str(exception)}.")
+		#		for subexception in exception.exceptions:
+		#			logger.warning(f" {type(subexception).__name__}: {str(subexception)}.")
+		#	else:
+		#		logger.warning(f"Exit context manager due to exception: {type(exception).__name__}: {str(exception)}.")
+		#	#import traceback
+		#	#traceback.print_tb(traceback)
 	
 	def stop(self):
 		"Stop yielding stanzas from main iterator."
@@ -356,11 +361,14 @@ class XMPPClient:
 		tasks = []
 		interrupt = False
 		result = None
+		noauth = False
 		for feature in stanza:
 			if feature.tag == '{urn:ietf:params:xml:ns:xmpp-tls}starttls':
 				interrupt = await self.on_starttls(feature)
 			elif feature.tag == '{urn:ietf:params:xml:ns:xmpp-sasl}mechanisms':
 				interrupt = await self.on_authenticate(feature)
+				if not interrupt:
+					noauth = True
 			elif feature.tag == '{http://jabber.org/features/iq-register}register':
 				result = await self.on_register(feature)
 				interrupt = bool(result)
@@ -378,9 +386,12 @@ class XMPPClient:
 					await task
 				await self.ready()
 			
-			self.tasks.add(self.guarded(run_tasks()), name='on_features')
+			self.tasks.append(self.task_group.create_task(self.guarded(run_tasks()), name='on_features'))
 		
-		return result
+		if noauth and not tasks and result is None:
+			return 'ready', None, None
+		else:
+			return result
 	
 	async def on_starttls(self, feature):
 		if feature.tag != '{urn:ietf:params:xml:ns:xmpp-tls}starttls':
@@ -462,7 +473,7 @@ class XMPPClient:
 			scram.set_server_final(message)
 		
 		else:
-			raise NotImplementedError
+			raise NotImplementedError("Anonymous login not implemented yet.")
 		
 		logger.info("Authorized.")
 		await self.begin_stream()
@@ -533,36 +544,48 @@ class XMPPClient:
 		return 'message', id_, from_, *body
 	
 	async def on_iq(self, stanza):
-		logger.debug(f"Received IQ stanza: {tostring(stanza).decode('utf-8')}")
+		logger.debug(f"Received IQ stanza id:{stanza.attrib.get('id', None)}.")
 		
 		id_ = stanza.attrib.get('id', None)
-		method = stanza.attrib['type']		
-		if method in ('result', 'error'):
-			if id_ in self.iq_requests:
-				self.iq_requests[id_].set_result(stanza)
-			else:
-				raise ProtocolError("Unexpected response for IQ that wasn't requested.")
-		elif method in ('get', 'set'):
-			body = []
-			
-			if stanza.text and stanza.text.strip():
-				body.append(stanza.text.strip())
-			
-			for child in stanza:
-				if child.tail and child.tail.strip():
-					text = child.tail.strip()
-				else:
-					text = None
-				
-				child.tail = None
-				body.append(child)
-				if text is not None:
-					body.append(text)
-			
-			from_ = stanza.attrib.get('from', None)
-			return await self.on_query(method, id_, from_, *body)
+		if id_ in self.iq_requests:
+			future = self.iq_requests[id_]
 		else:
-			raise ProtocolError(f"Unsupported method {method} in IQ.")
+			future = None
+			#raise ProtocolError(f"Unexpected response for IQ that wasn't requested: {id_}.")
+		
+		try:
+			method = stanza.attrib['type']
+			if method in ('result', 'error'):
+				if future:
+					future.set_result(stanza)
+				else:
+					logger.warning(f"Unexpected response for IQ that wasn't requested: {id_}: {stanza}.")
+			elif method in ('get', 'set'):
+				body = []
+				
+				if stanza.text and stanza.text.strip():
+					body.append(stanza.text.strip())
+				
+				for child in stanza:
+					if child.tail and child.tail.strip():
+						text = child.tail.strip()
+					else:
+						text = None
+					
+					child.tail = None
+					body.append(child)
+					if text is not None:
+						body.append(text)
+				
+				from_ = stanza.attrib.get('from', None)
+				return await self.on_query(method, id_, from_, *body)
+			else:
+				raise ProtocolError(f"Unsupported method {method} in IQ.")
+		except Exception as error:
+			if future:
+				future.set_exception(error)
+			else:
+				raise
 	
 	async def on_unhandled(self, stanza):
 		if stanza.tag == '{jabber:client}iq':
@@ -574,7 +597,7 @@ class XMPPClient:
 	
 	async def on_query(self, method, id_, from_, *body):
 		if self.config['ping'] and len(body) == 1 and hasattr(body[0], 'tag') and body[0].tag == '{urn:xmpp:ping}ping':
-			logger.info(f"Ping from {from_}.")
+			logger.info(f"Ping from <{from_}>.")
 			await self.answer('result', id_, from_)
 		else:
 			return await self.on_other_query(method, id_, from_, *body)
@@ -639,14 +662,15 @@ class XMPPClient:
 				msg = ""
 			raise QueryError(f"Server error on iq {method} (id:{id_}, to:{to}): {msg}", list(result))
 		else:
-			raise ProtocolError
+			type_ = result.attrib['type']
+			raise QueryError(f"Expected 'result' or 'error' server response, got '{type_}'.")
 	
-	async def answer(self, id_, method, to, *body):
+	async def answer(self, method, id_, to, *body):
 		if method not in ('result', 'error'):
-			raise ValueError
+			raise ValueError(f"Expected 'result' or 'error'; got '{method}'.")
 		
 		if not id_:
-			raise ValueError
+			raise ValueError(f"Id is required on an IQ stanza.")
 		
 		iq = fromstring(f'<iq id="{id_}" type="{method}" to="{to}"/>'.encode('utf-8'))
 		
@@ -674,6 +698,7 @@ class XMPPClient:
 		return self.password
 	
 	async def ready(self):
+		assert self.established
 		logger.info("Initialization complete, stream ready.")
 		self.interrupt_message = 'ready'
 		if hasattr(self, 'read_task'):
@@ -683,7 +708,7 @@ class XMPPClient:
 		try:
 			return await coro
 		except:
-			self.interrupt_message = 'exception'
+			self.interrupt_message = None
 			if hasattr(self, 'read_task'):
 				self.read_task.cancel()
 			raise
@@ -706,7 +731,7 @@ class XMPPClient:
 		for serial, stanza in sorted([(_serial, _stanza) for (_serial, _stanza) in self.saved_stanzas.items()], key=lambda _item: _item[0]):
 			queue.put_nowait(stanza)
 		
-		self.tasks.add(self.guarded(handler(coro)), coro.__name__)
+		self.tasks.append(self.task_group.create_task(self.guarded(handler(coro)), name=coro.__name__))
 	
 	async def expect(self, queue, match_):
 		self.expectations.append((match_, queue))
@@ -714,41 +739,6 @@ class XMPPClient:
 			return await queue.get()
 		finally:
 			self.expectations.remove((match_, queue))
-
-
-class TaskWatch:
-	def __init__(self):
-		self.tasks = []
-	
-	def add(self, coro, name=None):
-		self.tasks.append(create_task(coro, name=name))
-	
-	def errors(self):
-		errors = []
-		
-		for task in self.tasks[:]:
-			if not task.done():
-				continue
-			
-			self.tasks.remove(task)
-			
-			if task.cancelled():
-				pass
-			elif task.exception():
-				errors.append(task.exception())
-		
-		return errors
-	
-	def cancel(self):
-		for task in self.tasks[:]:
-			task.cancel()
-	
-	async def wait(self):
-		for task in self.tasks[:]:
-			try:
-				await task
-			except CancelledError:
-				pass
 
 
 if __name__ == '__main__':
@@ -781,9 +771,16 @@ if __name__ == '__main__':
 				logger.debug(f"Main loop event: {event}.")
 				
 				if event == 'ready':
-					if not client.authenticated or not client.established:
-						"Connection failed."
+					print("ready event", client.authenticated, client.established)
+					
+					if not client.established:
+						print("Connection failed.")
 						break
+					elif not client.authenticated:
+						print("Login failed or not attempted.")
+						break
+					else:
+						print("Login successful.")
 					
 					@client.handle
 					async def get_roster(expect):

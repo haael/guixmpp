@@ -6,8 +6,9 @@ __all__ = 'DocumentModel',
 
 
 from collections import defaultdict
-from asyncio import gather, Lock, Event, TaskGroup, CancelledError
+from asyncio import gather, Lock, Event, TaskGroup, CancelledError, get_running_loop
 from inspect import isawaitable
+from aiopath import Path
 
 if __name__ == '__main__':
 	from guixmpp.domevents import UIEvent, CustomEvent
@@ -21,7 +22,7 @@ class DocumentNotFound(Exception):
 
 class Model:
 	"A structure holding a collection of documents, capable of loading and unloading."
-		
+	
 	@staticmethod
 	def features(name, *classes):
 		return type(name, (Model,) + classes, {})
@@ -37,12 +38,15 @@ class Model:
 		if hasattr(view, '_Model__document'):
 			raise ValueError("Close previous document first.")
 		
+		if url == '' and '' in self.documents:
+			del self.documents['']
+		
 		view.__document = None
 		view.__referenced = defaultdict(set)
 		view.__location = url
 		
-		event = CustomEvent('opening', target=None, view=view, detail=url)
-		result = view.emit('dom_event', event)
+		event = CustomEvent('opening', detail=url)
+		result = view.emit('dom_event', event, view)
 		if isawaitable(result):
 			result = await result
 		if result == False:
@@ -51,16 +55,16 @@ class Model:
 		
 		await self.begin_downloads()
 		try:
-			view.__document = await self.__load_document(view, url)
+			view.__document = await self.__load_document(view, url, view)
 		except CancelledError:
-			event = CustomEvent('cancelled', target=view.__document, view=view, detail=url)
-			view.emit('dom_event', event)
+			event = CustomEvent('cancelled', detail=url)
+			view.emit('dom_event', event, view)
 			raise
 		finally:
 			await self.end_downloads()
 		
-		event = CustomEvent('open', target=view.__document, view=view, detail=url)
-		result = view.emit('dom_event', event)
+		event = CustomEvent('open', detail=url)
+		result = view.emit('dom_event', event, view)
 		if isawaitable(result):
 			result = await result
 		if result == False:
@@ -75,18 +79,18 @@ class Model:
 		
 		url = view.__location
 		
-		event = CustomEvent('closing', target=view.__document, view=view, detail=url)
-		result = view.emit('dom_event', event)
+		event = CustomEvent('closing', detail=url)
+		result = view.emit('dom_event', event, view)
 		if isawaitable(result):
 			result = await result
 		if result == False:
 			del view.__document, view.__referenced, view.__location
 			return
 		
-		await self.__unload_document(view, url)
+		await self.__unload_document(view, url, view)
 		
-		event = CustomEvent('close', target=None, view=view, detail=url)
-		result = view.emit('dom_event', event)
+		event = CustomEvent('close', detail=url)
+		result = view.emit('dom_event', event, view)
 		if isawaitable(result):
 			result = await result
 		if result == False:
@@ -94,7 +98,7 @@ class Model:
 			return
 		
 		del view.__document, view.__referenced, view.__location
-		self.documents.clear() # TODO
+		self.documents.clear() # TODO: support multiple views per model
 	
 	def current_location(self, view):
 		try:
@@ -143,7 +147,7 @@ class Model:
 			if result != NotImplemented:
 				return result
 		else:
-			raise NotImplementedError(f"Could not find implementation for method {method_name}. Arguments: {args}")
+			raise NotImplementedError(f"Could not find implementation for method {type(self).__name__}.{method_name}. Arguments: {args}")
 	
 	async def __find_impl_async(self, method_name, args, kwargs={}):
 		"Call the first async method from any of subclasses, in order of their appearance."
@@ -161,7 +165,7 @@ class Model:
 			if result != NotImplemented:
 				return result
 		else:
-			raise NotImplementedError(f"Could not find implementation for method {method_name}. Arguments: {args}")
+			raise NotImplementedError(f"Could not find implementation for method {type(self).__name__}.{method_name}. Arguments: {args}")
 	
 	def __chain_impl(self, method_name, args, kwargs={}):
 		"Call all method from all of subclasses, in order of their appearance."
@@ -175,7 +179,13 @@ class Model:
 			except AttributeError:
 				continue
 			
-			method(self, *args, **kwargs)
+			if method_name == '__init__':
+				try:
+					method(self, *args, **kwargs)
+				except TypeError:
+					method(self)
+			else:
+				method(self, *args, **kwargs)
 	
 	async def __chain_impl_async(self, method_name, args, kwargs={}):
 		"Call all async method from all of subclasses, in parallel."
@@ -207,7 +217,7 @@ class Model:
 		else:
 			return url
 	
-	async def __load_document(self, view, url, redirected=False):
+	async def __load_document(self, view, url, parent, redirected=False):
 		try:
 			return self.get_document(url)
 		except DocumentNotFound:
@@ -230,7 +240,7 @@ class Model:
 					return
 			
 			if not redirected:
-				result = view.emit('dom_event', CustomEvent('download', target=url, view=view))
+				result = view.emit('dom_event', CustomEvent('download', detail=url), parent)
 				if isawaitable(result):
 					result = await result
 				if result == False:
@@ -239,22 +249,40 @@ class Model:
 				if result not in [None, True, False]:
 					new_url = self.__url_root(result)
 					if new_url != url:
-						result = view.emit('dom_event', CustomEvent('redirect', target=url, view=view, detail=new_url))
+						result = view.emit('dom_event', CustomEvent('redirect', detail=new_url), parent)
 						if isawaitable(result):
 							result = await result
 						if result != False:
-							document = self.documents[url] = await self.__load_document(view, new_url, True)
+							document = self.documents[url] = await self.__load_document(view, new_url, parent, True)
 							return document
 			
 			try:
-				data, mime_type = await self.download_document(url)
+				if url != '':
+					data, mime_type = await self.download_document(url)
+				else:
+					path = Path(view.prop_file)
+					match path.suffix.lower():
+						case '.svg':
+							mime_type = 'image/svg'
+						case '.png':
+							mime_type = 'image/png'
+						case '.jpg' | '.jpeg':
+							mime_type = 'image/jpeg'
+						case _:
+							mime_type = 'application/octet-stream'
+					try:
+						data = await path.read_bytes()
+					except (OSError, IOError) as error:
+						self.emit_warning(view, f"Error opening file: {type(error).__name__}: {str(error)}", url)
+						data, mime_type = None, 'application/x-null'						
+			except (RuntimeError, NameError, KeyError, IndexError, AttributeError, ArithmeticError, CancelledError, KeyboardInterrupt):
+				raise
 			except Exception as error: # Ignore all other errors, issue a warning.
 				self.emit_warning(view, f"Error downloading document: {type(error).__name__}: {str(error)}", url)
 				data, mime_type = None, 'application/x-null'
 			
-			#print("download result", data)
 			if data is None:
-				result = view.emit('dom_event', UIEvent('error', target=None, view=view, detail=url))
+				result = view.emit('dom_event', CustomEvent('error', detail=url), parent)
 				if isawaitable(result):
 					result = await result
 				if result == False:
@@ -270,11 +298,13 @@ class Model:
 						self.emit_warning(view, "Expected (data:bytes, mime:str) tuple or data:bytes blob.", result)
 			
 			try:
-				self.documents[url] = self.create_document(data, mime_type)
+				self.documents[url] = await get_running_loop().run_in_executor(None, self.create_document, data, mime_type)
+			except (RuntimeError, NameError, KeyError, IndexError, AttributeError, ArithmeticError, CancelledError, KeyboardInterrupt):
+				raise
 			except Exception as error:
 				self.emit_warning(view, f"Error creating document: {type(error).__name__}: {str(error)}", url)
 				self.documents[url] = self.create_document(None, 'application/x-null')
-				result = view.emit('dom_event', CustomEvent('parseerror', target=data, view=view, detail=url))
+				result = view.emit('dom_event', CustomEvent('error', detail=url), parent)
 				if isawaitable(result):
 					await result
 				return
@@ -283,7 +313,7 @@ class Model:
 			if document is None:
 				return
 			
-			result = view.emit('dom_event', CustomEvent('beforeload', target=document, view=view, detail=url))
+			result = view.emit('dom_event', UIEvent('beforeload', view=view, detail=url), document)
 			if isawaitable(result):
 				result = await result
 			if result == False:
@@ -309,14 +339,14 @@ class Model:
 				
 				view.__referenced[absurl].add(url)
 				
-				task = group.create_task(self.__load_document(view, absurl))
+				task = group.create_task(self.__load_document(view, absurl, document))
 				if absurl.startswith('data:'):
 					await task
 				tasks.append(task)
 				
 				visited.add(absurl)
 		
-		result = view.emit('dom_event', UIEvent('load', target=document, view=view, detail=url))
+		result = view.emit('dom_event', UIEvent('load', view=view, detail=url), document)
 		if isawaitable(result):
 			result = await result
 		if result == False:
@@ -326,13 +356,13 @@ class Model:
 		
 		return document
 	
-	async def __unload_document(self, view, url):
+	async def __unload_document(self, view, url, parent):
 		try:
 			document = self.get_document(url)
 		except DocumentNotFound:
 			return
 		
-		result = view.emit('dom_event', CustomEvent('beforeunload', target=document, view=view, detail=url))
+		result = view.emit('dom_event', UIEvent('beforeunload', view=view, detail=url), document)
 		if isawaitable(result):
 			result = await result
 		if result == False:
@@ -347,9 +377,9 @@ class Model:
 				if url in view.__referenced[absurl]:
 					view.__referenced[absurl].remove(url)
 					if not view.__referenced[absurl]:
-						tasks.append(group.create_task(self.__unload_document(view, absurl)))
+						tasks.append(group.create_task(self.__unload_document(view, absurl, document)))
 		
-		result = view.emit('dom_event', UIEvent('unload', target=document, view=view, detail=url))
+		result = view.emit('dom_event', UIEvent('unload', view=view, detail=url), document)
 		if isawaitable(result):
 			await result
 	
@@ -357,7 +387,7 @@ class Model:
 		try:
 			return [_url for (_url, _document) in self.documents.items() if _document == document][0] # TODO: raise proper error
 		except IndexError:
-			raise DocumentNotFound("Could not find url for nonexistent document.")
+			raise DocumentNotFound(f"Could not find url for nonexistent document.")
 	
 	def get_document_fragment(self, document, href):
 		return self.__find_impl('get_document_fragment', [document, href])
@@ -389,8 +419,8 @@ class Model:
 	async def end_downloads(self):
 		await self.__chain_impl_async('end_downloads', ())
 	
-	def set_view(self, widget):
-		self.__chain_impl('set_view', (widget,))
+	#def set_view(self, widget):
+	#	self.__chain_impl('set_view', (widget,))
 	
 	def handle_event(self, widget, event, name):
 		self.__chain_impl('handle_event', (widget, event, name))
@@ -405,6 +435,7 @@ class Model:
 		return await self.__find_impl_async('download_document', [url])
 	
 	def create_document(self, data:bytes, mime_type:str):
+		#print("create_document", len(data), mime_type)
 		return self.__find_impl('create_document', [data, mime_type])
 	
 	def save_document(self, document, fileobj=None):
@@ -436,11 +467,11 @@ class Model:
 	
 	def emit_warning(self, view, message, target):
 		if message not in self.emitted_warnings:
-			view.emit('dom_event', CustomEvent('warning', view=view, detail=message, target=target))
+			view.emit('dom_event', CustomEvent('warning', detail=message), target)
 			self.emitted_warnings.add(message)
 
 
-if __debug__ and __name__ == '__main__':
+if __name__ == '__main__':
 	from collections import deque
 	
 	from asyncio import run, Event
@@ -460,8 +491,11 @@ if __debug__ and __name__ == '__main__':
 	from guixmpp.download.data import DataDownload
 	from guixmpp.download.file import FileDownload
 	from guixmpp.download.chrome import ChromeDownload
+	from guixmpp.download.unknown import UnknownDownload
 	
 	from guixmpp.view.display import DisplayView
+	
+	from guixmpp.domevents import Event as DOMEvent
 	
 	print("document")
 	
@@ -477,18 +511,18 @@ if __debug__ and __name__ == '__main__':
 			self.__events = deque()
 			self.__update = Event()
 		
-		def emit(self, handler, event):
+		def emit(self, handler, event, target):
 			print(event)
 			if handler == 'dom_event':
-				self.__events.append(event)
+				self.__events.append((event, target))
 				self.__update.set()
 		
 		async def receive(self, type_):
 			while True:
-				for event in self.__events:
+				for event, target in self.__events:
 					if event.type_ == type_:
-						self.__events.remove(event)
-						return event
+						self.__events.remove((event, target))
+						return event, target
 				await self.__update.wait()
 				self.__update.clear()
 		
@@ -506,10 +540,11 @@ if __debug__ and __name__ == '__main__':
 			pass
 	
 	async def test_main():
+		DOMEvent._time = get_running_loop().time
 		view = PseudoView()
-		TestModel = Model.features('TestModel', DisplayView, SVGRender, HTMLRender, CSSFormat, PNGRender, PixbufRender, FontFormat, DataDownload, FileDownload, ChromeDownload, XMLFormat, PlainFormat, NullFormat)
+		TestModel = Model.features('TestModel', DisplayView, SVGRender, HTMLRender, CSSFormat, PNGRender, PixbufRender, FontFormat, DataDownload, FileDownload, ChromeDownload, UnknownDownload, XMLFormat, PlainFormat, NullFormat)
 		model = TestModel()
-		model.set_view(view)
+		model.set_image(view, None)
 		async for dirpath in (Path.cwd() / 'examples').iterdir():
 			async for filepath in dirpath.iterdir():
 				#if filepath.name != 'litehtml.css': continue

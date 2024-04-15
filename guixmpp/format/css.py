@@ -553,6 +553,8 @@ class CSSFormat:
 			elif node.name == 'selector-id':
 				return 30
 			elif node.name == 'selector-pseudo-class':
+				if node.args[0] == 'active':
+					return 41
 				return 40
 			elif node.name == 'selector-pseudo-element':
 				return 100
@@ -1487,7 +1489,7 @@ class CSSParser:
 			return StyleNode(node.name, [self.build_features(_child) for _child in node.args])
 
 
-if __debug__ and __name__ == '__main__':
+if __name__ == '__main__':
 	from pycallgraph2 import PyCallGraph
 	from pycallgraph2.output.graphviz import GraphvizOutput
 	

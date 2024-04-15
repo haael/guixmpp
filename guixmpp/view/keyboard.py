@@ -56,13 +56,13 @@ class KeyboardView:
 		
 		if event.type == Gdk.EventType.KEY_PRESS:
 			keyval_name = Gdk.keyval_name(event.keyval)
-			dom_event = KeyboardEvent('keydown', target=self.get_focus(widget), key=event.string, code=keyval_name, repeat=(widget.__last_keyval == event.keyval), **key_location(keyval_name), **modifier_keys(event))
-			widget.emit('dom_event', dom_event)
+			dom_event = KeyboardEvent('keydown', key=event.string, code=keyval_name, repeat=(widget.__last_keyval == event.keyval), **key_location(keyval_name), **modifier_keys(event))
+			widget.emit('dom_event', dom_event, self.get_focus(widget))
 			widget.__last_keyval = event.keyval
 		
 		elif event.type == Gdk.EventType.KEY_RELEASE:
 			keyval_name = Gdk.keyval_name(event.keyval)
-			dom_event = KeyboardEvent('keyup', target=self.get_focus(widget), key=event.string, code=keyval_name, **key_location(keyval_name), **modifier_keys(event))
-			widget.emit('dom_event', dom_event)
+			dom_event = KeyboardEvent('keyup', key=event.string, code=keyval_name, **key_location(keyval_name), **modifier_keys(event))
+			widget.emit('dom_event', dom_event, self.get_focus(widget))
 			widget.__last_keyval = None
 

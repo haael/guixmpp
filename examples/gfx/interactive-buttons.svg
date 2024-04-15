@@ -29,24 +29,24 @@
 </g>
 
 <g transform="translate(0, 200)">
- <rect width="300" height="150" rx="50" x="50" y="25" fill="lightgrey" stroke="blue" stroke-width="10"/>
+ <rect width="300" height="150" rx="50" x="50" y="25" fill="lightgrey" stroke="blue" stroke-width="10" tabindex="1"/>
  <text x="200" y="100" text-anchor="middle">focus</text>
 </g>
 
 <g transform="translate(400, 200)">
- <rect width="300" height="150" rx="50" x="50" y="25" fill="lightgrey" stroke="blue" stroke-width="10" class="focusing hovering"/>
+ <rect width="300" height="150" rx="50" x="50" y="25" fill="lightgrey" stroke="blue" stroke-width="10" class="focusing hovering" tabindex="2"/>
  <text x="200" y="85" text-anchor="middle">focus</text>
  <text x="200" y="115" text-anchor="middle">hover</text>
 </g>
 
 <g transform="translate(800, 200)">
- <rect width="300" height="150" rx="50" x="50" y="25" fill="lightgrey" stroke="blue" stroke-width="10" class="focusing activating"/>
+ <rect width="300" height="150" rx="50" x="50" y="25" fill="lightgrey" stroke="blue" stroke-width="10" class="focusing activating" tabindex="3"/>
  <text x="200" y="85" text-anchor="middle">focus</text>
  <text x="200" y="115" text-anchor="middle">active</text>
 </g>
 
 <g transform="translate(1200, 200)">
- <rect width="300" height="150" rx="50" x="50" y="25" fill="lightgrey" stroke="blue" stroke-width="10" class="focusing activating hovering"/>
+ <rect width="300" height="150" rx="50" x="50" y="25" fill="lightgrey" stroke="blue" stroke-width="10" class="focusing activating hovering" tabindex="4"/>
  <text x="200" y="70" text-anchor="middle">focus</text>
  <text x="200" y="100" text-anchor="middle">hover</text>
  <text x="200" y="130" text-anchor="middle">active</text>

@@ -1,14 +1,19 @@
 #!/usr/bin/python3
 
 
-__all__ = 'DOMWidget', 'XMPPClient', 'asynchandler', 'loop_init', 'loop_run', 'loop_quit'
+__all__ = 'DOMWidget', 'XMPPClient', 'XMPPError', 'ProtocolError', 'StreamError', 'AuthenticationError', 'QueryError', 'asynchandler', 'loop_init', 'loop_run', 'loop_quit'
 
-try:
-	DOMWidget
-except NameError:
-	from .domwidget import DOMWidget
 
-from .protocol.xmpp.client import XMPPClient
+if __name__ == '__main__':
+	print("GUIXMPP library")
 
-from .mainloop import asynchandler, loop_init, loop_run, loop_quit
+else:
+	try:
+		DOMWidget
+	except NameError:
+		from .domwidget import *
+
+	from .protocol.xmpp.client import *
+
+	from .mainloop import *
 

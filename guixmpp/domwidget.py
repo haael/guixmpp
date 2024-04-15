@@ -2,7 +2,7 @@
 #-*- coding: utf-8 -*-
 
 
-__all__ = 'SVGWidget',
+__all__ = 'DOMWidget',
 
 
 import gi
@@ -16,7 +16,7 @@ from enum import Enum
 from math import hypot
 from itertools import zip_longest, chain
 from collections import namedtuple, defaultdict
-from asyncio import Lock
+from asyncio import Lock, get_event_loop, run
 
 
 if __name__ == '__main__':
@@ -86,15 +86,35 @@ except NameError:
 		__gtype_name__ = 'DOMWidget'
 		
 		__gsignals__ = {
-			'dom_event': (GObject.SignalFlags.RUN_FIRST, GObject.TYPE_PYOBJECT, (GObject.TYPE_PYOBJECT,))
+			'dom_event': (GObject.SignalFlags.RUN_FIRST, GObject.TYPE_PYOBJECT, (GObject.TYPE_PYOBJECT, GObject.TYPE_PYOBJECT))
 		}
 		
-		def __init__(self, keyboard_input=False, pointer_input=False, xforms=False, file_download=False, http_download=False, chrome=None, auto_show=True):
+		__gproperties__ = {
+			'keyboard_input' : (GObject.TYPE_BOOLEAN, "Keyboard input", "Whether the widget accepts keyboard input.", False, GObject.PARAM_READWRITE),
+			'pointer_input' : (GObject.TYPE_BOOLEAN, "Pointer input", "Whether the widget accepts pointer input.", False, GObject.PARAM_READWRITE),
+			'file_download' : (GObject.TYPE_BOOLEAN, "File download", "Whether the widget supports `file:` scheme granting access to local filesystem.", False, GObject.PARAM_READWRITE),
+			'http_download' : (GObject.TYPE_BOOLEAN, "HTTP download", "Whether the widget supports `http(s):` scheme granting access to network.", False, GObject.PARAM_READWRITE),
+			'auto_show' : (GObject.TYPE_BOOLEAN, "Auto show", "Whether the loaded image should be shown automatically.", True, GObject.PARAM_READWRITE),
+			'url' : (GObject.TYPE_STRING, "URL", "URL to load; the right scheme must be supported.", None, GObject.PARAM_READWRITE),
+			'file' : (GObject.TYPE_STRING, "File", "File to load; works even if `file:` scheme is disabled.", None, GObject.PARAM_READWRITE)
+		}
+		
+		def __init__(self, file_=None, url=None, keyboard_input=False, pointer_input=False, file_download=False, http_download=False, chrome=None, auto_show=True):
 			super().__init__()
 			
 			self.set_can_focus(True)
 			self.lock = Lock()
 			self.main_url = None
+			
+			self.prop_file = file_
+			self.prop_url = url
+			
+			self.keyboard_input = keyboard_input
+			self.pointer_input = pointer_input
+			self.file_download = file_download
+			self.http_download = http_download
+			self.chrome = chrome
+			self.auto_show = auto_show
 			
 			self.add_events(Gdk.EventMask.POINTER_MOTION_MASK)
 			self.add_events(Gdk.EventMask.BUTTON_RELEASE_MASK)
@@ -103,33 +123,96 @@ except NameError:
 			self.add_events(Gdk.EventMask.KEY_RELEASE_MASK)
 			self.add_events(Gdk.EventMask.SMOOTH_SCROLL_MASK)
 			
+			self.configure_model()
+		
+		def configure_model(self):
+			if hasattr(self, 'model'):
+				for conn in self.connections:
+					self.disconnect(conn)
+				del self.model, self.connections
+			
 			features = []
-			if keyboard_input: features.append(KeyboardView)
-			if pointer_input: features.append(PointerView)
-			#if xforms: features.append(XFormsFormat)
-			if file_download: features.append(FileDownload)
-			if http_download: features.append(HTTPDownload)
-			if chrome:
-				features.append(chrome)
-			else:
+			cc = []
+			if self.keyboard_input:
+				features.append(KeyboardView)
+				cc.append('K')
+			if self.pointer_input:
+				features.append(PointerView)
+				cc.append('P')
+			if self.file_download:
+				features.append(FileDownload)
+				cc.append('F')
+			if self.http_download:
+				features.append(HTTPDownload)
+				cc.append('H')
+			if self.chrome:
 				features.append(ChromeDownload)
-			self.auto_show = auto_show
+				cc.append('C')
 			
-			self.model = Model.features('<local>.DOMWidgetModel', DisplayView, SVGRender, PNGRender, PixbufRender, HTMLRender, FontFormat, *features, XMLFormat, CSSFormat, PlainFormat, NullFormat, DataDownload)()
+			if cc:
+				cc.insert(0, '_')
 			
-			self.connect('draw', self.model.draw)
-			self.connect('configure-event', self.model.handle_event, 'display')
-			self.connect('motion-notify-event', self.model.handle_event, 'motion')
-			self.connect('button-press-event', self.model.handle_event, 'button')
-			self.connect('button-release-event',self.model.handle_event, 'button')
-			#self.connect('clicked', self.model.handle_event, 'click')
-			#self.connect('auxclicked', self.model.handle_event, 'click')
-			#self.connect('dblclicked', self.model.handle_event, 'click')
-			self.connect('scroll-event', self.model.handle_event, 'scroll')
-			self.connect('key-press-event', self.model.handle_event, 'key')
-			self.connect('key-release-event', self.model.handle_event, 'key')
+			DOMWidgetModel = Model.features('<local>.DOMWidgetModel' + ''.join(cc), DisplayView, SVGRender, PNGRender, PixbufRender, HTMLRender, FontFormat, *features, XMLFormat, CSSFormat, PlainFormat, NullFormat, DataDownload)
+			self.model = DOMWidgetModel(chrome_dir=self.chrome)
 			
-			self.model.set_view(self)
+			self.connections = []
+			self.connections.append(self.connect('draw', self.model.draw))
+			self.connections.append(self.connect('configure-event', self.model.handle_event, 'display'))
+			self.connections.append(self.connect('motion-notify-event', self.model.handle_event, 'motion'))
+			self.connections.append(self.connect('button-press-event', self.model.handle_event, 'button'))
+			self.connections.append(self.connect('button-release-event',self.model.handle_event, 'button'))
+			#self.connections.append(self.connect('clicked', self.model.handle_event, 'click'))
+			#self.connections.append(self.connect('auxclicked', self.model.handle_event, 'click'))
+			#self.connections.append(self.connect('dblclicked', self.model.handle_event, 'click'))
+			self.connections.append(self.connect('scroll-event', self.model.handle_event, 'scroll'))
+			self.connections.append(self.connect('key-press-event', self.model.handle_event, 'key'))
+			self.connections.append(self.connect('key-release-event', self.model.handle_event, 'key'))
+			
+			#self.model.set_view(self) # FIXME
+		
+		def do_get_property(self, spec):
+			name = spec.name.replace('-', '_')
+			
+			if name == 'file':
+				return self.prop_file
+			elif name == 'url':
+				return self.prop_url
+			elif name == 'auto_show':
+				return self.auto_show
+			else:
+				return getattr(self, name)
+		
+		def do_set_property(self, spec, value):
+			name = spec.name.replace('-', '_')
+			
+			if name == 'file':
+				self.prop_file = value
+			elif name == 'url':
+				self.prop_url = value
+			elif name == 'auto_show':
+				self.auto_show = value
+			else:
+				setattr(self, name, value)
+				self.configure_model()
+			
+			if self.prop_url:
+				coro = self.open(self.prop_url)
+			elif self.prop_file:
+				coro = self.open('')
+			else:
+				return
+			
+			try:
+				loop = get_event_loop()
+			except RuntimeError:
+				loop = None
+			
+			if not loop:
+				run(coro)
+			elif not loop.is_running():
+				loop.run_until_complete(coro)
+			else:
+				loop.create_task(coro)
 		
 		async def open(self, url):
 			"Open document identified by the provided url."
@@ -178,7 +261,7 @@ except NameError:
 						bh = viewport_height
 					else:
 						bw = viewport_width
-						bh = self.model.image_height_for_width(self, image, viewport_width)	
+						bh = self.model.image_height_for_width(self, image, viewport_width)
 					
 					model.draw_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh))
 				
@@ -191,8 +274,8 @@ except NameError:
 		def poke_image(self, px, py):
 			"Simulate pointer event at widget coordinates (px, py). Returns a list of nodes under the provided point and coordinates (qx, qy) after Cairo context transformations."
 			
-			viewport_width = self.model.get_viewport_width(widget)
-			viewport_height = self.model.get_viewport_height(widget)
+			viewport_width = self.model.get_viewport_width(self)
+			viewport_height = self.model.get_viewport_height(self)
 			
 			surface = cairo.RecordingSurface(cairo.Content.COLOR_ALPHA, (0, 0, viewport_width, viewport_height))
 			context = cairo.Context(surface)
@@ -225,18 +308,19 @@ except NameError:
 			return nop, qx, qy
 
 
-if __debug__ and __name__ == '__main__':
+if __name__ == '__main__':
 	import signal
-	from asyncio import run, Lock
+	from asyncio import run, Lock, get_running_loop
 	from aiopath import AsyncPath as Path
 	
 	from guixmpp.mainloop import *
+	from guixmpp.domevents import Event as DOMEvent
 	
 	loop_init()
-	
+		
 	window = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
 	window.set_title('SVG test widget')
-	widget = DOMWidget(keyboard_input=True, pointer_input=True, xforms=True, file_download=True, http_download=True, auto_show=False)
+	widget = DOMWidget(keyboard_input=True, pointer_input=True, file_download=True, http_download=True, auto_show=False, chrome='chrome')
 	window.add(widget)
 	
 	window.connect('destroy', lambda window: loop_quit())
@@ -245,34 +329,42 @@ if __debug__ and __name__ == '__main__':
 	event_lock = Lock()
 	
 	@asynchandler
-	async def dom_event(widget, event):
+	async def dom_event(widget, event, target):
 		global images, image_index
 		
 		if event.type_ == 'warning':
 			print(event)
-		
-		if event.type_ == 'open':
-			widget.set_image(event.target)
+		elif event.type_ == 'open':
+			target.set_image(target.model.current_document(target))
+			return None
 		elif event.type_ == 'close':
 			widget.set_image(None)
+			return None
 		elif event.type_ == 'download':
-			if event.target.startswith('http:') or event.target.startswith('https:'):
+			if event.detail.startswith('http:') or event.detail.startswith('https:'):
 				return False
 		elif event.type_ == 'keydown':
-			if (event.target == None) and (event.code == 'Escape'):
+			if event.code == 'Escape':
 				async with event_lock:
 					await widget.close()
 					window.close()
-			elif (event.target == None) and (event.code == 'Left') and images:
+				return None
+			elif (event.code == 'Left') and images:
 				async with event_lock:
 					image_index -= 1
 					image_index %= len(images)
 					await widget.open(images[image_index])
-			elif (event.target == None) and (event.code == 'Right') and images:
+				return None
+			elif (event.code == 'Right') and images:
 				async with event_lock:
 					image_index += 1
 					image_index %= len(images)
 					await widget.open(images[image_index])
+				return None
+		
+		#await target.dispatchEvent(event)
+		#if event.defaultPrevented:
+		#	return False
 	
 	widget.connect('dom_event', dom_event)
 	
@@ -284,6 +376,8 @@ if __debug__ and __name__ == '__main__':
 		"Display images from local directory, switch using left-right cursor key."
 		
 		global images, image_index, model
+		
+		DOMEvent._time = get_running_loop().time
 		
 		widget.model.font_dir = await Path('~/.cache/guixmpp-fonts').expanduser()
 		await widget.model.font_dir.mkdir(parents=True, exist_ok=True)

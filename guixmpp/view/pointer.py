@@ -27,10 +27,31 @@ class PointerView:
 		except IndexError:
 			return None
 	
+	def get_buttons(self, widget):
+		try:
+			return frozenset(widget.__buttons)
+		except AttributeError:
+			return frozenset()
+	
 	def handle_event(self, widget, event, name):
 		if name != 'motion' and name != 'button': return NotImplemented
 		
-		if event.type == Gdk.EventType.MOTION_NOTIFY:
+		if event.type == Gdk.EventType.BUTTON_PRESS:
+			try:
+				widget.__buttons.add(event.button)
+			except AttributeError:
+				widget.__buttons = set()
+				widget.__buttons.add(event.button)
+			self.update(widget)
+		
+		elif event.type == Gdk.EventType.BUTTON_RELEASE:
+			try:
+				widget.__buttons.remove(event.button)
+			except (AttributeError, IndexError):
+				pass
+			self.update(widget)
+		
+		elif event.type == Gdk.EventType.MOTION_NOTIFY:
 			pointed, qx, qy = widget.poke_image(event.x, event.y)
 			
 			if pointed != widget.__pointed:
@@ -40,23 +61,23 @@ class PointerView:
 				
 				if old_pointed != new_pointed:
 					if old_pointed is not None:
-						dom_event = MouseEvent('mouseout', target=old_pointed, **pointer_position(event, qx, qy), **modifier_keys(event), **pressed_mouse_buttons_mask(event))
-						widget.emit('dom_event', dom_event)
+						dom_event = MouseEvent('mouseout', **pointer_position(event, qx, qy), **modifier_keys(event), **pressed_mouse_buttons_mask(event))
+						widget.emit('dom_event', dom_event, old_pointed)
 					
 					if old_pointed is not None and (new_pointed is None or not self.are_nodes_ordered(old_pointed, new_pointed)):
-						dom_event = MouseEvent('mouseleave', target=old_pointed, **pointer_position(event, qx, qy), **modifier_keys(event), **pressed_mouse_buttons_mask(event))
-						widget.emit('dom_event', dom_event)
+						dom_event = MouseEvent('mouseleave', **pointer_position(event, qx, qy), **modifier_keys(event), **pressed_mouse_buttons_mask(event))
+						widget.emit('dom_event', dom_event, old_pointed)
 					
 					if new_pointed is not None:
-						dom_event = MouseEvent('mouseover', target=new_pointed, **pointer_position(event, qx, qy), **modifier_keys(event), **pressed_mouse_buttons_mask(event))
-						widget.emit('dom_event', dom_event)
+						dom_event = MouseEvent('mouseover', **pointer_position(event, qx, qy), **modifier_keys(event), **pressed_mouse_buttons_mask(event))
+						widget.emit('dom_event', dom_event, new_pointed)
 					
 					if new_pointed is not None and (old_pointed is None or not self.are_nodes_ordered(new_pointed, old_pointed)):
-						dom_event = MouseEvent('mouseenter', target=new_pointed, **pointer_position(event, qx, qy), **modifier_keys(event), **pressed_mouse_buttons_mask(event))
-						widget.emit('dom_event', dom_event)
+						dom_event = MouseEvent('mouseenter', **pointer_position(event, qx, qy), **modifier_keys(event), **pressed_mouse_buttons_mask(event))
+						widget.emit('dom_event', dom_event, new_pointed)
 					
 					self.update(widget)
 			
-			dom_event = MouseEvent('mousemove', target=self.get_pointed(widget), **pointer_position(event, qx, qy), **modifier_keys(event), **pressed_mouse_buttons_mask(event))
-			widget.emit('dom_event', dom_event)
+			dom_event = MouseEvent('mousemove', **pointer_position(event, qx, qy), **modifier_keys(event), **pressed_mouse_buttons_mask(event))
+			widget.emit('dom_event', dom_event, self.get_pointed(widget))
 

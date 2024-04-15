@@ -28,10 +28,10 @@ gi.require_version('PangoCairo', '1.0')
 from gi.repository import Pango, PangoCairo
 
 if __name__ == '__main__':
-	from guixmpp.format.xml import XMLFormat, XMLDocument
+	from guixmpp.format.xml import XMLFormat
 	from guixmpp.format.css import CSSFormat
 else:
-	from ..format.xml import XMLFormat, XMLDocument
+	from ..format.xml import XMLFormat
 	from ..format.css import CSSFormat
 
 
@@ -188,11 +188,14 @@ class HTMLRender:
 		
 		xmlns_html = self.__xmlns(document)
 		
+		from lxml.etree import tostring
+		print(type(document), tostring(document))
+		
 		if hasattr(document, 'getroot'): # render whole HTML document
-			node = document.findall(f'.//{{{xmlns_html}}}body')[0]
+			node = document.findall(f'.//{{{xmlns_html}}}body')[0] # FIXME
 		else: # render one HTML tag
 			node = document
-			document = XMLDocument(document.getroottree().getroot())
+			document = document.getroottree()
 		
 		ctx.rectangle(*box)
 		ctx.clip()
@@ -231,7 +234,7 @@ class HTMLRender:
 		if hasattr(document, 'getroot'):
 			node = document.findall(f'.//{{{xmlns_html}}}body')[0]
 		else:
-			document = XMLDocument(document.getroottree().getroot())
+			document = document.getroottree().getroot().create_document()
 			node = document.findall(f'.//{{{xmlns_html}}}body')[0]
 		
 		#return self.__render_tag(view, document, ctx, box, node, em_size, (px, py))
@@ -450,12 +453,13 @@ class HTMLRender:
 				pass
 			else:
 				css = self.get_document('data:text/css,' + url_quote('* {' + style + '}'))
-				if css not in self.__css_matcher:
-					self.__css_matcher[css] = self.create_css_matcher(css, None, self.__get_id, None, None, None, node.tag.split('}')[1:] if node.tag[0] == '}' else '')
-				css_attrs = self.__css_matcher[css](node)
-				if attr in css_attrs:
-					view.__attr_cache[node, pseudoelement][attr] = css_attrs[attr][0]
-					return css_attrs[attr][0]
+				if self.is_css_document(css):
+					if css not in self.__css_matcher:
+						self.__css_matcher[css] = self.create_css_matcher(css, None, self.__get_id, None, None, None, node.tag.split('}')[1:] if node.tag[0] == '}' else '')
+					css_attrs = self.__css_matcher[css](node)
+					if attr in css_attrs:
+						view.__attr_cache[node, pseudoelement][attr] = css_attrs[attr][0]
+						return css_attrs[attr][0]
 		
 		"regular stylesheet (<style/> tag or external)"
 		try:
@@ -574,6 +578,14 @@ if __debug__ and __name__ == '__main__':
 			return lambda *args: None
 	
 	class HTMLRenderModel(HTMLRender, CSSFormat, XMLFormat, DataDownload, ChromeDownload, NullFormat):
+		def __init__(self):
+			HTMLRender.__init__(self)
+			CSSFormat.__init__(self)
+			XMLFormat.__init__(self)
+			DataDownload.__init__(self)
+			ChromeDownload.__init__(self)
+			NullFormat.__init__(self)
+		
 		def scan_document_links(self, document):
 			if HTMLRender.is_html_document(self, document):
 				return HTMLRender.scan_document_links(self, document)

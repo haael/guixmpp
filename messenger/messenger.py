@@ -1,6 +1,10 @@
 #!/usr/bin/python3
 
 
+from logging import getLogger
+logger = getLogger(__name__)
+
+
 import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk, GObject, GLib, GdkPixbuf
@@ -8,11 +12,12 @@ from gi.repository import Gtk, Gdk, GObject, GLib, GdkPixbuf
 
 from guixmpp import *
 
-
 from locale import gettext
 from secrets import choice as random_choice
 from aiopath import Path
-from asyncio import sleep, Condition
+from asyncio import sleep, Event, Lock, create_task
+from lxml.etree import fromstring, tostring
+from random import randint
 
 
 class BuilderExtension:
@@ -122,28 +127,32 @@ class DataForm:
 		box.pack_end(Gtk.Button(gettext("Submit")))
 
 
-class Browser(BuilderExtension):
-	ERROR_ICON = 'error'
-	WARNING_ICON = 'important'
+class MainWindow(BuilderExtension):
+	VALIDATION_ICON = 'important'
+	BROKEN_CONNECTION_ICON = 'error'
+	
+	default_resource = 'guixmpp' # provide own branding
 	
 	def __init__(self, interface, translation):
 		super().__init__(interface, translation, ['window_main', 'entrybuffer_jid', 'popover_presence', 'filechooser_avatar', 'filefilter_images'], 'window_main')
+		self.glade_interface = interface
+		self.translation = translation
 		
-		for widget_name in 'drawingarea_avatar_preview', 'drawingarea_avatar':
-			size_request = getattr(self, widget_name).get_size_request()
-			self.replace_widget(widget_name, DOMWidget(file_download=True))
-			widget = getattr(self, widget_name)
-			#widget.connect('dom_event', self.svg_view_dom_event)
-			widget.set_size_request(*size_request)
-			widget.show()
+		for widget_name in 'domwidget_avatar_preview', 'domwidget_avatar':
+			domwidget = getattr(self, widget_name)
+			domwidget.connect('dom_event', self.svg_view_dom_event)
 		
 		self.network_spinner = Spinner([self.form_login, self.form_register, self.form_server_options])
 		
-		self.roster = []
-		self.listbox_main.add(BuilderExtension(interface, translation, ['roster_start'], 'roster_start').main_widget)
-		self.roster.append(('page_start', None))
-		self.listbox_main.add(BuilderExtension(interface, translation, ['roster_start'], 'roster_start').main_widget)
-		self.roster.append(('page_profile', None))
+		self.sidebar_lock = Lock()
+		
+		self.sidebar = []
+		self.listbox_main.add(BuilderExtension(interface, translation, ['sidebar_start'], 'sidebar_start').main_widget)
+		self.sidebar.append(('page_start', None))
+		
+		self.paned_main.set_position(425)
+		
+		self.xmpp_connections = {}
 	
 	@classmethod
 	def validate_username(cls, username):
@@ -183,7 +192,7 @@ class Browser(BuilderExtension):
 	async def login(self, widget):
 		if not self.entrybuffer_jid.get_text():
 			self.entry_login_jid.grab_focus()
-			self.entry_login_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.ERROR_ICON)
+			self.entry_login_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
 			self.entry_login_jid.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext("Provide a JID."))
 			return
 		else:
@@ -193,14 +202,17 @@ class Browser(BuilderExtension):
 			username, host, resource = self.split_jid(self.entrybuffer_jid.get_text())
 		except ValueError as error:
 			self.entry_login_jid.grab_focus()
-			self.entry_login_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.ERROR_ICON)
+			self.entry_login_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
 			self.entry_login_jid.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
 			return
 		else:
 			self.entry_login_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
 		
-		jid = username + '@' + host
+		if not resource:
+			resource = self.default_resource
+		jid = username + '@' + host + '/' + resource
 		password = self.entry_login_password.get_text()
+		self.entry_login_password.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
 		
 		alt_host = self.entry_host.get_text()
 		if alt_host:
@@ -208,28 +220,54 @@ class Browser(BuilderExtension):
 				self.validate_host(alt_host)
 			except ValueError as error:
 				self.entry_host.grab_focus()
-				self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.ERROR_ICON)
+				self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
 				self.entry_host.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
 				return
 			else:
 				self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
-				host = alt_host
 		else:
 			self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			alt_host = None
 		
-		port = self.entry_port.get_text()
-		if not port:
-			port = self.entry_port.get_placeholder_text()
+		try:
+			port = self.entry_port.get_text()
+			if port:
+				port = int(port)
+				if not 0 < port <= 65535:
+					raise ValueError("Port must be between 1 and 65535.")
+			else:
+				port = None
+		except ValueError:
+			self.entry_port.grab_focus()
+			self.entry_port.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+			self.entry_port.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
+			return
+		else:
+			self.entry_port.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
 		
-		with self.network_spinner:
-			print("login", widget, jid, host, port)
-			await sleep(2)
+		legacy_ssl = self.toggle_legacy_ssl.get_active()
+		
+		try:
+			with self.network_spinner:
+				await self.create_xmpp_connection(jid, alt_host, port, legacy_ssl, password, False)
+		except ConnectionError as error:
+			if self.entry_host.get_text():
+				entry = self.entry_host
+			else:
+				entry = self.entry_login_jid			
+			entry.grab_focus()
+			entry.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.BROKEN_CONNECTION_ICON)
+			entry.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
+		except AuthenticationError as error:
+			self.entry_login_password.grab_focus()
+			self.entry_login_password.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.BROKEN_CONNECTION_ICON)
+			self.entry_login_password.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
 	
 	@asynchandler
 	async def register(self, widget):
 		if not self.entrybuffer_jid.get_text():
 			self.entry_registration_jid.grab_focus()
-			self.entry_registration_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.ERROR_ICON)
+			self.entry_registration_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
 			self.entry_registration_jid.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext("Provide a JID."))
 			return
 		else:
@@ -239,7 +277,7 @@ class Browser(BuilderExtension):
 			username, host, resource = self.split_jid(self.entrybuffer_jid.get_text())
 		except ValueError as error:
 			self.entry_registration_jid.grab_focus()
-			self.entry_registration_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.ERROR_ICON)
+			self.entry_registration_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
 			self.entry_registration_jid.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
 			return
 		else:
@@ -247,7 +285,7 @@ class Browser(BuilderExtension):
 		
 		if len(self.entry_registration_password_1.get_text()) < 8:
 			self.entry_registration_password_1.grab_focus()
-			self.entry_registration_password_1.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.ERROR_ICON)
+			self.entry_registration_password_1.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
 			self.entry_registration_password_1.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext("Provide password at least 8 characters long."))
 			return
 		else:
@@ -255,13 +293,15 @@ class Browser(BuilderExtension):
 		
 		if self.entry_registration_password_1.get_text() != self.entry_registration_password_2.get_text():
 			self.entry_registration_password_2.grab_focus()
-			self.entry_registration_password_2.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.ERROR_ICON)
+			self.entry_registration_password_2.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
 			self.entry_registration_password_2.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext("Passwords do not match."))
 			return
 		else:
 			self.entry_registration_password_2.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
 		
-		jid = username + '@' + host
+		if not resource:
+			resource = self.default_resource
+		jid = username + '@' + host + '/' + resource
 		
 		alt_host = self.entry_host.get_text()
 		if alt_host:
@@ -269,23 +309,44 @@ class Browser(BuilderExtension):
 				self.validate_host(alt_host)
 			except ValueError as error:
 				self.entry_host.grab_focus()
-				self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.ERROR_ICON)
+				self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
 				self.entry_host.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
 				return
 			else:
 				self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
-				host = alt_host
 		else:
 			self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			alt_host = None
 		
-		port = self.entry_port.get_text()
-		if not port:
-			port = self.entry_port.get_placeholder_text()
+		try:
+			port = self.entry_port.get_text()
+			if port:
+				port = int(port)
+				if not 0 < port <= 65535:
+					raise ValueError("Port must be between 1 and 65535.")
+			else:
+				port = None
+		except ValueError:
+			self.entry_port.grab_focus()
+			self.entry_port.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+			self.entry_port.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
+			return
+		else:
+			self.entry_port.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
 		
-		with self.network_spinner:
-			
-			print("register", widget, jid, host, port)
-			await sleep(2)
+		legacy_ssl = self.toggle_legacy_ssl.get_active()
+		
+		try:
+			with self.network_spinner:
+				await self.create_xmpp_connection(jid, alt_host, port, legacy_ssl, password, True)
+		except ConnectionError as error:
+			if self.entry_host.get_text():
+				entry = self.entry_host
+			else:
+				entry = self.entry_registration_jid			
+			entry.grab_focus()
+			entry.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.BROKEN_CONNECTION_ICON)
+			entry.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
 	
 	def choose_presence(self, widget):
 		self.popover_presence.show()
@@ -302,7 +363,7 @@ class Browser(BuilderExtension):
 	@asynchandler
 	async def unset_avatar(self, widget):
 		"Remove user avatar from network."
-		await self.drawingarea_avatar.close()
+		await self.domwidget_avatar.close()
 		self.filechooser_avatar.hide()
 	
 	@asynchandler
@@ -312,9 +373,9 @@ class Browser(BuilderExtension):
 		filename = self.filechooser_avatar.get_filename()
 		if filename:
 			if await Path(filename).is_file():
-				await self.drawingarea_avatar_preview.open(Path(filename).as_uri())
+				await self.domwidget_avatar_preview.open(Path(filename).as_uri())
 			else:
-				await self.drawingarea_avatar_preview.close()
+				await self.domwidget_avatar_preview.close()
 	
 	@asynchandler
 	async def set_avatar(self, widget):
@@ -322,7 +383,7 @@ class Browser(BuilderExtension):
 		
 		filename = self.filechooser_avatar.get_filename()
 		if filename and not (await Path(filename).is_dir()):
-			await self.drawingarea_avatar.open(Path(filename).as_uri())
+			await self.domwidget_avatar.open(Path(filename).as_uri())
 		
 		self.filechooser_avatar.hide()
 	
@@ -359,23 +420,185 @@ class Browser(BuilderExtension):
 		else:
 			self.entry_port.set_placeholder_text('5222')
 	
-	#@asynchandler
-	#async def svg_view_dom_event(self, widget, event):
-	#	"DOM event handler for non-interactive SVG widgets."
-	#	
-	#	if event.type_ == 'open':
-	#		widget.set_image(event.target)
-	#	
-	#	elif event.type_ == 'close':
-	#		widget.set_image(None)
+	@asynchandler
+	async def svg_view_dom_event(self, widget, event):
+		"DOM event handler for non-interactive SVG widgets."
+		
+		if event.type_ == 'warning':
+			print(event)
+		
+		#if event.type_ == 'open':
+		#	widget.set_image(event.target)
+		#
+		#elif event.type_ == 'close':
+		#	widget.set_image(None)
+		
+		if event.type_ == 'download':
+			if event.target.startswith('data:'):
+				return True
+			elif event.target != widget.main_url:
+				return False
 	
-	def roster_row_select(self, listview, listrow):
-		page_name, *params = self.roster[listrow.get_index()]
-		self.stack_main.set_visible_child_name(page_name)
-		print("roster item selected:", page_name)
+	@asynchandler
+	async def sidebar_row_select(self, listview, listrow):
+		if listrow is None:
+			return
+		async with self.sidebar_lock:
+			page_name, *params = self.sidebar[listrow.get_index()]
+			self.stack_main.set_visible_child_name(page_name)
+		print("sidebar item selected:", page_name)
+	
+	@staticmethod
+	def __return_false(meth):
+		def newm(*args):
+			meth(*args)
+			return False
+		return newm
+	
+	async def create_xmpp_connection(self, jid, host, port, legacy_ssl, password, register):
+		if jid in self.xmpp_connections:
+			raise ValueError("Logged in already.")
+		
+		config = {}
+		if host: config['host'] = host
+		if port: config['port'] = port
+		config['register'] = register
+		config['legacy_ssl'] = legacy_ssl
+		
+		ready = Event() # connection established or failure
+		added = Event() # task object added to dictionary
+		
+		sidebar_item = BuilderExtension(self.glade_interface, self.translation, ['sidebar_server'], 'sidebar_server')
+		sidebar_item.entry_account_jid.set_text(jid)
+		
+		async def guarded_task():
+			await added.wait()
+			assert jid in self.xmpp_connections
+			try:
+				await self.xmpp_connection_task(ready, jid, password, config, sidebar_item)
+			finally:
+				GLib.idle_add(self.__return_false(self.destroy_xmpp_connection), jid, ready)
+		
+		self.xmpp_connections[jid] = create_task(guarded_task())
+
+		async with self.sidebar_lock:		
+			self.listbox_main.add(sidebar_item.main_widget)
+			self.sidebar.append(('page_server', jid))
+		
+		print("xmpp connection created")
+		added.set()
+		await ready.wait()
+	
+	@asynchandler
+	async def destroy_xmpp_connection(self, jid, ready):
+		async with self.sidebar_lock:
+			c = None
+			for n, (label, njid) in enumerate(self.sidebar):
+				if label == 'page_server' and njid == jid:
+					c = n
+					break
+			assert c is not None
+			self.listbox_main.remove(self.listbox_main.get_row_at_index(c))
+			del self.sidebar[c]
+		
+		task = self.xmpp_connections[jid]
+		del self.xmpp_connections[jid]
+		ready.set()
+		
+		await task
+		print("xmpp connection destroyed")
+	
+	async def xmpp_connection_task(self, ready, jid, password, config, sidebar_item):
+		print("xmpp_connection_task", config)
+		
+		async with XMPPClient(jid, config=config) as client:
+			print("client")
+			if not config['register']:
+				client.password = password
+			
+			async for stanza in client:
+				print("stanza", stanza)
+				
+				if stanza is None:
+					continue
+				elif hasattr(stanza, 'tag'):
+					event_struct = await client.on_stanza(stanza)
+					if event_struct is None:
+						continue
+					event, id_, from_, *elements = event_struct
+					if event is None:
+						continue
+				else:
+					event = stanza
+				
+				if event == 'ready':
+					if not client.established:
+						print("Connection failed.")
+						break
+					elif not client.authenticated:
+						print("Login failed or not attempted.")
+						break
+					else:
+						print("Login successful.")
+						ready.set()
+					
+					@client.handle
+					async def get_roster(expect):
+						roster, = await client.query('get', None, fromstring('<query xmlns="jabber:iq:roster"/>'))
+						sidebar_item.label_account_contacts.set_text(str(len(roster)))
+						for item in roster:
+							print("roster item:", tostring(item))
+							contact_sidebar_item = await self.show_contact(jid, item.attrib['jid'])
+							if contact_sidebar_item:
+								name = item.attrib.get('name', item.attrib['jid'])
+								contact_sidebar_item.entry_contact_name.set_text(name)
+								contact_sidebar_item.domwidget_contact_avatar.set_property('file', f'assets/anon{randint(1, 11)}.jpeg')
+						#client.stop()
+				
+				elif event == 'register':
+					@client.handle
+					async def register(expect):
+						reg_query, = await client.query('get', None, fromstring('<query xmlns="jabber:iq:register"/>'))
+						for child in reg_query:
+							print("registration field:", tostring(child))
+						client.stop()
+						# TODO: fill out password
+				
+				else:
+					print(f"Ignored event: {event}")
+	
+	async def show_contact(self, server_jid, contact_jid):
+		sidebar_item = BuilderExtension(self.glade_interface, self.translation, ['sidebar_contact'], 'sidebar_contact')
+		
+		async with self.sidebar_lock:
+			c = None
+			for n, (label, njid) in enumerate(self.sidebar):
+				if label == 'page_server' and njid == server_jid:
+					c = n
+					break
+			if c is None:
+				return None
+			
+			for n, (label, njid) in enumerate(self.sidebar[c + 1:]):
+				if label == 'page_server':
+					break
+				c += 1
+			c += 1
+			
+			self.listbox_main.insert(sidebar_item.main_widget, c)
+			self.sidebar.insert(c, ('page_contact', (server_jid, contact_jid)))
+			
+			return sidebar_item
 
 
 if __name__ == '__main__':
+	from logging import DEBUG, StreamHandler, basicConfig
+	basicConfig(level=DEBUG)
+	logger.setLevel(DEBUG)
+	logger.addHandler(StreamHandler())
+	
+	logger.debug("???")
+	
 	import sys, signal
 	from asyncio import run
 	from locale import bindtextdomain, textdomain
@@ -386,17 +609,17 @@ if __name__ == '__main__':
 	bindtextdomain(translation, 'locale')
 	textdomain(translation)
 	
-	browser = Browser('messenger.glade', translation)
+	window = MainWindow('messenger.glade', translation)
 	
 	async def main():
-		browser.listbox_main.select_row(browser.listbox_main.get_row_at_index(0))
-		browser.show()
+		window.listbox_main.select_row(window.listbox_main.get_row_at_index(0))
+		window.show()
 		try:
 			await loop_run()
 		finally:
-			browser.hide()
+			window.hide()
 	
-	browser.main_widget.connect('destroy', lambda window: loop_quit())
+	window.main_widget.connect('destroy', lambda window: loop_quit())
 	signal.signal(signal.SIGTERM, lambda signum, frame: loop_quit())
 	
 	run(main())

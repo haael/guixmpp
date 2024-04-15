@@ -2,7 +2,7 @@
 #-*- coding:utf-8 -*-
 
 
-__all__ = 'XMLFormat', 'XMLDocument'
+__all__ = 'XMLFormat', 'XMLDocument', 'XMLElement'
 
 
 if __name__ == '__main__':
@@ -11,68 +11,60 @@ if __name__ == '__main__':
 
 
 from io import BytesIO
-from lxml.etree import _ElementTree, fromstring, tostring
+from lxml.etree import _ElementTree, ElementBase, fromstring, tostring, XMLParser, ElementDefaultClassLookup, ProcessingInstruction
 from lxml.html import document_fromstring
+from collections import defaultdict
 
 
-class XMLFormat:
-	xmlns_xml = 'http://www.w3.org/XML/1998/namespace'
-	xmlns_xlink = 'http://www.w3.org/1999/xlink'
+class XMLElement(ElementBase):
+	PR_INSTR_SHADOW_PARENT = 'x-haael-shadowparent'
+	__shadow_parents = defaultdict(lambda: [None, 0])
 	
-	def create_document(self, data:bytes, mime:str):
-		if mime == 'text/xml' or mime == 'application/xml' or mime.endswith('+xml'):
-			document = XMLDocument(fromstring(data))
-			return document
-		elif mime == 'text/x-html-tag-soup':
-			document = XMLDocument(document_fromstring(data))
-			return document
-		else:
-			return NotImplemented
-	
-	def save_document(self, document, fileobj=None):
-		if self.is_xml_document(document):
-			if fileobj == None:
-				fileobj = BytesIO()
-			fileobj.write(tostring(document))
-			return fileobj
-		else:
-			return NotImplemented
-	
-	def is_xml_document(self, document):
-		if not hasattr(document, 'getroot'):
-			return False
+	def _init(self):
 		try:
-			return document.docinfo.xml_version == '1.0'
+			del self.__shadow_parent
 		except AttributeError:
-			return False
-	
-	def get_document_fragment(self, document, href):
-		if not self.is_xml_document(document):
-			return NotImplemented
-		fragment = document.findall(f".//*[@id='{href}']") # TODO: errors, escape
-		#print("fragment:", fragment[0].tag, fragment[0].attrib)
-		if fragment:
-			return XMLDocument(fragment[0])
-		else:
-			raise IndexError(f"Fragment not found: {href}")
-	
-	def scan_document_links(self, document):
-		if self.is_xml_document(document):
-			return document.scan_stylesheets()
-		else:
-			return NotImplemented
-	
-	def are_nodes_ordered(self, ancestor, descendant):
-		if not (hasattr(ancestor, 'getparent') and hasattr(descendant, 'getparent')):
-			return NotImplemented
+			pass
 		
-		parent = descendant
-		while parent != None:
-			if parent == ancestor:
-				return True
-			parent = parent.getparent()
+		for p in list(self):
+			if p.tag == ProcessingInstruction and p.target == self.PR_INSTR_SHADOW_PARENT:
+				self.__shadow_parent = self.__shadow_parents[p.text][0]
+	
+	def set_shadow_parent(self, parent):
+		if parent:
+			self.set_shadow_parent(None)
+			
+			self.__shadow_parent = parent
+			parent_id = id(parent)
+			self.__shadow_parents[parent_id][0] = parent
+			self.__shadow_parents[parent_id][1] += 1
 		
-		return False
+		else:
+			try:
+				parent_id = id(self.__shadow_parent)
+				del self.__shadow_parent
+			except AttributeError:
+				pass
+			else:
+				self.__shadow_parents[parent_id][1] -= 1
+				if self.__shadow_parents[parent_id][1] <= 0:
+					del self.__shadow_parents[parent_id]
+				
+				for p in list(self):
+					if p.tag == ProcessingInstruction and p.target == self.PR_INSTR_SHADOW_PARENT and p.text == parent_id:
+						self.remove(p)
+	
+	def get_shadow_parent(self):
+		try:
+			return self.__shadow_parent
+		except AttributeError:
+			return self.getparent()
+	
+	def create_document(self):
+		return self.XMLDocument(self.__copy__())
+	
+	def getroottree(self):
+		return self.XMLDocument(super().getroottree().getroot())
 
 
 class XMLDocument(_ElementTree):
@@ -116,7 +108,74 @@ class XMLDocument(_ElementTree):
 			return super().xpath(path)
 
 
-if __debug__ and __name__ == '__main__':
+class XMLFormat:
+	xmlns_xml = 'http://www.w3.org/XML/1998/namespace'
+	xmlns_xlink = 'http://www.w3.org/1999/xlink'
+	
+	def __init__(self, *args, XMLDocument=XMLDocument, XMLElement=XMLElement, **kwargs):
+		self.XMLDocument = XMLDocument
+		XMLElement.XMLDocument = XMLDocument
+		self.XMLElement = XMLElement
+		
+		self.xml_parser = XMLParser()
+		self.xml_parser.set_element_class_lookup(ElementDefaultClassLookup(element=XMLElement))
+	
+	def xml_fromstring(self, s):
+		return fromstring(s, self.xml_parser)
+	
+	def create_document(self, data:bytes, mime:str):
+		if mime == 'text/xml' or mime == 'application/xml' or mime.endswith('+xml'):
+			document = self.XMLDocument(self.xml_fromstring(data))
+			return document
+		elif mime == 'text/x-html-tag-soup':
+			document = self.XMLDocument(document_fromstring(data))
+			#print(tostring(document))
+			return document
+		else:
+			return NotImplemented
+	
+	def save_document(self, document, fileobj=None):
+		if self.is_xml_document(document):
+			if fileobj == None:
+				fileobj = BytesIO()
+			fileobj.write(tostring(document))
+			return fileobj
+		else:
+			return NotImplemented
+	
+	def is_xml_document(self, document):
+		return isinstance(document, self.XMLDocument)
+	
+	def get_document_fragment(self, document, href):
+		if not self.is_xml_document(document):
+			return NotImplemented
+		fragment = document.findall(f".//*[@id='{href}']") # TODO: errors, escape
+		#print("fragment:", fragment[0].tag, fragment[0].attrib)
+		if fragment:
+			return fragment[0].create_document()
+		else:
+			raise IndexError(f"Fragment not found: {href}")
+	
+	def scan_document_links(self, document):
+		if self.is_xml_document(document):
+			return document.scan_stylesheets()
+		else:
+			return NotImplemented
+	
+	def are_nodes_ordered(self, ancestor, descendant):
+		if not (hasattr(ancestor, 'getparent') and hasattr(descendant, 'getparent')):
+			return NotImplemented
+		
+		parent = descendant
+		while parent != None:
+			if parent == ancestor:
+				return True
+			parent = parent.getparent()
+		
+		return False
+
+
+if __name__ == '__main__':
 	from pathlib import Path
 	
 	print("xml format")
