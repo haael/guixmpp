@@ -153,6 +153,8 @@ except NameError:
 			
 			if cc:
 				cc.insert(0, '_')
+			else:
+				cc.append('_X')
 			
 			DOMWidgetModel = Model.features('<local>.DOMWidgetModel' + ''.join(cc), DisplayView, SVGRender, PNGRender, PixbufRender, HTMLRender, FontFormat, *features, XMLFormat, CSSFormat, PlainFormat, NullFormat, DataDownload)
 			self.model = DOMWidgetModel(chrome_dir=self.chrome)
@@ -169,8 +171,6 @@ except NameError:
 			self.connections.append(self.connect('scroll-event', self.model.handle_event, 'scroll'))
 			self.connections.append(self.connect('key-press-event', self.model.handle_event, 'key'))
 			self.connections.append(self.connect('key-release-event', self.model.handle_event, 'key'))
-			
-			#self.model.set_view(self) # FIXME
 		
 		def do_get_property(self, spec):
 			name = spec.name.replace('-', '_')
@@ -305,7 +305,7 @@ except NameError:
 					
 					qx, qy = context.device_to_user(px, py)
 					nop = self.model.poke_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh), px, py)
-				except NotImplementedError:
+				except NotImplementedError as error:
 					self.model.emit_warning(self, f"NotImplementedError: {error}", image)
 					pass
 			
@@ -337,8 +337,9 @@ if __name__ == '__main__':
 		global images, image_index
 		
 		if event.type_ == 'warning':
-			print(event)
+			print(event.type_, event.detail)
 		elif event.type_ == 'open':
+			print("open:", event.detail)
 			target.set_image(target.model.current_document(target))
 			return None
 		elif event.type_ == 'close':

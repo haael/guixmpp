@@ -123,11 +123,11 @@ class FontFormat:
 		font_dir = await Path(self.font_dir).expanduser()
 		await font_dir.mkdir(parents=True, exist_ok=True)
 		font_url = self.get_document_url(font_doc)
-		file_name = sha3_256((font_family + '@' + font_url).encode('utf-8')).hexdigest()[:16]
-		file_path = font_dir / (file_name + '.' + font_doc.format_)
+		url_hash = sha3_256(font_url.encode('utf-8')).hexdigest()[:16]
+		file_path = font_dir / (font_family + '.' + url_hash + '.' + font_doc.format_)
 		
 		if not await file_path.is_file():
-			print(" installing font:", font_family, file_name, font_url[:96])
+			print(" installing font:", font_family, file_path, font_url[:96])
 			font_doc.font_family = font_family # font family inside the font file might be different, so change it
 			await file_path.write_bytes(font_doc.data)
 		

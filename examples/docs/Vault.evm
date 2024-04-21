@@ -1,0 +1,3410 @@
+    /* "contract.sol":83:3863  contract Vault is IERC20 {... */
+  mstore(0x40, 0x80)
+    /* "contract.sol":460:618  constructor(string memory _name, string memory _symbol, uint8 _decimals) {... */
+  callvalue
+  dup1
+  iszero
+  tag_1
+  jumpi
+  0x00
+  dup1
+  revert
+tag_1:
+  pop
+  mload(0x40)
+  sub(codesize, bytecodeSize)
+  dup1
+  bytecodeSize
+  dup4
+  codecopy
+  dup2
+  add
+  0x40
+  dup2
+  swap1
+  mstore
+  tag_2
+  swap2
+  tag_3
+  jump	// in
+tag_2:
+    /* "contract.sol":543:547  name */
+  0x00
+    /* "contract.sol":543:555  name = _name */
+  tag_6
+    /* "contract.sol":550:555  _name */
+  dup5
+    /* "contract.sol":543:547  name */
+  dup3
+    /* "contract.sol":543:555  name = _name */
+  tag_7
+  jump	// in
+tag_6:
+  pop
+    /* "contract.sol":565:571  symbol */
+  0x01
+    /* "contract.sol":565:581  symbol = _symbol */
+  tag_8
+    /* "contract.sol":574:581  _symbol */
+  dup4
+    /* "contract.sol":565:571  symbol */
+  dup3
+    /* "contract.sol":565:581  symbol = _symbol */
+  tag_7
+  jump	// in
+tag_8:
+  pop
+    /* "contract.sol":591:599  decimals */
+  0x02
+    /* "contract.sol":591:611  decimals = _decimals */
+  dup1
+  sload
+  not(0xff)
+  and
+  0xff
+  swap3
+  swap1
+  swap3
+  and
+  swap2
+  swap1
+  swap2
+  or
+  swap1
+  sstore
+  pop
+    /* "contract.sol":83:3863  contract Vault is IERC20 {... */
+  tag_16
+  swap1
+  pop
+  jump
+    /* "#utility.yul":14:141   */
+tag_10:
+    /* "#utility.yul":75:85   */
+  0x4e487b71
+    /* "#utility.yul":70:73   */
+  0xe0
+    /* "#utility.yul":66:86   */
+  shl
+    /* "#utility.yul":63:64   */
+  0x00
+    /* "#utility.yul":56:87   */
+  mstore
+    /* "#utility.yul":106:110   */
+  0x41
+    /* "#utility.yul":103:104   */
+  0x04
+    /* "#utility.yul":96:111   */
+  mstore
+    /* "#utility.yul":130:134   */
+  0x24
+    /* "#utility.yul":127:128   */
+  0x00
+    /* "#utility.yul":120:135   */
+  revert
+    /* "#utility.yul":146:990   */
+tag_11:
+    /* "#utility.yul":200:205   */
+  0x00
+    /* "#utility.yul":253:256   */
+  dup3
+    /* "#utility.yul":246:250   */
+  0x1f
+    /* "#utility.yul":238:244   */
+  dup4
+    /* "#utility.yul":234:251   */
+  add
+    /* "#utility.yul":230:257   */
+  slt
+    /* "#utility.yul":220:275   */
+  tag_19
+  jumpi
+    /* "#utility.yul":271:272   */
+  0x00
+    /* "#utility.yul":268:269   */
+  dup1
+    /* "#utility.yul":261:273   */
+  revert
+    /* "#utility.yul":220:275   */
+tag_19:
+    /* "#utility.yul":294:307   */
+  dup2
+  mload
+  sub(shl(0x40, 0x01), 0x01)
+    /* "#utility.yul":356:366   */
+  dup1
+  dup3
+  gt
+    /* "#utility.yul":353:389   */
+  iszero
+  tag_21
+  jumpi
+    /* "#utility.yul":369:387   */
+  tag_21
+  tag_10
+  jump	// in
+tag_21:
+    /* "#utility.yul":444:446   */
+  0x40
+    /* "#utility.yul":438:447   */
+  mload
+    /* "#utility.yul":412:414   */
+  0x1f
+    /* "#utility.yul":498:511   */
+  dup4
+  add
+  not(0x1f)
+    /* "#utility.yul":494:516   */
+  swap1
+  dup2
+  and
+    /* "#utility.yul":518:520   */
+  0x3f
+    /* "#utility.yul":490:521   */
+  add
+    /* "#utility.yul":486:526   */
+  and
+    /* "#utility.yul":474:527   */
+  dup2
+  add
+  swap1
+    /* "#utility.yul":542:560   */
+  dup3
+  dup3
+  gt
+    /* "#utility.yul":562:584   */
+  dup2
+  dup4
+  lt
+    /* "#utility.yul":539:585   */
+  or
+    /* "#utility.yul":536:608   */
+  iszero
+  tag_23
+  jumpi
+    /* "#utility.yul":588:606   */
+  tag_23
+  tag_10
+  jump	// in
+tag_23:
+    /* "#utility.yul":628:638   */
+  dup2
+    /* "#utility.yul":624:626   */
+  0x40
+    /* "#utility.yul":617:639   */
+  mstore
+    /* "#utility.yul":663:665   */
+  dup4
+    /* "#utility.yul":655:661   */
+  dup2
+    /* "#utility.yul":648:666   */
+  mstore
+    /* "#utility.yul":685:689   */
+  0x20
+    /* "#utility.yul":675:689   */
+  swap3
+  pop
+    /* "#utility.yul":732:735   */
+  dup7
+    /* "#utility.yul":725:729   */
+  0x20
+    /* "#utility.yul":720:722   */
+  dup6
+    /* "#utility.yul":712:718   */
+  dup9
+    /* "#utility.yul":708:723   */
+  add
+    /* "#utility.yul":704:730   */
+  add
+    /* "#utility.yul":701:736   */
+  gt
+    /* "#utility.yul":698:753   */
+  iszero
+  tag_24
+  jumpi
+    /* "#utility.yul":749:750   */
+  0x00
+    /* "#utility.yul":746:747   */
+  dup1
+    /* "#utility.yul":739:751   */
+  revert
+    /* "#utility.yul":698:753   */
+tag_24:
+    /* "#utility.yul":771:772   */
+  0x00
+    /* "#utility.yul":762:772   */
+  swap2
+  pop
+    /* "#utility.yul":781:914   */
+tag_25:
+    /* "#utility.yul":795:797   */
+  dup4
+    /* "#utility.yul":792:793   */
+  dup3
+    /* "#utility.yul":789:798   */
+  lt
+    /* "#utility.yul":781:914   */
+  iszero
+  tag_27
+  jumpi
+    /* "#utility.yul":883:897   */
+  dup6
+  dup3
+  add
+    /* "#utility.yul":879:902   */
+  dup4
+  add
+    /* "#utility.yul":873:903   */
+  mload
+    /* "#utility.yul":852:866   */
+  dup2
+  dup4
+  add
+    /* "#utility.yul":848:871   */
+  dup5
+  add
+    /* "#utility.yul":841:904   */
+  mstore
+    /* "#utility.yul":806:816   */
+  swap1
+  dup3
+  add
+  swap1
+    /* "#utility.yul":781:914   */
+  jump(tag_25)
+tag_27:
+    /* "#utility.yul":958:959   */
+  0x00
+    /* "#utility.yul":951:955   */
+  0x20
+    /* "#utility.yul":946:948   */
+  dup6
+    /* "#utility.yul":938:944   */
+  dup4
+    /* "#utility.yul":934:949   */
+  add
+    /* "#utility.yul":930:956   */
+  add
+    /* "#utility.yul":923:960   */
+  mstore
+    /* "#utility.yul":978:984   */
+  dup1
+    /* "#utility.yul":969:984   */
+  swap5
+  pop
+  pop
+  pop
+  pop
+  pop
+    /* "#utility.yul":146:990   */
+  swap3
+  swap2
+  pop
+  pop
+  jump	// out
+    /* "#utility.yul":995:1707   */
+tag_3:
+    /* "#utility.yul":1101:1107   */
+  0x00
+    /* "#utility.yul":1109:1115   */
+  dup1
+    /* "#utility.yul":1117:1123   */
+  0x00
+    /* "#utility.yul":1170:1172   */
+  0x60
+    /* "#utility.yul":1158:1167   */
+  dup5
+    /* "#utility.yul":1149:1156   */
+  dup7
+    /* "#utility.yul":1145:1168   */
+  sub
+    /* "#utility.yul":1141:1173   */
+  slt
+    /* "#utility.yul":1138:1190   */
+  iszero
+  tag_29
+  jumpi
+    /* "#utility.yul":1186:1187   */
+  0x00
+    /* "#utility.yul":1183:1184   */
+  dup1
+    /* "#utility.yul":1176:1188   */
+  revert
+    /* "#utility.yul":1138:1190   */
+tag_29:
+    /* "#utility.yul":1213:1229   */
+  dup4
+  mload
+  sub(shl(0x40, 0x01), 0x01)
+    /* "#utility.yul":1278:1292   */
+  dup1
+  dup3
+  gt
+    /* "#utility.yul":1275:1309   */
+  iszero
+  tag_30
+  jumpi
+    /* "#utility.yul":1305:1306   */
+  0x00
+    /* "#utility.yul":1302:1303   */
+  dup1
+    /* "#utility.yul":1295:1307   */
+  revert
+    /* "#utility.yul":1275:1309   */
+tag_30:
+    /* "#utility.yul":1328:1389   */
+  tag_31
+    /* "#utility.yul":1381:1388   */
+  dup8
+    /* "#utility.yul":1372:1378   */
+  dup4
+    /* "#utility.yul":1361:1370   */
+  dup9
+    /* "#utility.yul":1357:1379   */
+  add
+    /* "#utility.yul":1328:1389   */
+  tag_11
+  jump	// in
+tag_31:
+    /* "#utility.yul":1318:1389   */
+  swap5
+  pop
+    /* "#utility.yul":1435:1437   */
+  0x20
+    /* "#utility.yul":1424:1433   */
+  dup7
+    /* "#utility.yul":1420:1438   */
+  add
+    /* "#utility.yul":1414:1439   */
+  mload
+    /* "#utility.yul":1398:1439   */
+  swap2
+  pop
+    /* "#utility.yul":1464:1466   */
+  dup1
+    /* "#utility.yul":1454:1462   */
+  dup3
+    /* "#utility.yul":1451:1467   */
+  gt
+    /* "#utility.yul":1448:1484   */
+  iszero
+  tag_32
+  jumpi
+    /* "#utility.yul":1480:1481   */
+  0x00
+    /* "#utility.yul":1477:1478   */
+  dup1
+    /* "#utility.yul":1470:1482   */
+  revert
+    /* "#utility.yul":1448:1484   */
+tag_32:
+  pop
+    /* "#utility.yul":1503:1566   */
+  tag_33
+    /* "#utility.yul":1558:1565   */
+  dup7
+    /* "#utility.yul":1547:1555   */
+  dup3
+    /* "#utility.yul":1536:1545   */
+  dup8
+    /* "#utility.yul":1532:1556   */
+  add
+    /* "#utility.yul":1503:1566   */
+  tag_11
+  jump	// in
+tag_33:
+    /* "#utility.yul":1493:1566   */
+  swap3
+  pop
+  pop
+    /* "#utility.yul":1609:1611   */
+  0x40
+    /* "#utility.yul":1598:1607   */
+  dup5
+    /* "#utility.yul":1594:1612   */
+  add
+    /* "#utility.yul":1588:1613   */
+  mload
+    /* "#utility.yul":1653:1657   */
+  0xff
+    /* "#utility.yul":1646:1651   */
+  dup2
+    /* "#utility.yul":1642:1658   */
+  and
+    /* "#utility.yul":1635:1640   */
+  dup2
+    /* "#utility.yul":1632:1659   */
+  eq
+    /* "#utility.yul":1622:1677   */
+  tag_34
+  jumpi
+    /* "#utility.yul":1673:1674   */
+  0x00
+    /* "#utility.yul":1670:1671   */
+  dup1
+    /* "#utility.yul":1663:1675   */
+  revert
+    /* "#utility.yul":1622:1677   */
+tag_34:
+    /* "#utility.yul":1696:1701   */
+  dup1
+    /* "#utility.yul":1686:1701   */
+  swap2
+  pop
+  pop
+    /* "#utility.yul":995:1707   */
+  swap3
+  pop
+  swap3
+  pop
+  swap3
+  jump	// out
+    /* "#utility.yul":1712:2092   */
+tag_12:
+    /* "#utility.yul":1791:1792   */
+  0x01
+    /* "#utility.yul":1787:1799   */
+  dup2
+  dup2
+  shr
+  swap1
+    /* "#utility.yul":1834:1846   */
+  dup3
+  and
+  dup1
+    /* "#utility.yul":1855:1916   */
+  tag_36
+  jumpi
+    /* "#utility.yul":1909:1913   */
+  0x7f
+    /* "#utility.yul":1901:1907   */
+  dup3
+    /* "#utility.yul":1897:1914   */
+  and
+    /* "#utility.yul":1887:1914   */
+  swap2
+  pop
+    /* "#utility.yul":1855:1916   */
+tag_36:
+    /* "#utility.yul":1962:1964   */
+  0x20
+    /* "#utility.yul":1954:1960   */
+  dup3
+    /* "#utility.yul":1951:1965   */
+  lt
+    /* "#utility.yul":1931:1949   */
+  dup2
+    /* "#utility.yul":1928:1966   */
+  sub
+    /* "#utility.yul":1925:2086   */
+  tag_37
+  jumpi
+    /* "#utility.yul":2008:2018   */
+  0x4e487b71
+    /* "#utility.yul":2003:2006   */
+  0xe0
+    /* "#utility.yul":1999:2019   */
+  shl
+    /* "#utility.yul":1996:1997   */
+  0x00
+    /* "#utility.yul":1989:2020   */
+  mstore
+    /* "#utility.yul":2043:2047   */
+  0x22
+    /* "#utility.yul":2040:2041   */
+  0x04
+    /* "#utility.yul":2033:2048   */
+  mstore
+    /* "#utility.yul":2071:2075   */
+  0x24
+    /* "#utility.yul":2068:2069   */
+  0x00
+    /* "#utility.yul":2061:2076   */
+  revert
+    /* "#utility.yul":1925:2086   */
+tag_37:
+  pop
+    /* "#utility.yul":1712:2092   */
+  swap2
+  swap1
+  pop
+  jump	// out
+    /* "#utility.yul":2223:2741   */
+tag_14:
+    /* "#utility.yul":2325:2327   */
+  0x1f
+    /* "#utility.yul":2320:2323   */
+  dup3
+    /* "#utility.yul":2317:2328   */
+  gt
+    /* "#utility.yul":2314:2735   */
+  iszero
+  tag_40
+  jumpi
+    /* "#utility.yul":2361:2366   */
+  dup1
+    /* "#utility.yul":2358:2359   */
+  0x00
+    /* "#utility.yul":2351:2367   */
+  mstore
+    /* "#utility.yul":2405:2409   */
+  0x20
+    /* "#utility.yul":2402:2403   */
+  0x00
+    /* "#utility.yul":2392:2410   */
+  keccak256
+    /* "#utility.yul":2475:2477   */
+  0x1f
+    /* "#utility.yul":2463:2473   */
+  dup5
+    /* "#utility.yul":2459:2478   */
+  add
+    /* "#utility.yul":2456:2457   */
+  0x05
+    /* "#utility.yul":2452:2479   */
+  shr
+    /* "#utility.yul":2446:2450   */
+  dup2
+    /* "#utility.yul":2442:2480   */
+  add
+    /* "#utility.yul":2511:2515   */
+  0x20
+    /* "#utility.yul":2499:2509   */
+  dup6
+    /* "#utility.yul":2496:2516   */
+  lt
+    /* "#utility.yul":2493:2540   */
+  iszero
+  tag_41
+  jumpi
+  pop
+    /* "#utility.yul":2534:2538   */
+  dup1
+    /* "#utility.yul":2493:2540   */
+tag_41:
+    /* "#utility.yul":2589:2591   */
+  0x1f
+    /* "#utility.yul":2584:2587   */
+  dup5
+    /* "#utility.yul":2580:2592   */
+  add
+    /* "#utility.yul":2577:2578   */
+  0x05
+    /* "#utility.yul":2573:2593   */
+  shr
+    /* "#utility.yul":2567:2571   */
+  dup3
+    /* "#utility.yul":2563:2594   */
+  add
+    /* "#utility.yul":2553:2594   */
+  swap2
+  pop
+    /* "#utility.yul":2644:2725   */
+tag_42:
+    /* "#utility.yul":2662:2664   */
+  dup2
+    /* "#utility.yul":2655:2660   */
+  dup2
+    /* "#utility.yul":2652:2665   */
+  lt
+    /* "#utility.yul":2644:2725   */
+  iszero
+  tag_44
+  jumpi
+    /* "#utility.yul":2721:2722   */
+  0x00
+    /* "#utility.yul":2707:2723   */
+  dup2
+  sstore
+    /* "#utility.yul":2688:2689   */
+  0x01
+    /* "#utility.yul":2677:2690   */
+  add
+    /* "#utility.yul":2644:2725   */
+  jump(tag_42)
+tag_44:
+    /* "#utility.yul":2648:2651   */
+  pop
+  pop
+    /* "#utility.yul":2314:2735   */
+tag_40:
+    /* "#utility.yul":2223:2741   */
+  pop
+  pop
+  pop
+  jump	// out
+    /* "#utility.yul":2917:4262   */
+tag_7:
+    /* "#utility.yul":3037:3047   */
+  dup2
+  mload
+  sub(shl(0x40, 0x01), 0x01)
+    /* "#utility.yul":3059:3089   */
+  dup2
+  gt
+    /* "#utility.yul":3056:3112   */
+  iszero
+  tag_48
+  jumpi
+    /* "#utility.yul":3092:3110   */
+  tag_48
+  tag_10
+  jump	// in
+tag_48:
+    /* "#utility.yul":3121:3218   */
+  tag_49
+    /* "#utility.yul":3211:3217   */
+  dup2
+    /* "#utility.yul":3171:3209   */
+  tag_50
+    /* "#utility.yul":3203:3207   */
+  dup5
+    /* "#utility.yul":3197:3208   */
+  sload
+    /* "#utility.yul":3171:3209   */
+  tag_12
+  jump	// in
+tag_50:
+    /* "#utility.yul":3165:3169   */
+  dup5
+    /* "#utility.yul":3121:3218   */
+  tag_14
+  jump	// in
+tag_49:
+    /* "#utility.yul":3273:3277   */
+  0x20
+  dup1
+    /* "#utility.yul":3330:3332   */
+  0x1f
+    /* "#utility.yul":3319:3333   */
+  dup4
+  gt
+    /* "#utility.yul":3347:3348   */
+  0x01
+    /* "#utility.yul":3342:4005   */
+  dup2
+  eq
+  tag_52
+  jumpi
+    /* "#utility.yul":4049:4050   */
+  0x00
+    /* "#utility.yul":4066:4072   */
+  dup5
+    /* "#utility.yul":4063:4152   */
+  iszero
+  tag_53
+  jumpi
+  pop
+    /* "#utility.yul":4118:4137   */
+  dup6
+  dup4
+  add
+    /* "#utility.yul":4112:4138   */
+  mload
+    /* "#utility.yul":4063:4152   */
+tag_53:
+  not(0x00)
+    /* "#utility.yul":2874:2875   */
+  0x03
+    /* "#utility.yul":2870:2881   */
+  dup7
+  swap1
+  shl
+    /* "#utility.yul":2866:2890   */
+  shr
+    /* "#utility.yul":2862:2891   */
+  not
+    /* "#utility.yul":2852:2892   */
+  and
+    /* "#utility.yul":2898:2899   */
+  0x01
+    /* "#utility.yul":2894:2905   */
+  dup6
+  swap1
+  shl
+    /* "#utility.yul":2849:2906   */
+  or
+    /* "#utility.yul":4165:4246   */
+  dup6
+  sstore
+    /* "#utility.yul":3312:4256   */
+  jump(tag_51)
+    /* "#utility.yul":3342:4005   */
+tag_52:
+    /* "#utility.yul":2170:2171   */
+  0x00
+    /* "#utility.yul":2163:2177   */
+  dup6
+  dup2
+  mstore
+    /* "#utility.yul":2207:2211   */
+  0x20
+    /* "#utility.yul":2194:2212   */
+  dup2
+  keccak256
+  not(0x1f)
+    /* "#utility.yul":3378:3398   */
+  dup7
+  and
+  swap2
+    /* "#utility.yul":3496:3732   */
+tag_56:
+    /* "#utility.yul":3510:3517   */
+  dup3
+    /* "#utility.yul":3507:3508   */
+  dup2
+    /* "#utility.yul":3504:3518   */
+  lt
+    /* "#utility.yul":3496:3732   */
+  iszero
+  tag_58
+  jumpi
+    /* "#utility.yul":3599:3618   */
+  dup9
+  dup7
+  add
+    /* "#utility.yul":3593:3619   */
+  mload
+    /* "#utility.yul":3578:3620   */
+  dup3
+  sstore
+    /* "#utility.yul":3691:3718   */
+  swap5
+  dup5
+  add
+  swap5
+    /* "#utility.yul":3659:3660   */
+  0x01
+    /* "#utility.yul":3647:3661   */
+  swap1
+  swap2
+  add
+  swap1
+    /* "#utility.yul":3526:3545   */
+  dup5
+  add
+    /* "#utility.yul":3496:3732   */
+  jump(tag_56)
+tag_58:
+    /* "#utility.yul":3500:3503   */
+  pop
+    /* "#utility.yul":3760:3766   */
+  dup6
+    /* "#utility.yul":3751:3758   */
+  dup3
+    /* "#utility.yul":3748:3767   */
+  lt
+    /* "#utility.yul":3745:3946   */
+  iszero
+  tag_59
+  jumpi
+    /* "#utility.yul":3821:3840   */
+  dup8
+  dup6
+  add
+    /* "#utility.yul":3815:3841   */
+  mload
+  not(0x00)
+    /* "#utility.yul":3904:3905   */
+  0x03
+    /* "#utility.yul":3900:3914   */
+  dup9
+  swap1
+  shl
+    /* "#utility.yul":3916:3919   */
+  0xf8
+    /* "#utility.yul":3896:3920   */
+  and
+    /* "#utility.yul":3892:3929   */
+  shr
+    /* "#utility.yul":3888:3930   */
+  not
+    /* "#utility.yul":3873:3931   */
+  and
+    /* "#utility.yul":3858:3932   */
+  dup2
+  sstore
+    /* "#utility.yul":3745:3946   */
+tag_59:
+  pop
+  pop
+    /* "#utility.yul":3992:3993   */
+  0x01
+    /* "#utility.yul":3983:3989   */
+  dup5
+    /* "#utility.yul":3980:3981   */
+  0x01
+    /* "#utility.yul":3976:3990   */
+  shl
+    /* "#utility.yul":3972:3994   */
+  add
+    /* "#utility.yul":3966:3970   */
+  dup6
+    /* "#utility.yul":3959:3995   */
+  sstore
+    /* "#utility.yul":3312:4256   */
+tag_51:
+  pop
+  pop
+  pop
+  pop
+    /* "#utility.yul":2917:4262   */
+  pop
+  pop
+  jump	// out
+tag_16:
+    /* "contract.sol":83:3863  contract Vault is IERC20 {... */
+  dataSize(sub_0)
+  dup1
+  dataOffset(sub_0)
+  0x00
+  codecopy
+  0x00
+  return
+stop
+
+sub_0: assembly {
+        /* "contract.sol":83:3863  contract Vault is IERC20 {... */
+      mstore(0x40, 0x80)
+      jumpi(tag_1, lt(calldatasize, 0x04))
+      shr(0xe0, calldataload(0x00))
+      dup1
+      0x70a08231
+      gt
+      tag_17
+      jumpi
+      dup1
+      0xd0e30db0
+      gt
+      tag_18
+      jumpi
+      dup1
+      0xd0e30db0
+      eq
+      tag_13
+      jumpi
+      dup1
+      0xdd62ed3e
+      eq
+      tag_14
+      jumpi
+      dup1
+      0xde0e9a3e
+      eq
+      tag_15
+      jumpi
+      dup1
+      0xea598cb0
+      eq
+      tag_16
+      jumpi
+      0x00
+      dup1
+      revert
+    tag_18:
+      dup1
+      0x70a08231
+      eq
+      tag_9
+      jumpi
+      dup1
+      0x95d89b41
+      eq
+      tag_10
+      jumpi
+      dup1
+      0x9e281a98
+      eq
+      tag_11
+      jumpi
+      dup1
+      0xa9059cbb
+      eq
+      tag_12
+      jumpi
+      0x00
+      dup1
+      revert
+    tag_17:
+      dup1
+      0x23b872dd
+      gt
+      tag_19
+      jumpi
+      dup1
+      0x23b872dd
+      eq
+      tag_5
+      jumpi
+      dup1
+      0x2e1a7d4d
+      eq
+      tag_6
+      jumpi
+      dup1
+      0x313ce567
+      eq
+      tag_7
+      jumpi
+      dup1
+      0x338b5dea
+      eq
+      tag_8
+      jumpi
+      0x00
+      dup1
+      revert
+    tag_19:
+      dup1
+      0x06fdde03
+      eq
+      tag_2
+      jumpi
+      dup1
+      0x095ea7b3
+      eq
+      tag_3
+      jumpi
+      dup1
+      0x18160ddd
+      eq
+      tag_4
+      jumpi
+    tag_1:
+      0x00
+      dup1
+      revert
+        /* "contract.sol":114:132  string public name */
+    tag_2:
+      callvalue
+      dup1
+      iszero
+      tag_20
+      jumpi
+      0x00
+      dup1
+      revert
+    tag_20:
+      pop
+      tag_21
+      tag_22
+      jump	// in
+    tag_21:
+      mload(0x40)
+      tag_23
+      swap2
+      swap1
+      tag_24
+      jump	// in
+    tag_23:
+      mload(0x40)
+      dup1
+      swap2
+      sub
+      swap1
+      return
+        /* "contract.sol":940:1190  function approve(address spender, uint256 amount) external returns (bool) {... */
+    tag_3:
+      callvalue
+      dup1
+      iszero
+      tag_25
+      jumpi
+      0x00
+      dup1
+      revert
+    tag_25:
+      pop
+      tag_26
+      tag_27
+      calldatasize
+      0x04
+      tag_28
+      jump	// in
+    tag_27:
+      tag_29
+      jump	// in
+    tag_26:
+      mload(0x40)
+        /* "#utility.yul":1169:1183   */
+      swap1
+      iszero
+        /* "#utility.yul":1162:1184   */
+      iszero
+        /* "#utility.yul":1144:1185   */
+      dup2
+      mstore
+        /* "#utility.yul":1132:1134   */
+      0x20
+        /* "#utility.yul":1117:1135   */
+      add
+        /* "contract.sol":940:1190  function approve(address spender, uint256 amount) external returns (bool) {... */
+      tag_23
+        /* "#utility.yul":1004:1191   */
+      jump
+        /* "contract.sol":192:218  uint256 public totalSupply */
+    tag_4:
+      callvalue
+      dup1
+      iszero
+      tag_32
+      jumpi
+      0x00
+      dup1
+      revert
+    tag_32:
+      pop
+      tag_33
+      sload(0x03)
+      dup2
+      jump
+    tag_33:
+      mload(0x40)
+        /* "#utility.yul":1342:1367   */
+      swap1
+      dup2
+      mstore
+        /* "#utility.yul":1330:1332   */
+      0x20
+        /* "#utility.yul":1315:1333   */
+      add
+        /* "contract.sol":192:218  uint256 public totalSupply */
+      tag_23
+        /* "#utility.yul":1196:1373   */
+      jump
+        /* "contract.sol":1196:1562  function transferFrom(address sender, address recipient, uint256 amount)... */
+    tag_5:
+      callvalue
+      dup1
+      iszero
+      tag_37
+      jumpi
+      0x00
+      dup1
+      revert
+    tag_37:
+      pop
+      tag_26
+      tag_39
+      calldatasize
+      0x04
+      tag_40
+      jump	// in
+    tag_39:
+      tag_41
+      jump	// in
+        /* "contract.sol":2149:2435  function withdraw(uint256 amount) public returns (bool) {... */
+    tag_6:
+      callvalue
+      dup1
+      iszero
+      tag_43
+      jumpi
+      0x00
+      dup1
+      revert
+    tag_43:
+      pop
+      tag_26
+      tag_45
+      calldatasize
+      0x04
+      tag_46
+      jump	// in
+    tag_45:
+      tag_47
+      jump	// in
+        /* "contract.sol":164:185  uint8 public decimals */
+    tag_7:
+      callvalue
+      dup1
+      iszero
+      tag_49
+      jumpi
+      0x00
+      dup1
+      revert
+    tag_49:
+      pop
+      sload(0x02)
+      tag_50
+      swap1
+      0xff
+      and
+      dup2
+      jump
+    tag_50:
+      mload(0x40)
+        /* "#utility.yul":2068:2072   */
+      0xff
+        /* "#utility.yul":2056:2073   */
+      swap1
+      swap2
+      and
+        /* "#utility.yul":2038:2074   */
+      dup2
+      mstore
+        /* "#utility.yul":2026:2028   */
+      0x20
+        /* "#utility.yul":2011:2029   */
+      add
+        /* "contract.sol":164:185  uint8 public decimals */
+      tag_23
+        /* "#utility.yul":1896:2080   */
+      jump
+        /* "contract.sol":2871:3374  function depositToken(address token, uint256 amount) public returns (bool) {... */
+    tag_8:
+      callvalue
+      dup1
+      iszero
+      tag_54
+      jumpi
+      0x00
+      dup1
+      revert
+    tag_54:
+      pop
+      tag_26
+      tag_56
+      calldatasize
+      0x04
+      tag_28
+      jump	// in
+    tag_56:
+      tag_57
+      jump	// in
+        /* "contract.sol":224:268  mapping(address => uint256) public balanceOf */
+    tag_9:
+      callvalue
+      dup1
+      iszero
+      tag_59
+      jumpi
+      0x00
+      dup1
+      revert
+    tag_59:
+      pop
+      tag_33
+      tag_61
+      calldatasize
+      0x04
+      tag_62
+      jump	// in
+    tag_61:
+      mstore(0x20, 0x04)
+      0x00
+      swap1
+      dup2
+      mstore
+      0x40
+      swap1
+      keccak256
+      sload
+      dup2
+      jump
+        /* "contract.sol":138:158  string public symbol */
+    tag_10:
+      callvalue
+      dup1
+      iszero
+      tag_65
+      jumpi
+      0x00
+      dup1
+      revert
+    tag_65:
+      pop
+      tag_21
+      tag_67
+      jump	// in
+        /* "contract.sol":3380:3861  function withdrawToken(address token, uint256 amount) public returns (bool) {... */
+    tag_11:
+      callvalue
+      dup1
+      iszero
+      tag_69
+      jumpi
+      0x00
+      dup1
+      revert
+    tag_69:
+      pop
+      tag_26
+      tag_71
+      calldatasize
+      0x04
+      tag_28
+      jump	// in
+    tag_71:
+      tag_72
+      jump	// in
+        /* "contract.sol":624:934  function transfer(address recipient, uint256 amount)... */
+    tag_12:
+      callvalue
+      dup1
+      iszero
+      tag_74
+      jumpi
+      0x00
+      dup1
+      revert
+    tag_74:
+      pop
+      tag_26
+      tag_76
+      calldatasize
+      0x04
+      tag_28
+      jump	// in
+    tag_76:
+      tag_77
+      jump	// in
+        /* "contract.sol":1977:2143  function deposit() public payable returns (bool) {... */
+    tag_13:
+      tag_26
+      tag_80
+      jump	// in
+        /* "contract.sol":274:338  mapping(address => mapping(address => uint256)) public allowance */
+    tag_14:
+      callvalue
+      dup1
+      iszero
+      tag_82
+      jumpi
+      0x00
+      dup1
+      revert
+    tag_82:
+      pop
+      tag_33
+      tag_84
+      calldatasize
+      0x04
+      tag_85
+      jump	// in
+    tag_84:
+      0x05
+      0x20
+      swap1
+      dup2
+      mstore
+      0x00
+      swap3
+      dup4
+      mstore
+      0x40
+      dup1
+      dup5
+      keccak256
+      swap1
+      swap2
+      mstore
+      swap1
+      dup3
+      mstore
+      swap1
+      keccak256
+      sload
+      dup2
+      jump
+        /* "contract.sol":2655:2865  function unwrap(uint256 amount) public returns (bool) {... */
+    tag_15:
+      callvalue
+      dup1
+      iszero
+      tag_88
+      jumpi
+      0x00
+      dup1
+      revert
+    tag_88:
+      pop
+      tag_26
+      tag_90
+      calldatasize
+      0x04
+      tag_46
+      jump	// in
+    tag_90:
+      tag_91
+      jump	// in
+        /* "contract.sol":2441:2649  function wrap(uint256 amount) public returns (bool) {... */
+    tag_16:
+      callvalue
+      dup1
+      iszero
+      tag_93
+      jumpi
+      0x00
+      dup1
+      revert
+    tag_93:
+      pop
+      tag_26
+      tag_95
+      calldatasize
+      0x04
+      tag_46
+      jump	// in
+    tag_95:
+      tag_96
+      jump	// in
+        /* "contract.sol":114:132  string public name */
+    tag_22:
+      0x00
+      dup1
+      sload
+      tag_98
+      swap1
+      tag_99
+      jump	// in
+    tag_98:
+      dup1
+      0x1f
+      add
+      0x20
+      dup1
+      swap2
+      div
+      mul
+      0x20
+      add
+      mload(0x40)
+      swap1
+      dup2
+      add
+      0x40
+      mstore
+      dup1
+      swap3
+      swap2
+      swap1
+      dup2
+      dup2
+      mstore
+      0x20
+      add
+      dup3
+      dup1
+      sload
+      tag_100
+      swap1
+      tag_99
+      jump	// in
+    tag_100:
+      dup1
+      iszero
+      tag_101
+      jumpi
+      dup1
+      0x1f
+      lt
+      tag_102
+      jumpi
+      0x0100
+      dup1
+      dup4
+      sload
+      div
+      mul
+      dup4
+      mstore
+      swap2
+      0x20
+      add
+      swap2
+      jump(tag_101)
+    tag_102:
+      dup3
+      add
+      swap2
+      swap1
+      0x00
+      mstore
+      keccak256(0x00, 0x20)
+      swap1
+    tag_103:
+      dup2
+      sload
+      dup2
+      mstore
+      swap1
+      0x01
+      add
+      swap1
+      0x20
+      add
+      dup1
+      dup4
+      gt
+      tag_103
+      jumpi
+      dup3
+      swap1
+      sub
+      0x1f
+      and
+      dup3
+      add
+      swap2
+    tag_101:
+      pop
+      pop
+      pop
+      pop
+      pop
+      dup2
+      jump	// out
+        /* "contract.sol":940:1190  function approve(address spender, uint256 amount) external returns (bool) {... */
+    tag_29:
+        /* "contract.sol":1081:1091  msg.sender */
+      caller
+        /* "contract.sol":1008:1012  bool */
+      0x00
+        /* "contract.sol":1071:1092  allowance[msg.sender] */
+      dup2
+      dup2
+      mstore
+        /* "contract.sol":1071:1080  allowance */
+      0x05
+        /* "contract.sol":1071:1092  allowance[msg.sender] */
+      0x20
+      swap1
+      dup2
+      mstore
+      0x40
+      dup1
+      dup4
+      keccak256
+      sub(shl(0xa0, 0x01), 0x01)
+        /* "contract.sol":1071:1101  allowance[msg.sender][spender] */
+      dup8
+      and
+      dup1
+      dup6
+      mstore
+      swap3
+      mstore
+      dup1
+      dup4
+      keccak256
+        /* "contract.sol":1071:1110  allowance[msg.sender][spender] = amount */
+      dup6
+      swap1
+      sstore
+        /* "contract.sol":1125:1162  Approval(msg.sender, spender, amount) */
+      mload
+        /* "contract.sol":1008:1012  bool */
+      swap2
+      swap3
+        /* "contract.sol":1071:1101  allowance[msg.sender][spender] */
+      swap1
+      swap2
+        /* "contract.sol":1125:1162  Approval(msg.sender, spender, amount) */
+      0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925
+      swap1
+      tag_105
+      swap1
+        /* "contract.sol":1104:1110  amount */
+      dup7
+        /* "#utility.yul":1342:1367   */
+      dup2
+      mstore
+        /* "#utility.yul":1330:1332   */
+      0x20
+        /* "#utility.yul":1315:1333   */
+      add
+      swap1
+        /* "#utility.yul":1196:1373   */
+      jump
+        /* "contract.sol":1125:1162  Approval(msg.sender, spender, amount) */
+    tag_105:
+      mload(0x40)
+      dup1
+      swap2
+      sub
+      swap1
+      log3
+      pop
+        /* "contract.sol":1179:1183  true */
+      0x01
+        /* "contract.sol":940:1190  function approve(address spender, uint256 amount) external returns (bool) {... */
+    tag_104:
+      swap3
+      swap2
+      pop
+      pop
+      jump	// out
+        /* "contract.sol":1196:1562  function transferFrom(address sender, address recipient, uint256 amount)... */
+    tag_41:
+      sub(shl(0xa0, 0x01), 0x01)
+        /* "contract.sol":1368:1385  allowance[sender] */
+      dup4
+      and
+        /* "contract.sol":1303:1307  bool */
+      0x00
+        /* "contract.sol":1368:1385  allowance[sender] */
+      swap1
+      dup2
+      mstore
+        /* "contract.sol":1368:1377  allowance */
+      0x05
+        /* "contract.sol":1368:1385  allowance[sender] */
+      0x20
+      swap1
+      dup2
+      mstore
+      0x40
+      dup1
+      dup4
+      keccak256
+        /* "contract.sol":1386:1396  msg.sender */
+      caller
+        /* "contract.sol":1368:1397  allowance[sender][msg.sender] */
+      dup5
+      mstore
+      swap1
+      swap2
+      mstore
+      dup2
+      keccak256
+        /* "contract.sol":1368:1407  allowance[sender][msg.sender] -= amount */
+      dup1
+      sload
+        /* "contract.sol":1401:1407  amount */
+      dup4
+      swap2
+        /* "contract.sol":1368:1397  allowance[sender][msg.sender] */
+      swap1
+        /* "contract.sol":1303:1307  bool */
+      dup4
+      swap1
+        /* "contract.sol":1368:1407  allowance[sender][msg.sender] -= amount */
+      tag_107
+      swap1
+        /* "contract.sol":1401:1407  amount */
+      dup5
+      swap1
+        /* "contract.sol":1368:1407  allowance[sender][msg.sender] -= amount */
+      tag_108
+      jump	// in
+    tag_107:
+      swap1
+      swap2
+      sstore
+      pop
+      pop
+      sub(shl(0xa0, 0x01), 0x01)
+        /* "contract.sol":1417:1434  balanceOf[sender] */
+      dup5
+      and
+      0x00
+      swap1
+      dup2
+      mstore
+        /* "contract.sol":1417:1426  balanceOf */
+      0x04
+        /* "contract.sol":1417:1434  balanceOf[sender] */
+      0x20
+      mstore
+      0x40
+      dup2
+      keccak256
+        /* "contract.sol":1417:1444  balanceOf[sender] -= amount */
+      dup1
+      sload
+        /* "contract.sol":1438:1444  amount */
+      dup5
+      swap3
+        /* "contract.sol":1417:1434  balanceOf[sender] */
+      swap1
+        /* "contract.sol":1417:1444  balanceOf[sender] -= amount */
+      tag_109
+      swap1
+        /* "contract.sol":1438:1444  amount */
+      dup5
+      swap1
+        /* "contract.sol":1417:1444  balanceOf[sender] -= amount */
+      tag_108
+      jump	// in
+    tag_109:
+      swap1
+      swap2
+      sstore
+      pop
+      pop
+      sub(shl(0xa0, 0x01), 0x01)
+        /* "contract.sol":1454:1474  balanceOf[recipient] */
+      dup4
+      and
+      0x00
+      swap1
+      dup2
+      mstore
+        /* "contract.sol":1454:1463  balanceOf */
+      0x04
+        /* "contract.sol":1454:1474  balanceOf[recipient] */
+      0x20
+      mstore
+      0x40
+      dup2
+      keccak256
+        /* "contract.sol":1454:1484  balanceOf[recipient] += amount */
+      dup1
+      sload
+        /* "contract.sol":1478:1484  amount */
+      dup5
+      swap3
+        /* "contract.sol":1454:1474  balanceOf[recipient] */
+      swap1
+        /* "contract.sol":1454:1484  balanceOf[recipient] += amount */
+      tag_110
+      swap1
+        /* "contract.sol":1478:1484  amount */
+      dup5
+      swap1
+        /* "contract.sol":1454:1484  balanceOf[recipient] += amount */
+      tag_111
+      jump	// in
+    tag_110:
+      swap3
+      pop
+      pop
+      dup2
+      swap1
+      sstore
+      pop
+        /* "contract.sol":1516:1525  recipient */
+      dup3
+      sub(shl(0xa0, 0x01), 0x01)
+        /* "contract.sol":1499:1534  Transfer(sender, recipient, amount) */
+      and
+        /* "contract.sol":1508:1514  sender */
+      dup5
+      sub(shl(0xa0, 0x01), 0x01)
+        /* "contract.sol":1499:1534  Transfer(sender, recipient, amount) */
+      and
+      0x00
+      dup1
+      mload
+      0x20
+      data_ada389e1fc24a8587c776340efb91b36e675792ab631816100d55df0b5cf3cbc
+      dup4
+      codecopy
+      dup2
+      mload
+      swap2
+      mstore
+        /* "contract.sol":1527:1533  amount */
+      dup5
+        /* "contract.sol":1499:1534  Transfer(sender, recipient, amount) */
+      mload(0x40)
+      tag_112
+      swap2
+        /* "#utility.yul":1342:1367   */
+      dup2
+      mstore
+        /* "#utility.yul":1330:1332   */
+      0x20
+        /* "#utility.yul":1315:1333   */
+      add
+      swap1
+        /* "#utility.yul":1196:1373   */
+      jump
+        /* "contract.sol":1499:1534  Transfer(sender, recipient, amount) */
+    tag_112:
+      mload(0x40)
+      dup1
+      swap2
+      sub
+      swap1
+      log3
+      pop
+        /* "contract.sol":1551:1555  true */
+      0x01
+        /* "contract.sol":1196:1562  function transferFrom(address sender, address recipient, uint256 amount)... */
+      swap4
+      swap3
+      pop
+      pop
+      pop
+      jump	// out
+        /* "contract.sol":2149:2435  function withdraw(uint256 amount) public returns (bool) {... */
+    tag_47:
+        /* "contract.sol":2271:2281  msg.sender */
+      caller
+        /* "contract.sol":2199:2203  bool */
+      0x00
+        /* "contract.sol":2258:2282  balanceOfETH[msg.sender] */
+      swap1
+      dup2
+      mstore
+        /* "contract.sol":2258:2270  balanceOfETH */
+      0x06
+        /* "contract.sol":2258:2282  balanceOfETH[msg.sender] */
+      0x20
+      mstore
+      0x40
+      dup2
+      keccak256
+        /* "contract.sol":2258:2292  balanceOfETH[msg.sender] -= amount */
+      dup1
+      sload
+        /* "contract.sol":2286:2292  amount */
+      dup4
+      swap2
+        /* "contract.sol":2258:2282  balanceOfETH[msg.sender] */
+      swap1
+        /* "contract.sol":2199:2203  bool */
+      dup4
+      swap1
+        /* "contract.sol":2258:2292  balanceOfETH[msg.sender] -= amount */
+      tag_114
+      swap1
+        /* "contract.sol":2286:2292  amount */
+      dup5
+      swap1
+        /* "contract.sol":2258:2292  balanceOfETH[msg.sender] -= amount */
+      tag_108
+      jump	// in
+    tag_114:
+      swap1
+      swap2
+      sstore
+      pop
+      pop
+        /* "contract.sol":2320:2354  msg.sender.call{value: amount}("") */
+      mload(0x40)
+        /* "contract.sol":2303:2315  bool success */
+      0x00
+      swap1
+        /* "contract.sol":2320:2330  msg.sender */
+      caller
+      swap1
+        /* "contract.sol":2343:2349  amount */
+      dup5
+      swap1
+        /* "contract.sol":2303:2315  bool success */
+      dup4
+        /* "contract.sol":2320:2354  msg.sender.call{value: amount}("") */
+      dup2
+        /* "contract.sol":2303:2315  bool success */
+      dup2
+        /* "contract.sol":2320:2354  msg.sender.call{value: amount}("") */
+      dup2
+        /* "contract.sol":2343:2349  amount */
+      dup6
+        /* "contract.sol":2320:2330  msg.sender */
+      dup8
+        /* "contract.sol":2320:2354  msg.sender.call{value: amount}("") */
+      gas
+      call
+      swap3
+      pop
+      pop
+      pop
+      returndatasize
+      dup1
+      0x00
+      dup2
+      eq
+      tag_119
+      jumpi
+      mload(0x40)
+      swap2
+      pop
+      and(add(returndatasize, 0x3f), not(0x1f))
+      dup3
+      add
+      0x40
+      mstore
+      returndatasize
+      dup3
+      mstore
+      returndatasize
+      0x00
+      0x20
+      dup5
+      add
+      returndatacopy
+      jump(tag_118)
+    tag_119:
+      0x60
+      swap2
+      pop
+    tag_118:
+      pop
+        /* "contract.sol":2302:2354  (bool success,) = msg.sender.call{value: amount}("") */
+      pop
+      swap1
+      pop
+        /* "contract.sol":2372:2379  success */
+      dup1
+        /* "contract.sol":2364:2407  require(success, "Failed to withdraw ETH.") */
+      tag_120
+      jumpi
+      mload(0x40)
+      shl(0xe5, 0x461bcd)
+      dup2
+      mstore
+        /* "#utility.yul":3733:3735   */
+      0x20
+        /* "contract.sol":2364:2407  require(success, "Failed to withdraw ETH.") */
+      0x04
+      dup3
+      add
+        /* "#utility.yul":3715:3736   */
+      mstore
+        /* "#utility.yul":3772:3774   */
+      0x17
+        /* "#utility.yul":3752:3770   */
+      0x24
+      dup3
+      add
+        /* "#utility.yul":3745:3775   */
+      mstore
+        /* "#utility.yul":3811:3836   */
+      0x4661696c656420746f207769746864726177204554482e000000000000000000
+        /* "#utility.yul":3791:3809   */
+      0x44
+      dup3
+      add
+        /* "#utility.yul":3784:3837   */
+      mstore
+        /* "#utility.yul":3854:3872   */
+      0x64
+      add
+        /* "contract.sol":2364:2407  require(success, "Failed to withdraw ETH.") */
+    tag_121:
+      mload(0x40)
+      dup1
+      swap2
+      sub
+      swap1
+      revert
+    tag_120:
+      pop
+        /* "contract.sol":2424:2428  true */
+      0x01
+      swap3
+        /* "contract.sol":2149:2435  function withdraw(uint256 amount) public returns (bool) {... */
+      swap2
+      pop
+      pop
+      jump	// out
+        /* "contract.sol":2871:3374  function depositToken(address token, uint256 amount) public returns (bool) {... */
+    tag_57:
+        /* "contract.sol":3083:3144  tokenContract.transferFrom(msg.sender, address(this), amount) */
+      mload(0x40)
+      shl(0xe0, 0x23b872dd)
+      dup2
+      mstore
+        /* "contract.sol":3110:3120  msg.sender */
+      caller
+        /* "contract.sol":3083:3144  tokenContract.transferFrom(msg.sender, address(this), amount) */
+      0x04
+      dup3
+      add
+        /* "#utility.yul":4123:4157   */
+      mstore
+        /* "contract.sol":3130:3134  this */
+      address
+        /* "#utility.yul":4173:4191   */
+      0x24
+      dup3
+      add
+        /* "#utility.yul":4166:4209   */
+      mstore
+        /* "#utility.yul":4225:4243   */
+      0x44
+      dup2
+      add
+        /* "#utility.yul":4218:4252   */
+      dup3
+      swap1
+      mstore
+        /* "contract.sol":2940:2944  bool */
+      0x00
+      swap1
+        /* "contract.sol":3052:3057  token */
+      dup4
+      swap1
+        /* "contract.sol":2940:2944  bool */
+      dup3
+      swap1
+      sub(shl(0xa0, 0x01), 0x01)
+        /* "contract.sol":3083:3109  tokenContract.transferFrom */
+      dup4
+      and
+      swap1
+      0x23b872dd
+      swap1
+        /* "#utility.yul":4058:4076   */
+      0x64
+      add
+        /* "contract.sol":3083:3144  tokenContract.transferFrom(msg.sender, address(this), amount) */
+      0x20
+      mload(0x40)
+      dup1
+      dup4
+      sub
+      dup2
+      0x00
+      dup8
+      gas
+      call
+      iszero
+      dup1
+      iszero
+      tag_127
+      jumpi
+      returndatasize
+      0x00
+      dup1
+      returndatacopy
+      revert(0x00, returndatasize)
+    tag_127:
+      pop
+      pop
+      pop
+      pop
+      mload(0x40)
+      returndatasize
+      not(0x1f)
+      0x1f
+      dup3
+      add
+      and
+      dup3
+      add
+      dup1
+      0x40
+      mstore
+      pop
+      dup2
+      add
+      swap1
+      tag_128
+      swap2
+      swap1
+      tag_129
+      jump	// in
+    tag_128:
+        /* "contract.sol":3068:3144  bool success = tokenContract.transferFrom(msg.sender, address(this), amount) */
+      swap1
+      pop
+        /* "contract.sol":3203:3210  success */
+      dup1
+        /* "contract.sol":3195:3276  require(success, "Could not transfer ERC20 from other address to this contract.") */
+      tag_130
+      jumpi
+      mload(0x40)
+      shl(0xe5, 0x461bcd)
+      dup2
+      mstore
+        /* "#utility.yul":4747:4749   */
+      0x20
+        /* "contract.sol":3195:3276  require(success, "Could not transfer ERC20 from other address to this contract.") */
+      0x04
+      dup3
+      add
+        /* "#utility.yul":4729:4750   */
+      mstore
+        /* "#utility.yul":4786:4788   */
+      0x3d
+        /* "#utility.yul":4766:4784   */
+      0x24
+      dup3
+      add
+        /* "#utility.yul":4759:4789   */
+      mstore
+        /* "#utility.yul":4825:4859   */
+      0x436f756c64206e6f74207472616e736665722045524332302066726f6d206f74
+        /* "#utility.yul":4805:4823   */
+      0x44
+      dup3
+      add
+        /* "#utility.yul":4798:4860   */
+      mstore
+        /* "#utility.yul":4896:4927   */
+      0x686572206164647265737320746f207468697320636f6e74726163742e000000
+        /* "#utility.yul":4876:4894   */
+      0x64
+      dup3
+      add
+        /* "#utility.yul":4869:4928   */
+      mstore
+        /* "#utility.yul":4945:4964   */
+      0x84
+      add
+        /* "contract.sol":3195:3276  require(success, "Could not transfer ERC20 from other address to this contract.") */
+      tag_121
+        /* "#utility.yul":4545:4970   */
+      jump
+        /* "contract.sol":3195:3276  require(success, "Could not transfer ERC20 from other address to this contract.") */
+    tag_130:
+        /* "contract.sol":3301:3311  msg.sender */
+      caller
+        /* "contract.sol":3286:3312  balanceOfERC20[msg.sender] */
+      0x00
+      swap1
+      dup2
+      mstore
+        /* "contract.sol":3286:3300  balanceOfERC20 */
+      0x07
+        /* "contract.sol":3286:3312  balanceOfERC20[msg.sender] */
+      0x20
+      swap1
+      dup2
+      mstore
+      0x40
+      dup1
+      dup4
+      keccak256
+      sub(shl(0xa0, 0x01), 0x01)
+        /* "contract.sol":3286:3319  balanceOfERC20[msg.sender][token] */
+      dup10
+      and
+      dup5
+      mstore
+      swap1
+      swap2
+      mstore
+      dup2
+      keccak256
+        /* "contract.sol":3286:3329  balanceOfERC20[msg.sender][token] += amount */
+      dup1
+      sload
+        /* "contract.sol":3323:3329  amount */
+      dup7
+      swap3
+        /* "contract.sol":3286:3312  balanceOfERC20[msg.sender] */
+      swap1
+        /* "contract.sol":3286:3329  balanceOfERC20[msg.sender][token] += amount */
+      tag_133
+      swap1
+        /* "contract.sol":3323:3329  amount */
+      dup5
+      swap1
+        /* "contract.sol":3286:3329  balanceOfERC20[msg.sender][token] += amount */
+      tag_111
+      jump	// in
+    tag_133:
+      swap1
+      swap2
+      sstore
+      pop
+        /* "contract.sol":3363:3367  true */
+      0x01
+      swap7
+        /* "contract.sol":2871:3374  function depositToken(address token, uint256 amount) public returns (bool) {... */
+      swap6
+      pop
+      pop
+      pop
+      pop
+      pop
+      pop
+      jump	// out
+        /* "contract.sol":138:158  string public symbol */
+    tag_67:
+      0x01
+      dup1
+      sload
+      tag_98
+      swap1
+      tag_99
+      jump	// in
+        /* "contract.sol":3380:3861  function withdrawToken(address token, uint256 amount) public returns (bool) {... */
+    tag_72:
+        /* "contract.sol":3533:3543  msg.sender */
+      caller
+        /* "contract.sol":3450:3454  bool */
+      0x00
+        /* "contract.sol":3518:3544  balanceOfERC20[msg.sender] */
+      swap1
+      dup2
+      mstore
+        /* "contract.sol":3518:3532  balanceOfERC20 */
+      0x07
+        /* "contract.sol":3518:3544  balanceOfERC20[msg.sender] */
+      0x20
+      swap1
+      dup2
+      mstore
+      0x40
+      dup1
+      dup4
+      keccak256
+      sub(shl(0xa0, 0x01), 0x01)
+        /* "contract.sol":3518:3551  balanceOfERC20[msg.sender][token] */
+      dup7
+      and
+      dup5
+      mstore
+      swap1
+      swap2
+      mstore
+      dup2
+      keccak256
+        /* "contract.sol":3518:3561  balanceOfERC20[msg.sender][token] -= amount */
+      dup1
+      sload
+        /* "contract.sol":3555:3561  amount */
+      dup4
+      swap2
+        /* "contract.sol":3518:3551  balanceOfERC20[msg.sender][token] */
+      swap1
+        /* "contract.sol":3450:3454  bool */
+      dup4
+      swap1
+        /* "contract.sol":3518:3561  balanceOfERC20[msg.sender][token] -= amount */
+      tag_140
+      swap1
+        /* "contract.sol":3555:3561  amount */
+      dup5
+      swap1
+        /* "contract.sol":3518:3561  balanceOfERC20[msg.sender][token] -= amount */
+      tag_108
+      jump	// in
+    tag_140:
+      swap1
+      swap2
+      sstore
+      pop
+      pop
+        /* "contract.sol":3659:3701  tokenContract.transfer(msg.sender, amount) */
+      mload(0x40)
+      shl(0xe0, 0xa9059cbb)
+      dup2
+      mstore
+        /* "contract.sol":3682:3692  msg.sender */
+      caller
+        /* "contract.sol":3659:3701  tokenContract.transfer(msg.sender, amount) */
+      0x04
+      dup3
+      add
+        /* "#utility.yul":5149:5200   */
+      mstore
+        /* "#utility.yul":5216:5234   */
+      0x24
+      dup2
+      add
+        /* "#utility.yul":5209:5243   */
+      dup4
+      swap1
+      mstore
+        /* "contract.sol":3628:3633  token */
+      dup4
+      swap1
+        /* "contract.sol":3598:3618  IERC20 tokenContract */
+      0x00
+      swap1
+      sub(shl(0xa0, 0x01), 0x01)
+        /* "contract.sol":3659:3681  tokenContract.transfer */
+      dup4
+      and
+      swap1
+      0xa9059cbb
+      swap1
+        /* "#utility.yul":5122:5140   */
+      0x44
+      add
+        /* "contract.sol":3659:3701  tokenContract.transfer(msg.sender, amount) */
+      0x20
+      mload(0x40)
+      dup1
+      dup4
+      sub
+      dup2
+      0x00
+      dup8
+      gas
+      call
+      iszero
+      dup1
+      iszero
+      tag_144
+      jumpi
+      returndatasize
+      0x00
+      dup1
+      returndatacopy
+      revert(0x00, returndatasize)
+    tag_144:
+      pop
+      pop
+      pop
+      pop
+      mload(0x40)
+      returndatasize
+      not(0x1f)
+      0x1f
+      dup3
+      add
+      and
+      dup3
+      add
+      dup1
+      0x40
+      mstore
+      pop
+      dup2
+      add
+      swap1
+      tag_145
+      swap2
+      swap1
+      tag_129
+      jump	// in
+    tag_145:
+        /* "contract.sol":3644:3701  bool success = tokenContract.transfer(msg.sender, amount) */
+      swap1
+      pop
+        /* "contract.sol":3760:3767  success */
+      dup1
+        /* "contract.sol":3752:3833  require(success, "Could not transfer ERC20 from this contract to other address.") */
+      tag_146
+      jumpi
+      mload(0x40)
+      shl(0xe5, 0x461bcd)
+      dup2
+      mstore
+        /* "#utility.yul":5456:5458   */
+      0x20
+        /* "contract.sol":3752:3833  require(success, "Could not transfer ERC20 from this contract to other address.") */
+      0x04
+      dup3
+      add
+        /* "#utility.yul":5438:5459   */
+      mstore
+        /* "#utility.yul":5495:5497   */
+      0x3d
+        /* "#utility.yul":5475:5493   */
+      0x24
+      dup3
+      add
+        /* "#utility.yul":5468:5498   */
+      mstore
+        /* "#utility.yul":5534:5568   */
+      0x436f756c64206e6f74207472616e736665722045524332302066726f6d207468
+        /* "#utility.yul":5514:5532   */
+      0x44
+      dup3
+      add
+        /* "#utility.yul":5507:5569   */
+      mstore
+        /* "#utility.yul":5605:5636   */
+      0x697320636f6e747261637420746f206f7468657220616464726573732e000000
+        /* "#utility.yul":5585:5603   */
+      0x64
+      dup3
+      add
+        /* "#utility.yul":5578:5637   */
+      mstore
+        /* "#utility.yul":5654:5673   */
+      0x84
+      add
+        /* "contract.sol":3752:3833  require(success, "Could not transfer ERC20 from this contract to other address.") */
+      tag_121
+        /* "#utility.yul":5254:5679   */
+      jump
+        /* "contract.sol":3752:3833  require(success, "Could not transfer ERC20 from this contract to other address.") */
+    tag_146:
+      pop
+        /* "contract.sol":3850:3854  true */
+      0x01
+      swap5
+        /* "contract.sol":3380:3861  function withdrawToken(address token, uint256 amount) public returns (bool) {... */
+      swap4
+      pop
+      pop
+      pop
+      pop
+      jump	// out
+        /* "contract.sol":624:934  function transfer(address recipient, uint256 amount)... */
+    tag_77:
+        /* "contract.sol":791:801  msg.sender */
+      caller
+        /* "contract.sol":711:715  bool */
+      0x00
+        /* "contract.sol":781:802  balanceOf[msg.sender] */
+      swap1
+      dup2
+      mstore
+        /* "contract.sol":781:790  balanceOf */
+      0x04
+        /* "contract.sol":781:802  balanceOf[msg.sender] */
+      0x20
+      mstore
+      0x40
+      dup2
+      keccak256
+        /* "contract.sol":781:812  balanceOf[msg.sender] -= amount */
+      dup1
+      sload
+        /* "contract.sol":806:812  amount */
+      dup4
+      swap2
+        /* "contract.sol":781:802  balanceOf[msg.sender] */
+      swap1
+        /* "contract.sol":711:715  bool */
+      dup4
+      swap1
+        /* "contract.sol":781:812  balanceOf[msg.sender] -= amount */
+      tag_150
+      swap1
+        /* "contract.sol":806:812  amount */
+      dup5
+      swap1
+        /* "contract.sol":781:812  balanceOf[msg.sender] -= amount */
+      tag_108
+      jump	// in
+    tag_150:
+      swap1
+      swap2
+      sstore
+      pop
+      pop
+      sub(shl(0xa0, 0x01), 0x01)
+        /* "contract.sol":822:842  balanceOf[recipient] */
+      dup4
+      and
+      0x00
+      swap1
+      dup2
+      mstore
+        /* "contract.sol":822:831  balanceOf */
+      0x04
+        /* "contract.sol":822:842  balanceOf[recipient] */
+      0x20
+      mstore
+      0x40
+      dup2
+      keccak256
+        /* "contract.sol":822:852  balanceOf[recipient] += amount */
+      dup1
+      sload
+        /* "contract.sol":846:852  amount */
+      dup5
+      swap3
+        /* "contract.sol":822:842  balanceOf[recipient] */
+      swap1
+        /* "contract.sol":822:852  balanceOf[recipient] += amount */
+      tag_151
+      swap1
+        /* "contract.sol":846:852  amount */
+      dup5
+      swap1
+        /* "contract.sol":822:852  balanceOf[recipient] += amount */
+      tag_111
+      jump	// in
+    tag_151:
+      swap1
+      swap2
+      sstore
+      pop
+      pop
+        /* "contract.sol":867:906  Transfer(msg.sender, recipient, amount) */
+      mload(0x40)
+        /* "#utility.yul":1342:1367   */
+      dup3
+      dup2
+      mstore
+      sub(shl(0xa0, 0x01), 0x01)
+        /* "contract.sol":867:906  Transfer(msg.sender, recipient, amount) */
+      dup5
+      and
+      swap1
+        /* "contract.sol":876:886  msg.sender */
+      caller
+      swap1
+      0x00
+      dup1
+      mload
+      0x20
+      data_ada389e1fc24a8587c776340efb91b36e675792ab631816100d55df0b5cf3cbc
+      dup4
+      codecopy
+      dup2
+      mload
+      swap2
+      mstore
+        /* "contract.sol":867:906  Transfer(msg.sender, recipient, amount) */
+      swap1
+        /* "#utility.yul":1330:1332   */
+      0x20
+        /* "#utility.yul":1315:1333   */
+      add
+        /* "contract.sol":867:906  Transfer(msg.sender, recipient, amount) */
+      tag_105
+        /* "#utility.yul":1196:1373   */
+      jump
+        /* "contract.sol":1977:2143  function deposit() public payable returns (bool) {... */
+    tag_80:
+        /* "contract.sol":2091:2101  msg.sender */
+      caller
+        /* "contract.sol":2020:2024  bool */
+      0x00
+        /* "contract.sol":2078:2102  balanceOfETH[msg.sender] */
+      swap1
+      dup2
+      mstore
+        /* "contract.sol":2078:2090  balanceOfETH */
+      0x06
+        /* "contract.sol":2078:2102  balanceOfETH[msg.sender] */
+      0x20
+      mstore
+      0x40
+      dup2
+      keccak256
+        /* "contract.sol":2078:2115  balanceOfETH[msg.sender] += msg.value */
+      dup1
+      sload
+        /* "contract.sol":2106:2115  msg.value */
+      callvalue
+      swap2
+        /* "contract.sol":2078:2102  balanceOfETH[msg.sender] */
+      swap1
+        /* "contract.sol":2020:2024  bool */
+      dup4
+      swap1
+        /* "contract.sol":2078:2115  balanceOfETH[msg.sender] += msg.value */
+      tag_154
+      swap1
+        /* "contract.sol":2106:2115  msg.value */
+      dup5
+      swap1
+        /* "contract.sol":2078:2115  balanceOfETH[msg.sender] += msg.value */
+      tag_111
+      jump	// in
+    tag_154:
+      swap1
+      swap2
+      sstore
+      pop
+        /* "contract.sol":2132:2136  true */
+      0x01
+      swap3
+        /* "contract.sol":1977:2143  function deposit() public payable returns (bool) {... */
+      swap2
+      pop
+      pop
+      jump	// out
+        /* "contract.sol":2655:2865  function unwrap(uint256 amount) public returns (bool) {... */
+    tag_91:
+        /* "contract.sol":2703:2707  bool */
+      0x00
+        /* "contract.sol":2768:2793  _burn(msg.sender, amount) */
+      tag_156
+        /* "contract.sol":2774:2784  msg.sender */
+      caller
+        /* "contract.sol":2786:2792  amount */
+      dup4
+        /* "contract.sol":2768:2773  _burn */
+      tag_157
+        /* "contract.sol":2768:2793  _burn(msg.sender, amount) */
+      jump	// in
+    tag_156:
+        /* "contract.sol":2816:2826  msg.sender */
+      caller
+        /* "contract.sol":2803:2827  balanceOfETH[msg.sender] */
+      0x00
+      swap1
+      dup2
+      mstore
+        /* "contract.sol":2803:2815  balanceOfETH */
+      0x06
+        /* "contract.sol":2803:2827  balanceOfETH[msg.sender] */
+      0x20
+      mstore
+      0x40
+      dup2
+      keccak256
+        /* "contract.sol":2803:2837  balanceOfETH[msg.sender] += amount */
+      dup1
+      sload
+        /* "contract.sol":2831:2837  amount */
+      dup5
+      swap3
+        /* "contract.sol":2803:2827  balanceOfETH[msg.sender] */
+      swap1
+        /* "contract.sol":2803:2837  balanceOfETH[msg.sender] += amount */
+      tag_158
+      swap1
+        /* "contract.sol":2831:2837  amount */
+      dup5
+      swap1
+        /* "contract.sol":2803:2837  balanceOfETH[msg.sender] += amount */
+      tag_111
+      jump	// in
+    tag_158:
+      swap1
+      swap2
+      sstore
+      pop
+        /* "contract.sol":2854:2858  true */
+      0x01
+      swap4
+        /* "contract.sol":2655:2865  function unwrap(uint256 amount) public returns (bool) {... */
+      swap3
+      pop
+      pop
+      pop
+      jump	// out
+        /* "contract.sol":2441:2649  function wrap(uint256 amount) public returns (bool) {... */
+    tag_96:
+        /* "contract.sol":2565:2575  msg.sender */
+      caller
+        /* "contract.sol":2487:2491  bool */
+      0x00
+        /* "contract.sol":2552:2576  balanceOfETH[msg.sender] */
+      swap1
+      dup2
+      mstore
+        /* "contract.sol":2552:2564  balanceOfETH */
+      0x06
+        /* "contract.sol":2552:2576  balanceOfETH[msg.sender] */
+      0x20
+      mstore
+      0x40
+      dup2
+      keccak256
+        /* "contract.sol":2552:2586  balanceOfETH[msg.sender] -= amount */
+      dup1
+      sload
+        /* "contract.sol":2580:2586  amount */
+      dup4
+      swap2
+        /* "contract.sol":2552:2576  balanceOfETH[msg.sender] */
+      swap1
+        /* "contract.sol":2487:2491  bool */
+      dup4
+      swap1
+        /* "contract.sol":2552:2586  balanceOfETH[msg.sender] -= amount */
+      tag_160
+      swap1
+        /* "contract.sol":2580:2586  amount */
+      dup5
+      swap1
+        /* "contract.sol":2552:2586  balanceOfETH[msg.sender] -= amount */
+      tag_108
+      jump	// in
+    tag_160:
+      swap1
+      swap2
+      sstore
+      pop
+        /* "contract.sol":2596:2621  _mint(msg.sender, amount) */
+      tag_161
+      swap1
+      pop
+        /* "contract.sol":2602:2612  msg.sender */
+      caller
+        /* "contract.sol":2614:2620  amount */
+      dup4
+        /* "contract.sol":2596:2601  _mint */
+      tag_162
+        /* "contract.sol":2596:2621  _mint(msg.sender, amount) */
+      jump	// in
+    tag_161:
+      pop
+        /* "contract.sol":2638:2642  true */
+      0x01
+      swap2
+        /* "contract.sol":2441:2649  function wrap(uint256 amount) public returns (bool) {... */
+      swap1
+      pop
+      jump	// out
+        /* "contract.sol":1771:1971  function _burn(address from, uint256 amount) internal {... */
+    tag_157:
+      sub(shl(0xa0, 0x01), 0x01)
+        /* "contract.sol":1859:1874  balanceOf[from] */
+      dup3
+      and
+      0x00
+      swap1
+      dup2
+      mstore
+        /* "contract.sol":1859:1868  balanceOf */
+      0x04
+        /* "contract.sol":1859:1874  balanceOf[from] */
+      0x20
+      mstore
+      0x40
+      dup2
+      keccak256
+        /* "contract.sol":1859:1884  balanceOf[from] -= amount */
+      dup1
+      sload
+        /* "contract.sol":1878:1884  amount */
+      dup4
+      swap3
+        /* "contract.sol":1859:1874  balanceOf[from] */
+      swap1
+        /* "contract.sol":1859:1884  balanceOf[from] -= amount */
+      tag_164
+      swap1
+        /* "contract.sol":1878:1884  amount */
+      dup5
+      swap1
+        /* "contract.sol":1859:1884  balanceOf[from] -= amount */
+      tag_108
+      jump	// in
+    tag_164:
+      swap3
+      pop
+      pop
+      dup2
+      swap1
+      sstore
+      pop
+        /* "contract.sol":1909:1915  amount */
+      dup1
+        /* "contract.sol":1894:1905  totalSupply */
+      0x03
+      0x00
+        /* "contract.sol":1894:1915  totalSupply -= amount */
+      dup3
+      dup3
+      sload
+      tag_165
+      swap2
+      swap1
+      tag_108
+      jump	// in
+    tag_165:
+      swap1
+      swap2
+      sstore
+      pop
+      pop
+        /* "contract.sol":1930:1964  Transfer(from, address(0), amount) */
+      mload(0x40)
+        /* "#utility.yul":1342:1367   */
+      dup2
+      dup2
+      mstore
+        /* "contract.sol":1953:1954  0 */
+      0x00
+      swap1
+      sub(shl(0xa0, 0x01), 0x01)
+        /* "contract.sol":1930:1964  Transfer(from, address(0), amount) */
+      dup5
+      and
+      swap1
+      0x00
+      dup1
+      mload
+      0x20
+      data_ada389e1fc24a8587c776340efb91b36e675792ab631816100d55df0b5cf3cbc
+      dup4
+      codecopy
+      dup2
+      mload
+      swap2
+      mstore
+      swap1
+        /* "#utility.yul":1330:1332   */
+      0x20
+        /* "#utility.yul":1315:1333   */
+      add
+        /* "contract.sol":1930:1964  Transfer(from, address(0), amount) */
+    tag_166:
+      mload(0x40)
+      dup1
+      swap2
+      sub
+      swap1
+      log3
+        /* "contract.sol":1771:1971  function _burn(address from, uint256 amount) internal {... */
+      pop
+      pop
+      jump	// out
+        /* "contract.sol":1568:1765  function _mint(address to, uint256 amount) internal {... */
+    tag_162:
+      sub(shl(0xa0, 0x01), 0x01)
+        /* "contract.sol":1657:1670  balanceOf[to] */
+      dup3
+      and
+      0x00
+      swap1
+      dup2
+      mstore
+        /* "contract.sol":1657:1666  balanceOf */
+      0x04
+        /* "contract.sol":1657:1670  balanceOf[to] */
+      0x20
+      mstore
+      0x40
+      dup2
+      keccak256
+        /* "contract.sol":1657:1680  balanceOf[to] += amount */
+      dup1
+      sload
+        /* "contract.sol":1674:1680  amount */
+      dup4
+      swap3
+        /* "contract.sol":1657:1670  balanceOf[to] */
+      swap1
+        /* "contract.sol":1657:1680  balanceOf[to] += amount */
+      tag_168
+      swap1
+        /* "contract.sol":1674:1680  amount */
+      dup5
+      swap1
+        /* "contract.sol":1657:1680  balanceOf[to] += amount */
+      tag_111
+      jump	// in
+    tag_168:
+      swap3
+      pop
+      pop
+      dup2
+      swap1
+      sstore
+      pop
+        /* "contract.sol":1705:1711  amount */
+      dup1
+        /* "contract.sol":1690:1701  totalSupply */
+      0x03
+      0x00
+        /* "contract.sol":1690:1711  totalSupply += amount */
+      dup3
+      dup3
+      sload
+      tag_169
+      swap2
+      swap1
+      tag_111
+      jump	// in
+    tag_169:
+      swap1
+      swap2
+      sstore
+      pop
+      pop
+        /* "contract.sol":1726:1758  Transfer(address(0), to, amount) */
+      mload(0x40)
+        /* "#utility.yul":1342:1367   */
+      dup2
+      dup2
+      mstore
+      sub(shl(0xa0, 0x01), 0x01)
+        /* "contract.sol":1726:1758  Transfer(address(0), to, amount) */
+      dup4
+      and
+      swap1
+        /* "contract.sol":1743:1744  0 */
+      0x00
+      swap1
+      0x00
+      dup1
+      mload
+      0x20
+      data_ada389e1fc24a8587c776340efb91b36e675792ab631816100d55df0b5cf3cbc
+      dup4
+      codecopy
+      dup2
+      mload
+      swap2
+      mstore
+        /* "contract.sol":1726:1758  Transfer(address(0), to, amount) */
+      swap1
+        /* "#utility.yul":1330:1332   */
+      0x20
+        /* "#utility.yul":1315:1333   */
+      add
+        /* "contract.sol":1726:1758  Transfer(address(0), to, amount) */
+      tag_166
+        /* "#utility.yul":1196:1373   */
+      jump
+        /* "#utility.yul":14:562   */
+    tag_24:
+        /* "#utility.yul":126:130   */
+      0x00
+        /* "#utility.yul":155:157   */
+      0x20
+        /* "#utility.yul":184:186   */
+      dup1
+        /* "#utility.yul":173:182   */
+      dup4
+        /* "#utility.yul":166:187   */
+      mstore
+        /* "#utility.yul":216:222   */
+      dup4
+        /* "#utility.yul":210:223   */
+      mload
+        /* "#utility.yul":259:265   */
+      dup1
+        /* "#utility.yul":254:256   */
+      0x20
+        /* "#utility.yul":243:252   */
+      dup6
+        /* "#utility.yul":239:257   */
+      add
+        /* "#utility.yul":232:266   */
+      mstore
+        /* "#utility.yul":284:285   */
+      0x00
+        /* "#utility.yul":294:434   */
+    tag_175:
+        /* "#utility.yul":308:314   */
+      dup2
+        /* "#utility.yul":305:306   */
+      dup2
+        /* "#utility.yul":302:315   */
+      lt
+        /* "#utility.yul":294:434   */
+      iszero
+      tag_177
+      jumpi
+        /* "#utility.yul":403:417   */
+      dup6
+      dup2
+      add
+        /* "#utility.yul":399:422   */
+      dup4
+      add
+        /* "#utility.yul":393:423   */
+      mload
+        /* "#utility.yul":369:386   */
+      dup6
+      dup3
+      add
+        /* "#utility.yul":388:390   */
+      0x40
+        /* "#utility.yul":365:391   */
+      add
+        /* "#utility.yul":358:424   */
+      mstore
+        /* "#utility.yul":323:333   */
+      dup3
+      add
+        /* "#utility.yul":294:434   */
+      jump(tag_175)
+    tag_177:
+        /* "#utility.yul":298:301   */
+      pop
+        /* "#utility.yul":483:484   */
+      0x00
+        /* "#utility.yul":478:480   */
+      0x40
+        /* "#utility.yul":469:475   */
+      dup3
+        /* "#utility.yul":458:467   */
+      dup7
+        /* "#utility.yul":454:476   */
+      add
+        /* "#utility.yul":450:481   */
+      add
+        /* "#utility.yul":443:485   */
+      mstore
+        /* "#utility.yul":553:555   */
+      0x40
+        /* "#utility.yul":546:548   */
+      0x1f
+        /* "#utility.yul":542:549   */
+      not
+        /* "#utility.yul":537:539   */
+      0x1f
+        /* "#utility.yul":529:535   */
+      dup4
+        /* "#utility.yul":525:540   */
+      add
+        /* "#utility.yul":521:550   */
+      and
+        /* "#utility.yul":510:519   */
+      dup6
+        /* "#utility.yul":506:551   */
+      add
+        /* "#utility.yul":502:556   */
+      add
+        /* "#utility.yul":494:556   */
+      swap3
+      pop
+      pop
+      pop
+        /* "#utility.yul":14:562   */
+      swap3
+      swap2
+      pop
+      pop
+      jump	// out
+        /* "#utility.yul":567:740   */
+    tag_171:
+        /* "#utility.yul":635:655   */
+      dup1
+      calldataload
+      sub(shl(0xa0, 0x01), 0x01)
+        /* "#utility.yul":684:715   */
+      dup2
+      and
+        /* "#utility.yul":674:716   */
+      dup2
+      eq
+        /* "#utility.yul":664:734   */
+      tag_179
+      jumpi
+        /* "#utility.yul":730:731   */
+      0x00
+        /* "#utility.yul":727:728   */
+      dup1
+        /* "#utility.yul":720:732   */
+      revert
+        /* "#utility.yul":664:734   */
+    tag_179:
+        /* "#utility.yul":567:740   */
+      swap2
+      swap1
+      pop
+      jump	// out
+        /* "#utility.yul":745:999   */
+    tag_28:
+        /* "#utility.yul":813:819   */
+      0x00
+        /* "#utility.yul":821:827   */
+      dup1
+        /* "#utility.yul":874:876   */
+      0x40
+        /* "#utility.yul":862:871   */
+      dup4
+        /* "#utility.yul":853:860   */
+      dup6
+        /* "#utility.yul":849:872   */
+      sub
+        /* "#utility.yul":845:877   */
+      slt
+        /* "#utility.yul":842:894   */
+      iszero
+      tag_181
+      jumpi
+        /* "#utility.yul":890:891   */
+      0x00
+        /* "#utility.yul":887:888   */
+      dup1
+        /* "#utility.yul":880:892   */
+      revert
+        /* "#utility.yul":842:894   */
+    tag_181:
+        /* "#utility.yul":913:942   */
+      tag_182
+        /* "#utility.yul":932:941   */
+      dup4
+        /* "#utility.yul":913:942   */
+      tag_171
+      jump	// in
+    tag_182:
+        /* "#utility.yul":903:942   */
+      swap5
+        /* "#utility.yul":989:991   */
+      0x20
+        /* "#utility.yul":974:992   */
+      swap4
+      swap1
+      swap4
+      add
+        /* "#utility.yul":961:993   */
+      calldataload
+      swap4
+      pop
+      pop
+      pop
+        /* "#utility.yul":745:999   */
+      jump	// out
+        /* "#utility.yul":1378:1706   */
+    tag_40:
+        /* "#utility.yul":1455:1461   */
+      0x00
+        /* "#utility.yul":1463:1469   */
+      dup1
+        /* "#utility.yul":1471:1477   */
+      0x00
+        /* "#utility.yul":1524:1526   */
+      0x60
+        /* "#utility.yul":1512:1521   */
+      dup5
+        /* "#utility.yul":1503:1510   */
+      dup7
+        /* "#utility.yul":1499:1522   */
+      sub
+        /* "#utility.yul":1495:1527   */
+      slt
+        /* "#utility.yul":1492:1544   */
+      iszero
+      tag_186
+      jumpi
+        /* "#utility.yul":1540:1541   */
+      0x00
+        /* "#utility.yul":1537:1538   */
+      dup1
+        /* "#utility.yul":1530:1542   */
+      revert
+        /* "#utility.yul":1492:1544   */
+    tag_186:
+        /* "#utility.yul":1563:1592   */
+      tag_187
+        /* "#utility.yul":1582:1591   */
+      dup5
+        /* "#utility.yul":1563:1592   */
+      tag_171
+      jump	// in
+    tag_187:
+        /* "#utility.yul":1553:1592   */
+      swap3
+      pop
+        /* "#utility.yul":1611:1649   */
+      tag_188
+        /* "#utility.yul":1645:1647   */
+      0x20
+        /* "#utility.yul":1634:1643   */
+      dup6
+        /* "#utility.yul":1630:1648   */
+      add
+        /* "#utility.yul":1611:1649   */
+      tag_171
+      jump	// in
+    tag_188:
+        /* "#utility.yul":1601:1649   */
+      swap2
+      pop
+        /* "#utility.yul":1696:1698   */
+      0x40
+        /* "#utility.yul":1685:1694   */
+      dup5
+        /* "#utility.yul":1681:1699   */
+      add
+        /* "#utility.yul":1668:1700   */
+      calldataload
+        /* "#utility.yul":1658:1700   */
+      swap1
+      pop
+        /* "#utility.yul":1378:1706   */
+      swap3
+      pop
+      swap3
+      pop
+      swap3
+      jump	// out
+        /* "#utility.yul":1711:1891   */
+    tag_46:
+        /* "#utility.yul":1770:1776   */
+      0x00
+        /* "#utility.yul":1823:1825   */
+      0x20
+        /* "#utility.yul":1811:1820   */
+      dup3
+        /* "#utility.yul":1802:1809   */
+      dup5
+        /* "#utility.yul":1798:1821   */
+      sub
+        /* "#utility.yul":1794:1826   */
+      slt
+        /* "#utility.yul":1791:1843   */
+      iszero
+      tag_190
+      jumpi
+        /* "#utility.yul":1839:1840   */
+      0x00
+        /* "#utility.yul":1836:1837   */
+      dup1
+        /* "#utility.yul":1829:1841   */
+      revert
+        /* "#utility.yul":1791:1843   */
+    tag_190:
+      pop
+        /* "#utility.yul":1862:1885   */
+      calldataload
+      swap2
+        /* "#utility.yul":1711:1891   */
+      swap1
+      pop
+      jump	// out
+        /* "#utility.yul":2085:2271   */
+    tag_62:
+        /* "#utility.yul":2144:2150   */
+      0x00
+        /* "#utility.yul":2197:2199   */
+      0x20
+        /* "#utility.yul":2185:2194   */
+      dup3
+        /* "#utility.yul":2176:2183   */
+      dup5
+        /* "#utility.yul":2172:2195   */
+      sub
+        /* "#utility.yul":2168:2200   */
+      slt
+        /* "#utility.yul":2165:2217   */
+      iszero
+      tag_193
+      jumpi
+        /* "#utility.yul":2213:2214   */
+      0x00
+        /* "#utility.yul":2210:2211   */
+      dup1
+        /* "#utility.yul":2203:2215   */
+      revert
+        /* "#utility.yul":2165:2217   */
+    tag_193:
+        /* "#utility.yul":2236:2265   */
+      tag_194
+        /* "#utility.yul":2255:2264   */
+      dup3
+        /* "#utility.yul":2236:2265   */
+      tag_171
+      jump	// in
+    tag_194:
+        /* "#utility.yul":2226:2265   */
+      swap4
+        /* "#utility.yul":2085:2271   */
+      swap3
+      pop
+      pop
+      pop
+      jump	// out
+        /* "#utility.yul":2276:2536   */
+    tag_85:
+        /* "#utility.yul":2344:2350   */
+      0x00
+        /* "#utility.yul":2352:2358   */
+      dup1
+        /* "#utility.yul":2405:2407   */
+      0x40
+        /* "#utility.yul":2393:2402   */
+      dup4
+        /* "#utility.yul":2384:2391   */
+      dup6
+        /* "#utility.yul":2380:2403   */
+      sub
+        /* "#utility.yul":2376:2408   */
+      slt
+        /* "#utility.yul":2373:2425   */
+      iszero
+      tag_196
+      jumpi
+        /* "#utility.yul":2421:2422   */
+      0x00
+        /* "#utility.yul":2418:2419   */
+      dup1
+        /* "#utility.yul":2411:2423   */
+      revert
+        /* "#utility.yul":2373:2425   */
+    tag_196:
+        /* "#utility.yul":2444:2473   */
+      tag_197
+        /* "#utility.yul":2463:2472   */
+      dup4
+        /* "#utility.yul":2444:2473   */
+      tag_171
+      jump	// in
+    tag_197:
+        /* "#utility.yul":2434:2473   */
+      swap2
+      pop
+        /* "#utility.yul":2492:2530   */
+      tag_198
+        /* "#utility.yul":2526:2528   */
+      0x20
+        /* "#utility.yul":2515:2524   */
+      dup5
+        /* "#utility.yul":2511:2529   */
+      add
+        /* "#utility.yul":2492:2530   */
+      tag_171
+      jump	// in
+    tag_198:
+        /* "#utility.yul":2482:2530   */
+      swap1
+      pop
+        /* "#utility.yul":2276:2536   */
+      swap3
+      pop
+      swap3
+      swap1
+      pop
+      jump	// out
+        /* "#utility.yul":2541:2921   */
+    tag_99:
+        /* "#utility.yul":2620:2621   */
+      0x01
+        /* "#utility.yul":2616:2628   */
+      dup2
+      dup2
+      shr
+      swap1
+        /* "#utility.yul":2663:2675   */
+      dup3
+      and
+      dup1
+        /* "#utility.yul":2684:2745   */
+      tag_200
+      jumpi
+        /* "#utility.yul":2738:2742   */
+      0x7f
+        /* "#utility.yul":2730:2736   */
+      dup3
+        /* "#utility.yul":2726:2743   */
+      and
+        /* "#utility.yul":2716:2743   */
+      swap2
+      pop
+        /* "#utility.yul":2684:2745   */
+    tag_200:
+        /* "#utility.yul":2791:2793   */
+      0x20
+        /* "#utility.yul":2783:2789   */
+      dup3
+        /* "#utility.yul":2780:2794   */
+      lt
+        /* "#utility.yul":2760:2778   */
+      dup2
+        /* "#utility.yul":2757:2795   */
+      sub
+        /* "#utility.yul":2754:2915   */
+      tag_201
+      jumpi
+        /* "#utility.yul":2837:2847   */
+      0x4e487b71
+        /* "#utility.yul":2832:2835   */
+      0xe0
+        /* "#utility.yul":2828:2848   */
+      shl
+        /* "#utility.yul":2825:2826   */
+      0x00
+        /* "#utility.yul":2818:2849   */
+      mstore
+        /* "#utility.yul":2872:2876   */
+      0x22
+        /* "#utility.yul":2869:2870   */
+      0x04
+        /* "#utility.yul":2862:2877   */
+      mstore
+        /* "#utility.yul":2900:2904   */
+      0x24
+        /* "#utility.yul":2897:2898   */
+      0x00
+        /* "#utility.yul":2890:2905   */
+      revert
+        /* "#utility.yul":2754:2915   */
+    tag_201:
+      pop
+        /* "#utility.yul":2541:2921   */
+      swap2
+      swap1
+      pop
+      jump	// out
+        /* "#utility.yul":2926:3053   */
+    tag_172:
+        /* "#utility.yul":2987:2997   */
+      0x4e487b71
+        /* "#utility.yul":2982:2985   */
+      0xe0
+        /* "#utility.yul":2978:2998   */
+      shl
+        /* "#utility.yul":2975:2976   */
+      0x00
+        /* "#utility.yul":2968:2999   */
+      mstore
+        /* "#utility.yul":3018:3022   */
+      0x11
+        /* "#utility.yul":3015:3016   */
+      0x04
+        /* "#utility.yul":3008:3023   */
+      mstore
+        /* "#utility.yul":3042:3046   */
+      0x24
+        /* "#utility.yul":3039:3040   */
+      0x00
+        /* "#utility.yul":3032:3047   */
+      revert
+        /* "#utility.yul":3058:3186   */
+    tag_108:
+        /* "#utility.yul":3125:3134   */
+      dup2
+      dup2
+      sub
+        /* "#utility.yul":3146:3157   */
+      dup2
+      dup2
+      gt
+        /* "#utility.yul":3143:3180   */
+      iszero
+      tag_104
+      jumpi
+        /* "#utility.yul":3160:3178   */
+      tag_104
+      tag_172
+      jump	// in
+        /* "#utility.yul":3191:3316   */
+    tag_111:
+        /* "#utility.yul":3256:3265   */
+      dup1
+      dup3
+      add
+        /* "#utility.yul":3277:3287   */
+      dup1
+      dup3
+      gt
+        /* "#utility.yul":3274:3310   */
+      iszero
+      tag_104
+      jumpi
+        /* "#utility.yul":3290:3308   */
+      tag_104
+      tag_172
+      jump	// in
+        /* "#utility.yul":4263:4540   */
+    tag_129:
+        /* "#utility.yul":4330:4336   */
+      0x00
+        /* "#utility.yul":4383:4385   */
+      0x20
+        /* "#utility.yul":4371:4380   */
+      dup3
+        /* "#utility.yul":4362:4369   */
+      dup5
+        /* "#utility.yul":4358:4381   */
+      sub
+        /* "#utility.yul":4354:4386   */
+      slt
+        /* "#utility.yul":4351:4403   */
+      iszero
+      tag_213
+      jumpi
+        /* "#utility.yul":4399:4400   */
+      0x00
+        /* "#utility.yul":4396:4397   */
+      dup1
+        /* "#utility.yul":4389:4401   */
+      revert
+        /* "#utility.yul":4351:4403   */
+    tag_213:
+        /* "#utility.yul":4431:4440   */
+      dup2
+        /* "#utility.yul":4425:4441   */
+      mload
+        /* "#utility.yul":4484:4489   */
+      dup1
+        /* "#utility.yul":4477:4490   */
+      iszero
+        /* "#utility.yul":4470:4491   */
+      iszero
+        /* "#utility.yul":4463:4468   */
+      dup2
+        /* "#utility.yul":4460:4492   */
+      eq
+        /* "#utility.yul":4450:4510   */
+      tag_194
+      jumpi
+        /* "#utility.yul":4506:4507   */
+      0x00
+        /* "#utility.yul":4503:4504   */
+      dup1
+        /* "#utility.yul":4496:4508   */
+      revert
+    stop
+    data_ada389e1fc24a8587c776340efb91b36e675792ab631816100d55df0b5cf3cbc ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef
+
+    auxdata: 0xa26469706673582212204530b336df4e35fab275bcd26cbce276222f50b66f5bca42e018f804b4a7064264736f6c63430008180033
+}

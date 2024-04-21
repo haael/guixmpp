@@ -6,9 +6,11 @@ __all__ = 'PlainFormat',
 
 
 from io import BytesIO
-from math import ceil
+from math import ceil, sqrt
 import cairo
 from re import split as re_split
+from base64 import b64encode
+import PIL.Image
 
 
 class PlainFormat:
@@ -139,22 +141,16 @@ class PlainFormat:
 				offset += self.__text_size + self.__text_spacing
 		
 		elif self.is_binary_document(document):
-			left, top, width, height = box		
-			d = 11
-			xd = ceil(width / d)
-			if xd % 2 == 0:
-				xd += 1
-			yd = ceil(height / d)
-			if yd % 2 == 0:
-				yd += 1
+			left, top, width, height = box
 			
-			ctx.set_source_rgba(0.9, 0.4, 0.9, 0.5)
-			for x in range(xd):
-				for y in range(yd):
-					if (x % 2) or (y % 2): continue
-					ctx.rectangle(left + x * width / xd, top + y * height / yd, width / xd, height / yd)
-					ctx.fill()
-		
+			data = bytes().join(bytes([0, 0, 0, 0]) if _b & (1 << _c) else bytes([255, 255, 255, 0]) for _c in range(8) for _b in document)
+			h = ceil(len(document) / width)
+			pixels = PIL.Image.frombytes('RGBa', (width, h), data).tobytes()
+			pixels += bytes(0 for _n in range(4 * width * h - len(pixels)))
+			image = cairo.ImageSurface.create_for_data(bytearray(pixels), cairo.FORMAT_RGB24, width, h)
+			
+			ctx.set_source_surface(image, 0, 0)
+			ctx.paint()		
 		else:
 			return NotImplemented
 	
@@ -169,54 +165,70 @@ class PlainFormat:
 	def image_dimensions(self, view, document):
 		"Return text dimensions."
 		
-		if not self.is_text_document(document) and not self.is_binary_document(document):
+		if self.is_text_document(document):
+			surface = cairo.RecordingSurface(cairo.Content.COLOR, None)
+			ctx = cairo.Context(surface)
+			ctx.select_font_face(self.__text_font)
+			ctx.set_font_size(self.__text_size)
+			extents = ctx.text_extents(document)
+			return extents.width, self.__text_size + self.__text_spacing
+		elif self.is_binary_document(document):
+			s = len(document) * 8
+			w = ceil(sqrt(s))
+			h = ceil(s / w)
+			return w, h
+		else:
 			return NotImplemented
-		
-		if self.is_binary_document(document):
-			document = document.decode('utf-8')
-		
-		surface = cairo.RecordingSurface(cairo.Content.COLOR, None)
-		ctx = cairo.Context(surface)
-		ctx.select_font_face(self.__text_font)
-		ctx.set_font_size(self.__text_size)
-		extents = ctx.text_extents(document)
-		
-		return extents.width, self.__text_size + self.__text_spacing
 	
 	def image_height_for_width(self, view, document, width):
-		if not self.is_text_document(document) and not self.is_binary_document(document):
+		if self.is_text_document(document):
+			surface = cairo.RecordingSurface(cairo.Content.COLOR, None)
+			ctx = cairo.Context(surface)
+			ctx.select_font_face(self.__text_font)
+			ctx.set_font_size(self.__text_size)
+			
+			lines = 0
+			line = []
+			offset = 0
+			for word in re_split(r'[\r\n\t ]+', document):
+				extents = ctx.text_extents(word)
+				offset += extents.x_advance + 3.4
+				if offset > width:
+					if line:
+						lines += 1
+					line.clear()
+					line.append(word)
+					offset = extents.x_advance
+					if offset > width:
+						lines += 1
+						line.clear()
+						offset = 0
+				else:
+					line.append(word)
+			if line:
+				lines += 1
+			
+			return lines * (self.__text_size + self.__text_spacing)
+		
+		elif self.is_binary_document(document):
+			s = len(document) * 8
+			h = ceil(s / width)
+			return h
+		
+		else:
+			return NotImplemented
+	
+	def image_width_for_height(self, view, document, height):
+		if self.is_text_document(document):
 			return NotImplemented
 		
-		if self.is_binary_document(document):
-			document = document.decode('utf-8')
+		elif self.is_binary_document(document):
+			s = len(document) * 8
+			w = ceil(s / height)
+			return w
 		
-		surface = cairo.RecordingSurface(cairo.Content.COLOR, None)
-		ctx = cairo.Context(surface)
-		ctx.select_font_face(self.__text_font)
-		ctx.set_font_size(self.__text_size)
-		
-		lines = 0
-		line = []
-		offset = 0
-		for word in re_split(r'[\r\n\t ]+', document):
-			extents = ctx.text_extents(word)
-			offset += extents.x_advance + 3.4
-			if offset > width:
-				if line:
-					lines += 1
-				line.clear()
-				line.append(word)
-				offset = extents.x_advance
-				if offset > width:
-					lines += 1
-					line.clear()
-					offset = 0
-			else:
-				line.append(word)
-		if line:
-			lines += 1
-		
-		return lines * (self.__text_size + self.__text_spacing)
+		else:
+			return NotImplemented
 
 
 if __debug__ and __name__ == '__main__':

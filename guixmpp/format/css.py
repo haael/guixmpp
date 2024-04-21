@@ -635,6 +635,8 @@ class CSSFormat:
 
 
 class StyleNode:
+	"CSS document is made of style nodes that have a name and children that could be other style nodes or strings."
+	
 	def __init__(self, name, args):
 		self.name = name
 		self.args = args
@@ -821,24 +823,6 @@ class CSSDocument:
 								if ff[-1] in '\'\"':
 									ff = ff[:-1]
 								font_family.append(ff.strip())
-						#elif subnode.args[0] == 'font-weight' and subnode.args[1].name == 'values':
-						#	for value in subnode.args[1].args:
-						#		if value.name != 'value': continue # warning
-						#		ff = value.args[0].strip()
-						#		if ff[0] in '\'\"':
-						#			ff = ff[1:]
-						#		if ff[-1] in '\'\"':
-						#			ff = ff[:-1]
-						#		font_weight.append(ff.strip())
-						#elif subnode.args[0] == 'font-style' and subnode.args[1].name == 'values':
-						#	for value in subnode.args[1].args:
-						#		if value.name != 'value': continue # warning
-						#		ff = value.args[0].strip()
-						#		if ff[0] in '\'\"':
-						#			ff = ff[1:]
-						#		if ff[-1] in '\'\"':
-						#			ff = ff[:-1]
-						#		font_style.append(ff.strip())
 					
 					if not font_weight:
 						font_weight.append('normal')

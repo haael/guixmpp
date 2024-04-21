@@ -142,11 +142,13 @@ class SVGRender:
 			for (font_family, *_), font_spec in stylesheet.scan_font_faces():
 				loads.append(load_font(font_family, font_spec))
 		await gather(*loads)
+		
+		self.__default_pango_fontmap = PangoCairo.FontMap.get_default()
 		PangoCairo.FontMap.set_default(PangoCairo.FontMap.new())
 	
 	async def on_close_document(self, view, document):
+		PangoCairo.FontMap.set_default(self.__default_pango_fontmap)
 		await self.uninstall_fonts()
-		pass
 	
 	def __stylesheets(self, document):
 		myurl = self.get_document_url(document)
