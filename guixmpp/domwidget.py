@@ -16,11 +16,12 @@ from enum import Enum
 from math import hypot
 from itertools import zip_longest, chain
 from collections import namedtuple, defaultdict
-from asyncio import Lock, get_event_loop, run
+from asyncio import Lock, get_event_loop, get_running_loop, run
 
 
 if __name__ == '__main__':
 	from guixmpp.domevents import *
+	DOMEvent = Event
 	
 	from guixmpp.document import Model, DocumentNotFound
 	
@@ -47,6 +48,7 @@ if __name__ == '__main__':
 
 else:
 	from .domevents import *
+	DOMEvent = Event
 	
 	from .document import Model, DocumentNotFound
 	
@@ -208,7 +210,10 @@ except NameError:
 				loop = None
 			
 			if not loop:
-				run(coro)
+				async def work():
+					DOMEvent._time = get_running_loop().time
+					await coro
+				run(work())
 			elif not loop.is_running():
 				loop.run_until_complete(coro)
 			else:
@@ -314,7 +319,6 @@ if __name__ == '__main__':
 	from aiopath import AsyncPath as Path
 	
 	from guixmpp.mainloop import *
-	from guixmpp.domevents import Event as DOMEvent
 	
 	loop_init()
 		
@@ -341,8 +345,9 @@ if __name__ == '__main__':
 			widget.set_image(None)
 			return None
 		elif event.type_ == 'download':
-			if event.detail.startswith('http:') or event.detail.startswith('https:'):
-				return False
+			#if event.detail.startswith('http:') or event.detail.startswith('https:'):
+			#	return False
+			return True
 		elif event.type_ == 'keydown':
 			if event.code == 'Escape':
 				async with event_lock:
@@ -399,6 +404,7 @@ if __name__ == '__main__':
 	'''
 	async def main():
 		"Display image from http url."
+		DOMEvent._time = get_running_loop().time
 		for n in range(219):
 			images.append(f'https://www.w3.org/Consortium/Offices/Presentations/SVG/{n}.svg')
 		await widget.open(images[image_index])

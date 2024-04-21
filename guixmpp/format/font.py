@@ -2,13 +2,19 @@
 #-*- coding:utf-8 -*-
 
 
-__all__ = 'FondDocument', 'FontFormat'
+__all__ = 'FontDocument', 'FontFormat', 'TTLibError'
 
 
 from io import BytesIO
 from itertools import product
 from fontTools import ttLib
+from fontconfig import Config, query
+from aiopath import Path
+from hashlib import sha3_256
+from asyncio import get_running_loop, Lock
 
+
+TTLibError = ttLib.TTLibError
 
 WINDOWS_ENGLISH_IDS = 3, 1, 0x409
 MAC_ROMAN_IDS = 1, 0, 0
@@ -26,7 +32,11 @@ class FontDocument:
 		self.format_ = format_
 	
 	@property
-	def name(self):
+	def magic_version(self):
+		return self.data[:5]
+	
+	@property
+	def font_family(self):
 		with ttLib.TTFont(BytesIO(self.data)) as font:
 			table = font['name']
 			
@@ -38,8 +48,8 @@ class FontDocument:
 				raise ValueError("Family name not found.")
 			return family_name_rec.toUnicode()
 	
-	@name.setter
-	def name(self, value):
+	@font_family.setter
+	def font_family(self, value):
 		with ttLib.TTFont(BytesIO(self.data)) as font:
 			table = font['name']
 			
@@ -57,8 +67,7 @@ class FontDocument:
 				if name_id == POSTSCRIPT_NAME:
 					rec.string = value.replace(' ', '')
 				elif name_id == TRUETYPE_UNIQUE_ID:
-					# The Truetype Unique ID rec may contain either the PostScript
-					# Name or the Full Name string, so we try both
+					"The Truetype Unique ID rec may contain either the PostScript Name or the Full Name string, so we try both."
 					if ps_name in rec.toUnicode():
 						rec.string = value.replace(' ', '')
 					else:
@@ -70,12 +79,16 @@ class FontDocument:
 			font.save(stream)
 			self.data = stream.getvalue()
 			stream.close()
-	
-	#async def install(self, dir_path):
-	#	await (dir_path / (self.name + '.' + self._format)).write_bytes(self.data)
 
 
 class FontFormat:
+	def __init__(self, *args, font_dir=None, **kwargs):
+		if not font_dir:
+			font_dir = '~/.cache/guixmpp-fonts'
+		self.font_dir = font_dir
+		self.__config = Config.get_current()
+		self.__lock = Lock()
+	
 	def create_document(self, data:bytes, mime_type):
 		if mime_type in ['font/woff', 'application/font-woff', 'application/x-font-woff']:
 			data = self.create_document(data, 'application/octet-stream')
@@ -100,10 +113,42 @@ class FontFormat:
 			return []
 		else:
 			return NotImplemented
+	
+	async def install_font(self, font_doc, font_family):
+		"Install the provided font doc to use under the specified font family."
+		
+		font_family = font_family.replace(':', '_')
+		print("install_font", font_family)
+		
+		font_dir = await Path(self.font_dir).expanduser()
+		await font_dir.mkdir(parents=True, exist_ok=True)
+		font_url = self.get_document_url(font_doc)
+		file_name = sha3_256((font_family + '@' + font_url).encode('utf-8')).hexdigest()[:16]
+		file_path = font_dir / (file_name + '.' + font_doc.format_)
+		
+		if not await file_path.is_file():
+			print(" installing font:", font_family, file_name, font_url[:96])
+			font_doc.font_family = font_family # font family inside the font file might be different, so change it
+			await file_path.write_bytes(font_doc.data)
+		
+		async with self.__lock:
+			await get_running_loop().run_in_executor(None, self.__config.app_font_add_file, str(file_path))
+		
+		assert await self.is_font_installed(font_family), f"Failed to install font: {font_family}"
+		print(" font installed:", font_family)
+	
+	async def is_font_installed(self, font_family):
+		async with self.__lock:
+			return bool(await get_running_loop().run_in_executor(None, query, ':family=' + font_family))
+	
+	async def uninstall_fonts(self):
+		async with self.__lock:
+			await get_running_loop().run_in_executor(None, self.__config.app_font_clear)
 
 
-if __debug__ and __name__ == '__main__':
+if __name__ == '__main__':
 	from base64 import b64decode
+	from asyncio import run
 	
 	print("font format")
 	
@@ -140,9 +185,17 @@ AAA='''
 			else:
 				raise NotImplementedError
 	
-	model = Model()
-	font = model.create_document(b64decode(data), 'font/woff')
-	assert font.name == "slick"
-	font.name = "burp"
-	assert font.name == "burp"
+	async def main():
+		model = Model()
+		font = model.create_document(b64decode(data), 'font/woff')
+		assert font.font_family == "slick", "default font family should be 'slick'"
+		font.font_family = "burp"
+		assert font.font_family == "burp", "font family after name change should be 'burp'"
+		assert not query(':family=slick'), "font 'slick' should not be installed by default"
+		await model.install_font(font, "slick")
+		assert await model.is_font_installed('slick'), "font should be installed under font family name 'slick'"
+		await model.uninstall_fonts()
+		assert not query(':family=slick'), "font 'slick' should be uninstalled"
+	
+	run(main())
 

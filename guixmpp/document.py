@@ -63,6 +63,8 @@ class Model:
 		finally:
 			await self.end_downloads()
 		
+		await self.on_open_document(view, view.__document)
+		
 		event = CustomEvent('open', detail=url)
 		result = view.emit('dom_event', event, view)
 		if isawaitable(result):
@@ -86,8 +88,10 @@ class Model:
 		if result == False:
 			del view.__document, view.__referenced, view.__location
 			return
-		
+			
 		await self.__unload_document(view, url, view)
+		
+		await self.on_close_document(view, view.__document)
 		
 		event = CustomEvent('close', detail=url)
 		result = view.emit('dom_event', event, view)
@@ -260,7 +264,7 @@ class Model:
 				if url != '':
 					data, mime_type = await self.download_document(url)
 				else:
-					path = Path(view.prop_file)
+					path = Path(view.prop_file) # load document set through 'set_file'
 					match path.suffix.lower():
 						case '.svg':
 							mime_type = 'image/svg'
@@ -411,13 +415,20 @@ class Model:
 			return self.get_base_document(url)
 	
 	def are_nodes_ordered(self, ancestor, descendant):
-		return self.__find_impl('are_nodes_ordered', [ancestor, descendant])
+		return self.__find_impl('are_nodes_ordered', (ancestor, descendant))
 	
 	async def begin_downloads(self):
 		await self.__chain_impl_async('begin_downloads', ())
 	
 	async def end_downloads(self):
 		await self.__chain_impl_async('end_downloads', ())
+	
+	async def on_open_document(self, view, document):
+		#print("DOMDocument.on_open_document")
+		await self.__chain_impl_async('on_open_document', (view, document))
+	
+	async def on_close_document(self, view, document):
+		await self.__chain_impl_async('on_close_document', (view, document))
 	
 	#def set_view(self, widget):
 	#	self.__chain_impl('set_view', (widget,))
@@ -432,7 +443,7 @@ class Model:
 		self.__chain_impl('set_location', (widget, url))
 	
 	async def download_document(self, url) -> (bytes, str):
-		return await self.__find_impl_async('download_document', [url])
+		return await self.__find_impl_async('download_document', (url,))
 	
 	def create_document(self, data:bytes, mime_type:str):
 		#print("create_document", len(data), mime_type)

@@ -23,20 +23,17 @@ class DataDownload:
 		except IndexError:
 			mime_type = 'application/octet-stream'
 		
-		try:
-			encoding = headers[1]
-		except IndexError:
-			encoding = ''
+		charset = 'utf-8'
+		for h in headers[1:]:
+			if h.startswith('charset='):
+				charset = h.split('=')[1]
 		
-		raw_data = url[url.index(',') + 1 :]
-		if encoding == 'base64':
-			data = b64decode(raw_data)
-		elif encoding == '':
-			data = unquote(raw_data).encode('utf-8')
-		elif encoding.startswith('charset='):
-			data = unquote(raw_data).encode(encoding.split('=')[1])
+		data = url[url.index(',') + 1 :]
+		
+		if ('base64' in headers[1:]):
+			data = b64decode(data)
 		else:
-			raise ValueError(f"Unknown encoding `{encoding}` trying to decode data url.")
+			data = unquote(data).encode(charset)
 		
 		return data, mime_type
 

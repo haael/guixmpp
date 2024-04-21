@@ -19,6 +19,8 @@ from weakref import WeakKeyDictionary
 from itertools import chain, starmap
 from urllib.parse import quote as url_quote
 from colorsys import hls_to_rgb
+from asyncio import gather
+import fontconfig
 
 import PIL.Image, PIL.ImageFilter
 
@@ -30,10 +32,12 @@ from gi.repository import Pango, PangoCairo
 if __name__ == '__main__':
 	from guixmpp.format.xml import XMLFormat
 	from guixmpp.format.css import CSSFormat
+	from guixmpp.format.font import TTLibError
 	from guixmpp.document import DocumentNotFound
 else:
 	from ..format.xml import XMLFormat
 	from ..format.css import CSSFormat
+	from ..format.font import TTLibError
 	from ..document import DocumentNotFound
 
 
@@ -114,6 +118,35 @@ class SVGRender:
 			return links()
 		else:
 			return NotImplemented
+	
+	async def on_open_document(self, view, document):
+		if not self.is_svg_document(document):
+			return NotImplemented
+		
+		async def load_font(font_family, font_spec):
+			if not await self.is_font_installed(font_family):
+				for spec in font_spec:
+					try:
+						url = spec['url']
+						font = self.get_document(url)
+						#print("font magic: ", repr(font.magic_version))
+						await self.install_font(font, font_family)
+					except (KeyError, TTLibError) as error:
+						print("Could not install font:", error) # TODO: warning
+						continue
+					else:
+						break
+		
+		loads = []
+		for stylesheet in self.__stylesheets(document):
+			for (font_family, *_), font_spec in stylesheet.scan_font_faces():
+				loads.append(load_font(font_family, font_spec))
+		await gather(*loads)
+		PangoCairo.FontMap.set_default(PangoCairo.FontMap.new())
+	
+	async def on_close_document(self, view, document):
+		await self.uninstall_fonts()
+		pass
 	
 	def __stylesheets(self, document):
 		myurl = self.get_document_url(document)
@@ -801,12 +834,12 @@ class SVGRender:
 		node = document.getroot()
 		
 		try:
-			svg_width = self.units(view, node.attrib['width'], percentage=self.get_viewport_width(view)) # TODO: default em size
+			svg_width = self.units(view, node.attrib['width'], percentage=self.get_viewport_width(view), em_size=16) # TODO: default em size
 		except KeyError:
 			svg_width = self.get_viewport_width(view)
 		
 		try:
-			svg_height = self.units(view, node.attrib['height'], percentage=self.get_viewport_height(view)) # TODO: default em size
+			svg_height = self.units(view, node.attrib['height'], percentage=self.get_viewport_height(view), em_size=16) # TODO: default em size
 		except KeyError:
 			svg_height = self.get_viewport_height(view)
 		
@@ -1734,6 +1767,7 @@ class SVGRender:
 		pango_font = Pango.FontDescription()
 		
 		font_family = self.__get_attribute(view, document, ctx, box, node, em_size, 'font-family', 'serif') # FIXME: default font family serif?
+		
 		font_style_attrib = self.__get_attribute(view, document, ctx, box, node, em_size, 'font-style', 'normal')
 		font_weight_attrib = self.__get_attribute(view, document, ctx, box, node, em_size, 'font-weight', 'normal')
 		
@@ -1777,22 +1811,35 @@ class SVGRender:
 		ctx.set_font_size(font_size)
 		pango_font.set_size(font_size * Pango.SCALE / 1.33333)
 		
+		#families = [_f.get_name().lower() for _f in pango_layout.get_context().get_font_map().list_families()]
+		#print(sorted(_f for _f in families if 'noto' not in _f))
+		
 		for family in reversed(font_family.split(',')):
+			family = family.strip()
+			if family[0] in '\'\"':
+				family = family[1:]
+			if family[-1] in '\'\"':
+				family = family[:-1]
+			family = family.replace(':', '_')
+			
 			ctx.select_font_face(family, font_style, font_weight)
+			#print("font-family:", family, family.lower() in families)
 			pango_font.set_family(family)
 			if pango_layout is not None:
 				pango_layout.set_font_description(pango_font)
 	
 	def __font_size(self, view, document, ctx, box, node, em_size):
-		font_size_attrib = self.__get_attribute(view, document, ctx, box, node, em_size, 'font-size', 12)
+		font_size_attrib = self.__get_attribute(view, document, ctx, box, node, em_size, 'font-size', 16) # 16?
 		
 		if font_size_attrib == 'smaller':
 			font_size_attrib = '0.9em'
+		elif font_size_attrib == 'medium':
+			font_size_attrib = '1em'
 		elif font_size_attrib == 'bigger':
 			font_size_attrib = '1.1em'
 		
 		_, _, width, height = box
-		font_size = self.units(view, font_size_attrib, percentage=(width + height) / 2, em_size=em_size)
+		font_size = self.units(view, font_size_attrib, percentage=em_size, em_size=em_size)
 		return font_size
 	
 	def __draw_path(self, view, document, ctx, box, node, em_size):

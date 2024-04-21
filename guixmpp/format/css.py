@@ -11,7 +11,7 @@ if __name__ == '__main__':
 
 from collections import namedtuple, defaultdict
 from enum import Enum
-from itertools import chain		
+from itertools import chain, product
 from lxml.etree import tostring
 
 if __name__ == '__main__':
@@ -264,6 +264,10 @@ class CSSFormat:
 				return css_node
 			elif css_node.name == 'path-operator':
 				return args[0]
+			elif css_node.name == 'separator':
+				return None
+			elif css_node.name == 'importance':
+				return None
 			elif css_node.name == 'selector-tag':
 				if args[0] == '*':
 					return lambda _xml_node: True
@@ -274,58 +278,92 @@ class CSSFormat:
 			elif css_node.name == 'selector-pseudo-class':
 				if args[0] == 'empty':
 					print("Implement pseudoclass: ", args[0])
-					return False
+					return lambda _xml_node: False
 				elif args[0] == 'first-child':
 					print("Implement pseudoclass: ", args[0])
-					return False
+					return lambda _xml_node: False
 				elif args[0] == 'first-of-type':
 					print("Implement pseudoclass: ", args[0])
-					return False
+					return lambda _xml_node: False
 				elif args[0] == 'last-child':
 					print("Implement pseudoclass: ", args[0])
-					return False
+					return lambda _xml_node: False
 				elif args[0] == 'last-of-type':
 					print("Implement pseudoclass: ", args[0])
-					return False
+					return lambda _xml_node: False
 				elif args[0] == 'only-child':
 					print("Implement pseudoclass: ", args[0])
-					return False
+					return lambda _xml_node: False
 				elif args[0] == 'only-of-type':
 					print("Implement pseudoclass: ", args[0])
-					return False
+					return lambda _xml_node: False
 				elif args[0] == 'root':
 					print("Implement pseudoclass: ", args[0])
-					return False
+					return lambda _xml_node: False
 				else:
 					return (lambda _xml_node: (args[0] in get_pseudoclasses(_xml_node)) if (get_pseudoclasses is not None) else False), ('pseudoclass', args[0])
 			elif css_node.name == 'selector-pseudo-class-fn':
 				if args[0] == 'not':
 					print("Implement pseudoclass function: ", args[0])
-					return False
+					return lambda _xml_node: False
 				elif args[0] == 'is':
 					print("Implement pseudoclass function: ", args[0])
-					return False
+					return lambda _xml_node: False
 				elif args[0] == 'has':
 					print("Implement pseudoclass function: ", args[0])
-					return False
+					return lambda _xml_node: False
 				elif args[0] == 'with':
 					print("Implement pseudoclass function: ", args[0])
-					return False
+					return lambda _xml_node: False
 				elif args[0] == 'nth-child':
-					print("Implement pseudoclass function: ", args[0])
-					return False
+					
+					cmp = lambda _n: False
+					
+					try:
+						match args[1]:
+							case ['odd']:
+								cmp = lambda _n: (_n % 2 == 1)
+							case ['even']:
+								cmp = lambda _n: (_n % 2 == 0)
+							case ['n']:
+								cmp = lambda _n: True
+							case [_c]:
+								c = int(_c)
+								cmp = lambda _n: (_n == c)
+							case [_d, 'n']:
+								d = int(_d)
+								cmp = lambda _n: (_n % d == 0)
+							case ['-', 'n', '+', _c]:
+								c = int(_c)
+								cmp = lambda _n: (_n <= c)
+							case [_d, 'n', '+', _c]:
+								c = int(_c)
+								d = int(_d)
+								if d > 1:
+									cmp = lambda _n: (_n % d == c)
+								elif d == 1:
+									cmp = lambda _n: (_n > c)
+								else:
+									cmp = lambda _n: (_n == c)
+							case _:
+								print("Implement pseudoclass function: ", args[0], args[1])
+					except ValueError:
+						print("Implement pseudoclass function: ", args[0], args[1])
+					
+					return lambda _xml_node: cmp(_xml_node.getparent().index(_xml_node) + 1)
+				
 				elif args[0] == 'nth-last-child':
 					print("Implement pseudoclass function: ", args[0])
-					return False
+					return lambda _xml_node: False
 				elif args[0] == 'nth-last-of-type':
 					print("Implement pseudoclass function: ", args[0])
-					return False
+					return lambda _xml_node: False
 				elif args[0] == 'nth-of-type':
 					print("Implement pseudoclass function: ", args[0])
-					return False
+					return lambda _xml_node: False
 				else:
 					print("Implement pseudoclass function: ", args[0])
-					return False
+					return lambda _xml_node: False
 			elif css_node.name == 'selector-pseudo-element':
 				return lambda _xml_node: pseudoelement_test(_xml_node, args[0]) if (pseudoelement_test is not None) else False
 			elif css_node.name == 'selector-attr':
@@ -419,7 +457,7 @@ class CSSFormat:
 			elif css_node.name == 'value':
 				return ''.join(args)
 			elif css_node.name == 'values':
-				return ', '.join(args)
+				return ','.join(_arg for _arg in args if isinstance(_arg, str))
 			elif css_node.name == 'rule':
 				return args
 			elif css_node.name == 'rules':
@@ -558,6 +596,8 @@ class CSSFormat:
 				return 40
 			elif node.name == 'selector-pseudo-element':
 				return 100
+			elif node.name == 'selector-percentage':
+				return 1
 			elif node.name == 'selector-single':
 				return sum(args)
 			elif node.name == 'selector-seq':
@@ -741,17 +781,73 @@ class CSSDocument:
 		for node in self.css_tree.args:
 			try:
 				if node.name == 'atrule-style' and node.args[0] == 'font-face' and node.args[2].name == 'rules':
+					font_family = []
+					font_weight = []
+					props = []
 					for subnode in node.args[2].args:
 						if subnode.name != 'rule':
 							continue
 						elif subnode.args[0] == 'src':
+							prop = {}
 							for subnode2 in subnode.args[1].args:
 								if subnode2.name == 'url':
-									url = subnode2.args[0]
+									prop['url'] = subnode2.args[0]
+								elif subnode2.name == 'function':
+									for value in subnode2.args[1].args:
+										if value.name != 'value': continue
+										
+										for vv in value.args:
+											vv = vv.strip()
+											if vv[0] in '\'\"':
+												vv = vv[1:]
+											if vv[-1] in '\'\"':
+												vv = vv[:-1]
+											
+											prop[subnode2.args[0]] = vv
+								elif subnode2.name == 'separator':
+									if prop:
+										props.append(prop)
+										prop = {}
 								else:
-									print(subnode2)
-						elif subnode.args[0] == 'font-family':
-							...
+									print('subnode2', subnode2.name, subnode2.args) # warning
+							if prop:
+								props.append(prop)
+						elif subnode.args[0] == 'font-family' and subnode.args[1].name == 'values':
+							for value in subnode.args[1].args:
+								if value.name != 'value': continue # warning
+								ff = value.args[0].strip()
+								if ff[0] in '\'\"':
+									ff = ff[1:]
+								if ff[-1] in '\'\"':
+									ff = ff[:-1]
+								font_family.append(ff.strip())
+						#elif subnode.args[0] == 'font-weight' and subnode.args[1].name == 'values':
+						#	for value in subnode.args[1].args:
+						#		if value.name != 'value': continue # warning
+						#		ff = value.args[0].strip()
+						#		if ff[0] in '\'\"':
+						#			ff = ff[1:]
+						#		if ff[-1] in '\'\"':
+						#			ff = ff[:-1]
+						#		font_weight.append(ff.strip())
+						#elif subnode.args[0] == 'font-style' and subnode.args[1].name == 'values':
+						#	for value in subnode.args[1].args:
+						#		if value.name != 'value': continue # warning
+						#		ff = value.args[0].strip()
+						#		if ff[0] in '\'\"':
+						#			ff = ff[1:]
+						#		if ff[-1] in '\'\"':
+						#			ff = ff[:-1]
+						#		font_style.append(ff.strip())
+					
+					if not font_weight:
+						font_weight.append('normal')
+					
+					#if not font_style:
+					#	font_style.append('normal')
+					
+					for fontspec in product(font_family, font_weight):
+						yield fontspec, props
 			except (AttributeError, IndexError):
 				pass
 		
@@ -1188,6 +1284,8 @@ class CSSParser:
 				
 				if token == '!':
 					seq.append(token)
+				elif token in ',;':
+					result.append(StyleNode('separator', token))
 			else:
 				seq.append(token)
 		
@@ -1592,5 +1690,6 @@ if __name__ == '__main__':
 			assert model.is_css_document(tree)
 			assert tree.is_valid()
 			#print(list(model.scan_document_links(tree)))
+			print(dict(tree.scan_font_faces()))
 
 			#profiler.done()

@@ -421,22 +421,22 @@ class MainWindow(BuilderExtension):
 			self.entry_port.set_placeholder_text('5222')
 	
 	@asynchandler
-	async def svg_view_dom_event(self, widget, event):
+	async def svg_view_dom_event(self, widget, event, target):
 		"DOM event handler for non-interactive SVG widgets."
 		
 		if event.type_ == 'warning':
 			print(event)
 		
 		#if event.type_ == 'open':
-		#	widget.set_image(event.target)
+		#	target.set_image(widget.model.get_document(event.target))
 		#
 		#elif event.type_ == 'close':
-		#	widget.set_image(None)
+		#	target.set_image(None)
 		
 		if event.type_ == 'download':
-			if event.target.startswith('data:'):
+			if event.detail.startswith('data:'):
 				return True
-			elif event.target != widget.main_url:
+			elif event.detail != widget.main_url:
 				return False
 	
 	@asynchandler
@@ -600,8 +600,9 @@ if __name__ == '__main__':
 	logger.debug("???")
 	
 	import sys, signal
-	from asyncio import run
+	from asyncio import run, get_running_loop
 	from locale import bindtextdomain, textdomain
+	from guixmpp.domevents import Event as DOMEvent
 	
 	loop_init()
 	
@@ -612,6 +613,7 @@ if __name__ == '__main__':
 	window = MainWindow('messenger.glade', translation)
 	
 	async def main():
+		DOMEvent._time = get_running_loop().time
 		window.listbox_main.select_row(window.listbox_main.get_row_at_index(0))
 		window.show()
 		try:

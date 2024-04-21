@@ -13,14 +13,6 @@ import cairo
 
 
 class DisplayView:
-	#def set_view(self, widget):
-	#	alloc = widget.get_allocation()
-	#	widget.__viewport_width = alloc.width
-	#	widget.__viewport_height = alloc.height
-	#	widget.__dpi = 96 # TODO: get dpi from gtk
-	#	widget.__image = None
-	#	GLib.idle_add(self.update, widget)
-	
 	def set_image(self, widget, image):
 		alloc = widget.get_allocation()
 		widget.__viewport_width = alloc.width

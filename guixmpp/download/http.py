@@ -54,7 +54,11 @@ if _library in ['1', '2']:
 			async with connection.Url(path).get() as request:
 				status, headers = await request.response()
 				request.raise_for_status(status)
-				return (await request.read()), headers['content-type'].split(';')[0].strip()
+				try:
+					ct = headers['content-type'].split(';')[0].strip()
+				except KeyError:
+					ct = 'application/octet-stream'
+				return (await request.read()), ct
 
 
 elif _library == 'aiohttp':
@@ -74,7 +78,11 @@ elif _library == 'aiohttp':
 				return NotImplemented
 			async with self.__client.get(url) as response:
 				response.raise_for_status()
-				return (await response.read()), response.headers['content-type'].split(';')[0].strip()
+				try:
+					ct = response.headers['content-type'].split(';')[0].strip()
+				except KeyError:
+					ct = 'application/octet-stream'
+				return (await response.read()), ct
 
 
 elif _library == 'httpx':
@@ -93,7 +101,11 @@ elif _library == 'httpx':
 			if not (url.startswith('http:') or url.startswith('https:')):
 				return NotImplemented
 			result = await self.__client.get(url)
-			return result.content, result.headers['content-type'].split(';')[0].strip()
+			try:
+				ct = result.headers['content-type'].split(';')[0].strip()
+			except KeyError:
+				ct = 'application/octet-stream'
+			return result.content, ct
 
 
 if __debug__ and __name__ == '__main__':

@@ -53,7 +53,7 @@ def asynchandler(coro):
 		async def guarded_coro(self, *args, **kwargs):
 			try:
 				value = await coro(self, *args, **kwargs)
-			except Exception as error:
+			except BaseException as error:
 				future.set_exception(error)
 				raise
 			else:
@@ -94,8 +94,8 @@ async def loop_run():
 		for task in app_tasks[:]:
 			if task.done():
 				app_tasks.remove(task)
-				if task.exception():
-					raise task.exception()
+				if exc := task.exception():
+					raise exc
 	
 	assert app_future.done()
 	

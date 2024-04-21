@@ -159,7 +159,7 @@ class Event:
 	
 	@staticmethod
 	def _time():
-		raise NotImplementedError("Provide time source by overriding `Event._time = time`")
+		raise NotImplementedError("Provide time source by overriding `Event._time = time.time` or `Event._time = asyncio.get_running_loop().time`")
 	
 	def __init__(self, type_, composed=False, cancelable=False, bubbles=False):
 		self.timeStamp = self._time()

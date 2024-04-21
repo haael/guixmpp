@@ -29,7 +29,7 @@
 </g>
 
 <g transform="translate(0, 200)">
- <rect width="300" height="150" rx="50" x="50" y="25" fill="lightgrey" stroke="blue" stroke-width="10" tabindex="1"/>
+ <rect width="300" height="150" rx="50" x="50" y="25" fill="lightgrey" stroke="blue" stroke-width="10" class="focusing" tabindex="1"/>
  <text x="200" y="100" text-anchor="middle">focus</text>
 </g>
 
