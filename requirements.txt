@@ -2,6 +2,6 @@ aiopath
 h11
 h2
 br
-fontTools
 scramp
+fontTools
 fontconfig-py

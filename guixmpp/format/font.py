@@ -8,6 +8,7 @@ __all__ = 'FontDocument', 'FontFormat', 'TTLibError'
 from io import BytesIO
 from itertools import product
 from fontTools import ttLib
+from fontTools.ttLib import woff2
 from fontconfig import Config, query
 from aiopath import Path
 from hashlib import sha3_256
@@ -114,6 +115,10 @@ class FontFormat:
 		else:
 			return NotImplemented
 	
+	def __open_fds(self, rpath, wpath, fun):
+		with open(rpath, 'rb') as r, open(wpath, 'wb') as w:
+			return fun(r, w)
+	
 	async def install_font(self, font_doc, font_family):
 		"Install the provided font doc to use under the specified font family."
 		
@@ -124,18 +129,28 @@ class FontFormat:
 		await font_dir.mkdir(parents=True, exist_ok=True)
 		font_url = self.get_document_url(font_doc)
 		url_hash = sha3_256(font_url.encode('utf-8')).hexdigest()[:16]
-		file_path = font_dir / (font_family + '.' + url_hash + '.' + font_doc.format_)
 		
-		if not await file_path.is_file():
-			print(" installing font:", font_family, file_path, font_url[:96])
-			font_doc.font_family = font_family # font family inside the font file might be different, so change it
-			await file_path.write_bytes(font_doc.data)
+		if font_doc.format_ in ('woff', 'woff2'):
+			ext = 'ttf'
+		else:
+			ext = font_doc.format_
+		
+		src_file_path = font_dir / (font_family + '.' + url_hash + '.' + font_doc.format_)
+		dst_file_path = font_dir / (font_family + '.' + url_hash + '.' + ext)
 		
 		async with self.__lock:
-			await get_running_loop().run_in_executor(None, self.__config.app_font_add_file, str(file_path))
+			if not await dst_file_path.is_file():			
+				if (src_file_path.is_file == dst_file_path.is_file) or (not await src_file_path.is_file()):
+					font_doc.font_family = font_family # font family inside the font file might be different, so change it
+					await src_file_path.write_bytes(font_doc.data)
+				if font_doc.format_ in ('woff', 'woff2'):
+					assert src_file_path != dst_file_path
+					await get_running_loop().run_in_executor(None, self.__open_fds, str(src_file_path), str(dst_file_path), woff2.decompress)
+			
+			await get_running_loop().run_in_executor(None, self.__config.app_font_add_file, str(dst_file_path))
 		
 		assert await self.is_font_installed(font_family), f"Failed to install font: {font_family}"
-		print(" font installed:", font_family)
+		print(" font installed:", font_family, font_doc.format_)
 	
 	async def is_font_installed(self, font_family):
 		async with self.__lock:

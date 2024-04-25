@@ -1540,12 +1540,11 @@ class SVGRender:
 		
 		text_anchor = self.__get_attribute(view, document, ctx, box, node, em_size, 'text-anchor', 'begin').strip()
 		if text_anchor == 'end':
-			dsx -= ta_width #extents.width
+			dsx -= ta_width
 		elif text_anchor == 'middle':
-			dsx -= ta_width / 2 #extents.width / 2
+			dsx -= ta_width / 2
 		
 		baseline_shift = node.attrib.get('baseline-shift', 'baseline').strip()
-		#baseline_shift = self.__get_attribute(view, document, ctx, box, node, em_size, 'baseline-shift', 'baseline').strip()
 		if baseline_shift == 'sub':
 			font_size = self.__font_size(view, document, ctx, box, node, em_size)
 			dsy += font_size / 2
@@ -1554,7 +1553,6 @@ class SVGRender:
 			dsy -= font_size / 2
 		
 		transform = node.attrib.get('transform', '')
-		
 		if transform:
 			ctx.save()
 			self.__apply_transform(view, document, ctx, box, node, em_size, transform)

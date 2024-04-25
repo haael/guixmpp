@@ -219,7 +219,7 @@ class CSSFormat:
 		elif spec[-2:] == 'ex':
 			if em_size == None:
 				raise ValueError("`em_size` not specified.")
-			scale = em_size * 1.2 # TODO
+			scale = em_size * 0.5 # TODO
 			value = spec[:-2]
 		elif spec[-2:] == 'mm':
 			scale = dpi / 25.4

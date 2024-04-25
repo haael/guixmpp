@@ -144,10 +144,10 @@ class PlainFormat:
 			left, top, width, height = box
 			
 			data = bytes().join(bytes([0, 0, 0, 0]) if _b & (1 << _c) else bytes([255, 255, 255, 0]) for _c in range(8) for _b in document)
-			h = ceil(len(document) / width)
-			pixels = PIL.Image.frombytes('RGBa', (width, h), data).tobytes()
-			pixels += bytes(0 for _n in range(4 * width * h - len(pixels)))
-			image = cairo.ImageSurface.create_for_data(bytearray(pixels), cairo.FORMAT_RGB24, width, h)
+			h = int(ceil(len(document) / width))
+			pixels = PIL.Image.frombytes('RGBa', (int(width), h), data).tobytes()
+			pixels += bytes(0 for _n in range(int(4 * width * h - len(pixels))))
+			image = cairo.ImageSurface.create_for_data(bytearray(pixels), cairo.FORMAT_RGB24, int(width), h)
 			
 			ctx.set_source_surface(image, 0, 0)
 			ctx.paint()		
