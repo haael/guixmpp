@@ -82,6 +82,7 @@ try: # avoid creating DOMWidget twice
 		DOMWidget
 	
 except NameError:
+	
 	class DOMWidget(Gtk.DrawingArea):
 		"Widget implementing Document Object Model."
 		
@@ -380,23 +381,14 @@ if __name__ == '__main__':
 	#'''
 	async def main():
 		"Display images from local directory, switch using left-right cursor key."
-		
 		global images, image_index, model
-		
-		DOMEvent._time = get_running_loop().time
-		
-		widget.model.font_dir = await Path('~/.cache/guixmpp-fonts').expanduser()
-		await widget.model.font_dir.mkdir(parents=True, exist_ok=True)
-		
+		DOMEvent._time = get_running_loop().time		
 		async for dir_ in (Path.cwd() / 'examples').iterdir():
 			async for doc in dir_.iterdir():
 				if doc.suffix not in ('.css', '.svg_'):
 					images.append(doc.as_uri())
-		
-		#images.sort(key=(lambda x: f'{len(x):03d}' + x.lower()))
 		images.sort(key=(lambda x: x.lower()))
 		await widget.open(images[image_index])
-		
 		window.show_all()
 		await loop_run()
 		window.hide()
@@ -417,20 +409,12 @@ if __name__ == '__main__':
 	'''
 	async def main():
 		"Display images from profile directory."
-		
-		global images, image_index, model
-		
-		widget.model.font_dir = await Path('~/.cache/guixmpp-fonts').expanduser()
-		await widget.model.font_dir.mkdir(parents=True, exist_ok=True)
-		
+		global images, image_index, model		
 		async for doc in (Path.cwd() / 'profile').iterdir():
 			if doc.suffix not in ('.css', '.svg_'):
 				images.append(doc.as_uri())
-		
-		#images.sort(key=(lambda x: f'{len(x):03d}' + x.lower()))
 		images.sort(key=(lambda x: x.lower()))
 		await widget.open_document(images[image_index])
-		
 		window.show_all()
 		await loop_run()
 		window.hide()

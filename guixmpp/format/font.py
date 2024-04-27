@@ -83,26 +83,23 @@ class FontDocument:
 
 
 class FontFormat:
+	__supported = {
+		'font/woff':'woff', 'font/woff2':'woff', 'application/font-woff':'woff', 'application/x-font-woff':'woff',
+		'font/ttf':'ttf', 'font/sfnt':'ttf', 'application/font-sfnt':'ttf', 'application/x-font-sfnt':'ttf', 'application/font-ttf':'ttf', 'application/x-font-ttf':'ttf',
+		'font/otf':'otf'
+	}
+	
 	def __init__(self, *args, font_dir=None, **kwargs):
 		if not font_dir:
-			font_dir = '~/.cache/guixmpp-fonts'
+			font_dir = '/tmp/guixmpp-fonts'
 		self.font_dir = font_dir
 		self.__config = Config.get_current()
 		self.__lock = Lock()
 	
 	def create_document(self, data:bytes, mime_type):
-		if mime_type in ['font/woff', 'application/font-woff', 'application/x-font-woff']:
+		if mime_type in self.__supported:
 			data = self.create_document(data, 'application/octet-stream')
-			return FontDocument(data, 'woff')
-		elif mime_type == 'font/woff2':
-			data = self.create_document(data, 'application/octet-stream')
-			return FontDocument(data, 'woff2')
-		elif mime_type in ['font/ttf', 'font/sfnt', 'application/font-sfnt', 'application/x-font-sfnt', 'application/font-ttf', 'application/x-font-ttf']:
-			data = self.create_document(data, 'application/octet-stream')
-			return FontDocument(data, 'ttf')
-		elif mime_type == 'font/otf':
-			data = self.create_document(data, 'application/octet-stream')
-			return FontDocument(data, 'otf')
+			return FontDocument(data, self.__supported[mime_type])
 		else:
 			return NotImplemented
 	
@@ -130,7 +127,7 @@ class FontFormat:
 		font_url = self.get_document_url(font_doc)
 		url_hash = sha3_256(font_url.encode('utf-8')).hexdigest()[:16]
 		
-		if font_doc.format_ in ('woff', 'woff2'):
+		if font_doc.format_ == 'woff':
 			ext = 'ttf'
 		else:
 			ext = font_doc.format_
@@ -143,7 +140,7 @@ class FontFormat:
 				if (src_file_path.is_file == dst_file_path.is_file) or (not await src_file_path.is_file()):
 					font_doc.font_family = font_family # font family inside the font file might be different, so change it
 					await src_file_path.write_bytes(font_doc.data)
-				if font_doc.format_ in ('woff', 'woff2'):
+				if font_doc.format_ == 'woff':
 					assert src_file_path != dst_file_path
 					await get_running_loop().run_in_executor(None, self.__open_fds, str(src_file_path), str(dst_file_path), woff2.decompress)
 			

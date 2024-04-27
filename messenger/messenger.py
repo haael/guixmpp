@@ -52,6 +52,21 @@ class BuilderExtension:
 		parent.remove(old_widget)
 		parent.add(new_widget)
 		setattr(self, name, new_widget)
+	
+	#def all_children(self, type_=Gtk.Widget):
+	#	def iter_children(widget):
+	#		if isinstance(widget, type_):
+	#			yield widget
+	#		if not hasattr(widget, 'get_children'):
+	#			return
+	#		for child in widget.get_children():
+	#			yield from iter_children(child)
+	#	yield from iter_children(self.main_widget)
+	#
+	#async def show_domwidget_files(self):
+	#	for domwidget in self.all_children(DOMWidget):
+	#		if domwidget.get_property('file'):
+	#			await domwidget.open('')
 
 
 class ListBoxWrapper:
@@ -469,6 +484,7 @@ class MainWindow(BuilderExtension):
 		added = Event() # task object added to dictionary
 		
 		sidebar_item = BuilderExtension(self.glade_interface, self.translation, ['sidebar_server'], 'sidebar_server')
+		#await sidebar_item.show_domwidget_files()
 		sidebar_item.entry_account_jid.set_text(jid)
 		
 		async def guarded_task():
@@ -569,6 +585,7 @@ class MainWindow(BuilderExtension):
 	
 	async def show_contact(self, server_jid, contact_jid):
 		sidebar_item = BuilderExtension(self.glade_interface, self.translation, ['sidebar_contact'], 'sidebar_contact')
+		#await sidebar_item.show_domwidget_files()
 		
 		async with self.sidebar_lock:
 			c = None
@@ -614,6 +631,8 @@ if __name__ == '__main__':
 	
 	async def main():
 		DOMEvent._time = get_running_loop().time
+		
+		#await window.show_domwidget_files()
 		window.listbox_main.select_row(window.listbox_main.get_row_at_index(0))
 		window.show()
 		try:

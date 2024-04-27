@@ -1,11 +1,18 @@
 #!/usr/bin/python3
 
+"""
+Asyncio loop implementation based on GLib/Gtk. Uses GLib.idle_add() for scheduling tasks.
+Seamlessly integrates with asynchronous GLib function. (Each asynchronous GLib function will
+behave as it had await inside.)
+"""
+
 
 import gi
 gi.require_version('Gtk', '3.0')
 gi.require_version('GLib', '2.0')
 from gi.repository import Gtk, GLib, Gio
 
+import asyncio
 import asyncio.events
 import asyncio.transports
 
@@ -24,6 +31,17 @@ if __name__ == '__main__':
 	from guixmpp.protocol.dns import AsyncResolver
 else:
 	from .protocol.dns import AsyncResolver
+
+
+#class Future(asyncio.Future):
+#	def __init__(self, *args, **kwargs):
+#		super().__init__(*args, **kwargs)
+#		self.gtk_cancellable = None
+#	
+#	def cancel(self, msg=None):
+#		if self.gtk_cancellable:
+#			self.gtk_cancellable.cancel()
+#		super().cancel(msg=msg)
 
 
 class Handle(asyncio.events.Handle):
@@ -69,6 +87,7 @@ class TimerHandle(asyncio.events.TimerHandle):
 			GLib.Source.remove(self.__source)
 			self.__source = None
 		super().cancel()
+		self._loop._timer_handle_cancelled(self)
 	
 	def cancelled(self):
 		return super().cancelled() or (self.__source is None)
@@ -130,20 +149,17 @@ class BaseTransport(asyncio.transports.BaseTransport):
 	def __event_in(self, channel, condition):
 		if condition & GLib.IO_IN:
 			result = self._data_in(channel)
-			#print('data_in', result)
 		else:
 			result = True
 		
 		if condition & GLib.IO_ERR:
 			if self.__protocol:
 				GLib.idle_add(self._ret_false(self.__protocol.error_received), None)
-			#print('err')
 		
 		if condition & GLib.IO_HUP:
 			if self.__protocol and hasattr(self.__protocol, 'eof_received'):
 				GLib.idle_add(self._ret_false(self.__protocol.eof_received))
 			result = False
-			#print('hup', result)
 		
 		if result is True:
 			return True
@@ -318,7 +334,7 @@ class NetworkTransport(BaseTransport):
 		try:
 			sock.connect(remote_addr)
 		except BlockingIOError:
-			self.__established = Event() #loop.create_future()
+			self.__established = Event()
 			self.watch_out(True)
 			await self.__established.wait()
 			if self.__errno:
@@ -530,7 +546,7 @@ class WriteTransport(BaseTransport, asyncio.transports.WriteTransport):
 		Data may still be received.
 		"""
 		raise NotImplementedError("write_eof")
-
+	
 	def can_write_eof(self):
 		"""Return True if this transport supports write_eof(), False if not."""
 		raise NotImplementedError("can_write_eof")
@@ -566,12 +582,12 @@ class SSLTransport(TCPTransport):
 				sslsock.do_handshake()
 				break
 			except ssl.SSLWantReadError:
-				self.__hands_shaken_in = Event() #loop.create_future()
+				self.__hands_shaken_in = Event()
 				self.watch_in(True)
 				await self.__hands_shaken_in.wait()
 				del self.__hands_shaken_in
 			except ssl.SSLWantWriteError:
-				self.__hands_shaken_out = Event() # loop.create_future()
+				self.__hands_shaken_out = Event()
 				self.watch_out(True)
 				await self.__hands_shaken_out.wait()
 				del self.__hands_shaken_out
@@ -729,7 +745,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		self.__completing = self.create_task(self.__begin_loop())
 		GLib.idle_add(self._check_completing_state)
 		Gtk.main()
-		result = self.__completing.result()
+		self.__completing.result()
 		self.__completing = None
 		
 		self.__completing = future
@@ -741,7 +757,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		self.__completing = self.create_task(self.__end_loop())
 		GLib.idle_add(self._check_completing_state)
 		Gtk.main()
-		result = self.__completing.result()
+		self.__completing.result()
 		self.__completing = None
 		
 		_set_running_loop(None)
@@ -1020,24 +1036,14 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 	def create_unix_server(self, protocol_factory, path, *,
 						   sock=None, backlog=100, ssl=None):
 		"""A coroutine which creates a UNIX Domain Socket server.
-
-		The return value is a Server object, which can be used to stop
-		the service.
-
-		path is a str, representing a file systsem path to bind the
-		server socket to.
-
-		sock can optionally be specified in order to use a preexisting
-		socket object.
-
-		backlog is the maximum number of queued connections passed to
-		listen() (defaults to 100).
-
-		ssl can be set to an SSLContext to enable SSL over the
-		accepted connections.
+		The return value is a Server object, which can be used to stop the service.
+		path is a str, representing a file systsem path to bind the server socket to.
+		sock can optionally be specified in order to use a preexisting socket object.
+		backlog is the maximum number of queued connections passed to listen() (defaults to 100).
+		ssl can be set to an SSLContext to enable SSL over the accepted connections.
 		"""
 		raise NotImplementedError("create_unix_server")
-
+	
 	async def create_datagram_endpoint(self, protocol_factory,
 								 local_addr=None, remote_addr=None, *,
 								 family=0, proto=0, flags=0,
@@ -1137,7 +1143,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		# Can got complicated errors if pass f.fileno(),
 		# close fd in pipe transport then close f and vise versa.
 		raise NotImplementedError("connect_read_pipe")
-
+	
 	def connect_write_pipe(self, protocol_factory, pipe):
 		"""Register write pipe in event loop.
 
@@ -1150,7 +1156,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		# Can got complicated errors if pass f.fileno(),
 		# close fd in pipe transport then close f and vise versa.
 		raise NotImplementedError
-
+	
 	'''
 	def subprocess_shell(self, protocol_factory, cmd, *, stdin=subprocess.PIPE,
 						 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -1162,40 +1168,40 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 						**kwargs):
 		raise NotImplementedError
 	'''
-
+	
 	# Ready-based callback registration methods.
 	# The add_*() methods return None.
 	# The remove_*() methods return True if something was removed,
 	# False if there was nothing to delete.
-
+	
 	def add_reader(self, fd, callback, *args):
 		raise NotImplementedError
-
+	
 	def remove_reader(self, fd):
 		raise NotImplementedError
-
+	
 	def add_writer(self, fd, callback, *args):
 		raise NotImplementedError
-
+	
 	def remove_writer(self, fd):
 		raise NotImplementedError
-
+	
 	# Completion based I/O methods returning Futures.
-
+	
 	def sock_recv(self, sock, nbytes):
 		raise NotImplementedError
-
+	
 	def sock_sendall(self, sock, data):
 		raise NotImplementedError
-
+	
 	def sock_connect(self, sock, address):
 		raise NotImplementedError
-
+	
 	def sock_accept(self, sock):
 		raise NotImplementedError
-
+	
 	# Signal handling.
-
+	
 	def add_signal_handler(self, sig, callback, *args):
 		raise NotImplementedError
 		self.__signals[sig] = GLib.unix_signal_add(sig, callback, *args)
@@ -1204,17 +1210,17 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		raise NotImplementedError
 		GLib.Source.remove(self.__signals[sig])
 		self.__signals[sig] = None
-
+	
 	# Task factory.
-
+	
 	def set_task_factory(self, factory):
 		self.__task_factory = factory
 	
 	def get_task_factory(self):
 		return self.__task_factory
-
+	
 	# Error handlers.
-
+	
 	def get_exception_handler(self):
 		return self.__exception_handler
 	
@@ -1222,7 +1228,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		self.__exception_handler = handler
 	
 	def default_exception_handler(self, context):
-		print(context) # TODO
+		print("exception", context) # TODO
 	
 	def call_exception_handler(self, context):
 		if self.__exception_handler is not None:
@@ -1275,7 +1281,7 @@ class GtkAioEventLoopPolicy(asyncio.events.AbstractEventLoopPolicy):
 		raise NotImplementedError("set_child_watcher")
 
 
-if __debug__ and __name__ == '__main__':
+if __name__ == '__main__':
 	from asyncio import sleep, set_event_loop_policy, run, gather, create_task, get_running_loop
 	from protocol.http.client import Connection1
 	
@@ -1330,10 +1336,10 @@ if __debug__ and __name__ == '__main__':
 	
 	async def testB():
 		async with Connection1('http://www.google.com/') as google:
-			print("http test:", (await google.Url().get())[:32])
-
+			assert (await google.Url().get())[:32] == b'<!doctype html><html itemscope="'
+		
 		async with Connection1('https://github.com/') as github:
-			print("https test:", (await github.Url().get())[:32])
+			assert (await github.Url().get())[:32] == b'\n\n\n\n\n\n<!DOCTYPE html>\n<html\n  la'
 		
 		print("testB", 0)
 		await sleep(1)
@@ -1362,6 +1368,9 @@ if __debug__ and __name__ == '__main__':
 	async def test():
 		await test_executors()
 		await testA()
+		return 'a'
 	
 	a = run(test())
-	print("a=", a)
+	assert a == 'a'
+
+

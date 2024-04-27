@@ -236,7 +236,14 @@ class Model:
 		
 		try:
 			if not me_downloading:
-				await self.__downloading[url].wait()
+				try:
+					async with self.__start_downloading:
+						downloading_event = self.__downloading[url]
+				except KeyError: # downloading ended in the meantime
+					pass
+				else:
+					await downloading_event.wait()
+				
 				try:
 					return self.get_document(url)
 				except DocumentNotFound as error:
@@ -326,9 +333,10 @@ class Model:
 				self.documents[url] = document = result
 		
 		finally:
-			async with self.__start_downloading:
-				self.__downloading[url].set()
-				del self.__downloading[url]
+			if me_downloading:
+				async with self.__start_downloading:
+					self.__downloading[url].set()
+					del self.__downloading[url]
 		
 		if url.startswith('data:'):
 			return document

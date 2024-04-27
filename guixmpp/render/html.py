@@ -44,9 +44,9 @@ class BoxTree:
 	
 	def debug_print(self, level=0):
 		if isinstance(self.content, str):
-			print(level * " ", repr(self.content), self.node.tag, self.pseudoelement, self.style)
+			print(level * " ", repr(self.content), self.style)
 		else:
-			print(level * " ", self.node.tag, self.pseudoelement, self.style)
+			print(level * " ", self.node.tag if hasattr(self.node, 'tag') else '-', self.style)
 			for child in self.content:
 				child.debug_print(level + 1)
 
@@ -83,7 +83,6 @@ class HTMLRender:
 			else:
 				raise ValueError("Not an HTML document.")
 		else:
-
 			return NotImplemented
 	
 	def is_html_document(self, document):
@@ -188,14 +187,15 @@ class HTMLRender:
 		
 		xmlns_html = self.__xmlns(document)
 		
-		from lxml.etree import tostring
-		print(type(document), tostring(document))
+		#from lxml.etree import tostring
+		#print(type(document), tostring(document))
 		
 		if hasattr(document, 'getroot'): # render whole HTML document
 			node = document.findall(f'.//{{{xmlns_html}}}body')[0] # FIXME
 		else: # render one HTML tag
 			node = document
 			document = document.getroottree()
+			#print("render html tag:", node, document)
 		
 		ctx.rectangle(*box)
 		ctx.clip()
@@ -203,26 +203,24 @@ class HTMLRender:
 		ctx.set_source_rgb(0, 0, 0)
 		ctx.set_line_width(1)
 		ctx.select_font_face('serif')
-		#ctx.set_font_size(16)
+		ctx.set_font_size(16)
 		
 		body = self.__create_box(view, document, ctx, node, None, xmlns_html)[0]
 		
 		body.style['x'] = 0
 		body.style['y'] = 0
 		
-		#print("render box", box)
-		
 		root = BoxTree(None, None, [body])
-		root.style['font-size'] = 16
+		root.style['font-size'] = em_size = self.__get_attribute(view, document, node, None, 'font-size', 16)
+		root.style['font-family'] = self.__get_attribute(view, document, node, None, 'font-family', 'serif')
 		root.style['width'] = root.style['viewport-width'] = box[2]
 		root.style['viewport-height'] = box[3]
 		root.style['x'] = box[0]
 		root.style['y'] = box[1]
 		
-		self.__position_box_inline(view, ctx, document, body, root)
-		#body.debug_print()
+		self.__position_box_inline(view, ctx, document, body, root, em_size)
 		self.__position_box_block(view, ctx, document, body, root)
-		
+		root.debug_print()
 		self.__render_box(view, ctx, document, body, root)
 	
 	def poke_image(self, view, document, ctx, box, px, py):
@@ -279,42 +277,43 @@ class HTMLRender:
 				raise NotImplementedError
 		
 		if display != 'inline' or node.tag == f'{{{xmlns}}}body':
-			result = [BoxTree(node, pseudoelement, result)]
+			box = BoxTree(node, pseudoelement, result)
+			result = [box]
 		
 		return result
 	
-	def __position_box_inline(self, view, ctx, document, box, parent):
+	def __position_box_inline(self, view, ctx, document, box, parent, em_size):
 		node = box.node
 		pseudoelement = box.pseudoelement
 		
-		em_size = parent.style['font-size']
 		parent_width = parent.style['width']
+		font_size = em_size
 		
 		if node is not None:
-			font_size_attr = self.__get_attribute(view, document, node, pseudoelement, 'font-size', '1em')
-			try:
-				float(font_size_attr)
-			except ValueError:
-				em_size = font_size = self.units(view, font_size_attr, em_size=em_size)
-			else: # font size can't be a unit-less number
-				font_size = em_size
-		else:
-			font_size = em_size
-		
-		assert em_size != None
-		
-		box.style['font-size'] = font_size
+			font_size_attr = self.__get_attribute(view, document, node, pseudoelement, 'font-size', None)
+			if font_size_attr:
+				try:
+					float(font_size_attr) # font size can't be a unit-less number
+				except ValueError:
+					box.style['font-size'] = font_size = self.units(view, font_size_attr, em_size=em_size)
+			
+			font_family = self.__get_attribute(view, document, node, pseudoelement, 'font-family', None)
+			if font_family:
+				box.style['font-family'] = font_family
 		
 		if isinstance(box.content, str):
 			line_height_attr = self.__get_attribute(view, document, node, pseudoelement, 'line-height', '1.25')
 			try:
 				line_height = float(line_height_attr) * font_size
-			except ValueError:
-				line_height = self.units(view, line_height_attr, percentage=font_size, em_size=em_size)
+			except (TypeError, ValueError):
+				line_height = self.units(view, line_height_attr, percentage=font_size, em_size=font_size)
 			
-			word_spacing = self.units(view, self.__get_attribute(view, document, node, pseudoelement, 'word-spacing', '0.25em'), em_size=em_size)
+			word_spacing = self.units(view, self.__get_attribute(view, document, node, pseudoelement, 'word-spacing', '0.25em'), em_size=font_size)
 			
-			ctx.set_font_size(font_size)
+			if font_family:
+				ctx.select_font_face(font_family)
+			if font_size:
+				ctx.set_font_size(font_size)
 			extents = ctx.text_extents(box.content)
 			
 			box.style.update({'line-height':line_height, 'word-spacing':word_spacing, 'width':extents.width, 'height':extents.height, 'x-advance':extents.x_advance})
@@ -324,7 +323,7 @@ class HTMLRender:
 			if width_attr == 'auto':
 				width = parent_width
 			else:
-				width = self.units(view, width_attr, percentage=parent_width, em_size=em_size)
+				width = self.units(view, width_attr, percentage=parent_width, em_size=font_size)
 			
 			box.style['width'] = width
 			
@@ -334,7 +333,7 @@ class HTMLRender:
 			fh = 0
 			line = []
 			for child in box.content:
-				self.__position_box_inline(view, ctx, document, child, box)
+				self.__position_box_inline(view, ctx, document, child, box, em_size)
 				
 				assert 'x-advance' in child.style or 'height' in child.style
 				
@@ -351,7 +350,7 @@ class HTMLRender:
 					child.style['x'] = x
 					x += child.style['x-advance'] + child.style['word-spacing']
 					lh = max(lh, child.style['line-height'])
-					fh = max(fh, child.style['font-size'])
+					fh = max(fh, child.style['font-size'] if 'font-size' in child.style else font_size)
 				
 				else:
 					for lchild in line:
@@ -379,6 +378,9 @@ class HTMLRender:
 		box.style['x'] += parent.style['x']
 		box.style['y'] += parent.style['y']
 		
+		#box.style['font-face'] = self.__get_attribute(view, document, node, None, 'font-face', 16)
+		#box.style['font-size'] = self.__get_attribute(view, document, node, None, 'font-size', 16)
+		
 		if not isinstance(box.content, str):
 			for child in box.content:
 				self.__position_box_block(view, ctx, document, child, box)
@@ -388,16 +390,30 @@ class HTMLRender:
 		pseudoelement = box.pseudoelement
 		
 		if isinstance(box.content, str):
-			font_size = box.style['font-size']
 			x = box.style['x']
 			y = box.style['y']
-			
-			ctx.set_font_size(font_size)
 			ctx.move_to(x, y)
+			
+			try:
+				font_size = box.style['font-size']
+			except KeyError:
+				pass
+			else:
+				ctx.set_font_size(font_size)
+			
+			try:
+				font_face = box.style['font-face']
+			except KeyError:
+				pass
+			else:
+				ctx.set_font_face(font_face)
+			
 			ctx.show_text(box.content)
 		else:
 			for child in box.content:
+				ctx.save()
 				self.__render_box(view, ctx, document, child, box)
+				ctx.restore()
 	
 	def __get_attribute(self, view, document, node, pseudoelement, attr, default):
 		value = self.__search_attribute(view, document, node, pseudoelement, attr)
