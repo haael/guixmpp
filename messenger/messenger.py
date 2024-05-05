@@ -14,7 +14,7 @@ from guixmpp import *
 
 from locale import gettext
 from secrets import choice as random_choice
-from aiopath import Path
+if not 'Path' in globals(): from aiopath import Path
 from asyncio import sleep, Event, Lock, create_task
 from lxml.etree import fromstring, tostring
 from random import randint
@@ -53,20 +53,19 @@ class BuilderExtension:
 		parent.add(new_widget)
 		setattr(self, name, new_widget)
 	
-	#def all_children(self, type_=Gtk.Widget):
-	#	def iter_children(widget):
-	#		if isinstance(widget, type_):
-	#			yield widget
-	#		if not hasattr(widget, 'get_children'):
-	#			return
-	#		for child in widget.get_children():
-	#			yield from iter_children(child)
-	#	yield from iter_children(self.main_widget)
-	#
-	#async def show_domwidget_files(self):
-	#	for domwidget in self.all_children(DOMWidget):
-	#		if domwidget.get_property('file'):
-	#			await domwidget.open('')
+	def all_children(self, type_=Gtk.Widget):
+		def iter_children(widget):
+			if isinstance(widget, type_):
+				yield widget
+			if not hasattr(widget, 'get_children'):
+				return
+			for child in widget.get_children():
+				yield from iter_children(child)
+		yield from iter_children(self.main_widget)
+	
+	async def close_domwidgets(self):
+		for domwidget in self.all_children(DOMWidget):
+			await domwidget.close()
 
 
 class ListBoxWrapper:
@@ -140,6 +139,32 @@ class DataForm:
 		grid.pack_start(box, width=3)
 		box.pack_start(Gtk.Button(gettext("Cancel")))
 		box.pack_end(Gtk.Button(gettext("Submit")))
+
+
+class SidebarContact(BuilderExtension):
+	def __init__(self, interface, translation):
+		super().__init__(interface, translation, ['sidebar_contact'], 'sidebar_contact')
+		self.listbox_row = None
+	
+	def set_listbox_row(self, listbox_row):
+		self.listbox_row = listbox_row
+	
+	def focus_entry(self, entry, event):
+		self.listbox_row.get_parent().select_row(self.listbox_row)
+
+
+def return_false(meth):
+	def newm(*args):
+		meth(*args)
+		return False
+	return newm
+
+
+def return_true(meth):
+	def newm(*args):
+		meth(*args)
+		return True
+	return newm
 
 
 class MainWindow(BuilderExtension):
@@ -405,7 +430,7 @@ class MainWindow(BuilderExtension):
 	@asynchandler
 	async def set_presence(self, widget):
 		if widget.get_active():
-			print(widget.props.name)
+			logger.debug(f"set presence: {widget.props.name}")
 			await sleep(1/20)
 			self.popover_presence.hide()
 	
@@ -440,7 +465,7 @@ class MainWindow(BuilderExtension):
 		"DOM event handler for non-interactive SVG widgets."
 		
 		if event.type_ == 'warning':
-			print(event)
+			logger.warning(f"{event}")
 		
 		#if event.type_ == 'open':
 		#	target.set_image(widget.model.get_document(event.target))
@@ -461,14 +486,7 @@ class MainWindow(BuilderExtension):
 		async with self.sidebar_lock:
 			page_name, *params = self.sidebar[listrow.get_index()]
 			self.stack_main.set_visible_child_name(page_name)
-		print("sidebar item selected:", page_name)
-	
-	@staticmethod
-	def __return_false(meth):
-		def newm(*args):
-			meth(*args)
-			return False
-		return newm
+		logger.debug(f"sidebar item selected: {page_name}")
 	
 	async def create_xmpp_connection(self, jid, host, port, legacy_ssl, password, register):
 		if jid in self.xmpp_connections:
@@ -480,11 +498,10 @@ class MainWindow(BuilderExtension):
 		config['register'] = register
 		config['legacy_ssl'] = legacy_ssl
 		
-		ready = Event() # connection established or failure
 		added = Event() # task object added to dictionary
+		ready = get_running_loop().create_future() # connection established or failure
 		
 		sidebar_item = BuilderExtension(self.glade_interface, self.translation, ['sidebar_server'], 'sidebar_server')
-		#await sidebar_item.show_domwidget_files()
 		sidebar_item.entry_account_jid.set_text(jid)
 		
 		async def guarded_task():
@@ -492,21 +509,27 @@ class MainWindow(BuilderExtension):
 			assert jid in self.xmpp_connections
 			try:
 				await self.xmpp_connection_task(ready, jid, password, config, sidebar_item)
+			except Exception as error:
+				if not ready.done(): # connected yet?
+					ready.set_exception(error) # propagate early exceptions to `create_xmpp_connection`
+				else:
+					raise # propagage late exceptions to `destroy_xmpp_connection`
 			finally:
-				GLib.idle_add(self.__return_false(self.destroy_xmpp_connection), jid, ready)
+				GLib.idle_add(return_false(self.destroy_xmpp_connection), jid)
 		
 		self.xmpp_connections[jid] = create_task(guarded_task())
-
+		
 		async with self.sidebar_lock:		
 			self.listbox_main.add(sidebar_item.main_widget)
 			self.sidebar.append(('page_server', jid))
+			self.listbox_main.select_row(self.listbox_main.get_row_at_index(len(self.sidebar) - 1))
 		
-		print("xmpp connection created")
+		logger.info("xmpp connection created")
 		added.set()
-		await ready.wait()
+		await ready # may raise exception from `guarded_task`
 	
 	@asynchandler
-	async def destroy_xmpp_connection(self, jid, ready):
+	async def destroy_xmpp_connection(self, jid):
 		async with self.sidebar_lock:
 			c = None
 			for n, (label, njid) in enumerate(self.sidebar):
@@ -519,22 +542,17 @@ class MainWindow(BuilderExtension):
 		
 		task = self.xmpp_connections[jid]
 		del self.xmpp_connections[jid]
-		ready.set()
-		
-		await task
-		print("xmpp connection destroyed")
+		await task # may raise exception from `guarded_task` TODO: show error popup
+		logger.info("xmpp connection destroyed")
 	
 	async def xmpp_connection_task(self, ready, jid, password, config, sidebar_item):
-		print("xmpp_connection_task", config)
+		logger.debug(f"xmpp_connection_task {config}")
 		
 		async with XMPPClient(jid, config=config) as client:
-			print("client")
 			if not config['register']:
 				client.password = password
 			
 			async for stanza in client:
-				print("stanza", stanza)
-				
 				if stanza is None:
 					continue
 				elif hasattr(stanza, 'tag'):
@@ -549,25 +567,25 @@ class MainWindow(BuilderExtension):
 				
 				if event == 'ready':
 					if not client.established:
-						print("Connection failed.")
-						break
+						raise ConnectionError("Connection failed.")
 					elif not client.authenticated:
-						print("Login failed or not attempted.")
-						break
+						raise ConnectionError("Login failed or not attempted.")
 					else:
-						print("Login successful.")
-						ready.set()
+						logger.info(f"Login successful: {jid}")
+						ready.set_result(None) # mark login success
 					
 					@client.handle
 					async def get_roster(expect):
 						roster, = await client.query('get', None, fromstring('<query xmlns="jabber:iq:roster"/>'))
 						sidebar_item.label_account_contacts.set_text(str(len(roster)))
 						for item in roster:
-							print("roster item:", tostring(item))
+							logger.debug(f"roster item: {tostring(item)}")
 							contact_sidebar_item = await self.show_contact(jid, item.attrib['jid'])
 							if contact_sidebar_item:
-								name = item.attrib.get('name', item.attrib['jid'])
-								contact_sidebar_item.entry_contact_name.set_text(name)
+								try:
+									contact_sidebar_item.entry_contact_name.set_text(item.attrib['name'])
+								except KeyError:
+									contact_sidebar_item.entry_contact_name.set_placeholder_text(item.attrib['jid'])
 								contact_sidebar_item.domwidget_contact_avatar.set_property('file', f'assets/anon{randint(1, 11)}.jpeg')
 						#client.stop()
 				
@@ -576,16 +594,15 @@ class MainWindow(BuilderExtension):
 					async def register(expect):
 						reg_query, = await client.query('get', None, fromstring('<query xmlns="jabber:iq:register"/>'))
 						for child in reg_query:
-							print("registration field:", tostring(child))
+							logger.debug(f"registration field: {tostring(child)}")
 						client.stop()
 						# TODO: fill out password
 				
 				else:
-					print(f"Ignored event: {event}")
+					logger.info(f"Ignored event: {event}")
 	
 	async def show_contact(self, server_jid, contact_jid):
-		sidebar_item = BuilderExtension(self.glade_interface, self.translation, ['sidebar_contact'], 'sidebar_contact')
-		#await sidebar_item.show_domwidget_files()
+		sidebar_item = SidebarContact(self.glade_interface, self.translation)
 		
 		async with self.sidebar_lock:
 			c = None
@@ -604,15 +621,17 @@ class MainWindow(BuilderExtension):
 			
 			self.listbox_main.insert(sidebar_item.main_widget, c)
 			self.sidebar.insert(c, ('page_contact', (server_jid, contact_jid)))
+			sidebar_item.set_listbox_row(self.listbox_main.get_row_at_index(c))
 			
 			return sidebar_item
 
 
 if __name__ == '__main__':
+	import sys
 	from logging import DEBUG, StreamHandler, basicConfig
 	basicConfig(level=DEBUG)
 	logger.setLevel(DEBUG)
-	logger.addHandler(StreamHandler())
+	#logger.addHandler(StreamHandler())
 	
 	logger.debug("???")
 	
@@ -632,13 +651,13 @@ if __name__ == '__main__':
 	async def main():
 		DOMEvent._time = get_running_loop().time
 		
-		#await window.show_domwidget_files()
 		window.listbox_main.select_row(window.listbox_main.get_row_at_index(0))
 		window.show()
 		try:
 			await loop_run()
 		finally:
 			window.hide()
+		await window.close_domwidgets()
 	
 	window.main_widget.connect('destroy', lambda window: loop_quit())
 	signal.signal(signal.SIGTERM, lambda signum, frame: loop_quit())

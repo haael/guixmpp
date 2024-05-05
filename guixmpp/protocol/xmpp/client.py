@@ -174,9 +174,14 @@ class XMPPClient:
 			
 			if self.established:
 				logger.info("Waiting for end tag...")
-			while True:
-				if await self.recv_stanza() == None:
-					break
+				
+				end_timeout = 4
+				try:
+					while True:
+						if await wait_for(self.recv_stanza(), end_timeout) == None:
+							break
+				except TimeoutError:
+					logger.warning("Timeout waiting for stream end tag.")
 			
 			self.established = False
 			self.authenticated = False

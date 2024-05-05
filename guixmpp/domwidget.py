@@ -74,15 +74,15 @@ else:
 	from .view.pointer import PointerView
 
 
-try: # avoid creating DOMWidget twice
+try: # avoid defining DOMWidget twice
 	if __name__ == '__main__':
 		import guixmpp
 		DOMWidget = guixmpp.DOMWidget
 	else:
 		DOMWidget
-	
+
 except NameError:
-	
+
 	class DOMWidget(Gtk.DrawingArea):
 		"Widget implementing Document Object Model."
 		
@@ -93,13 +93,13 @@ except NameError:
 		}
 		
 		__gproperties__ = {
-			'keyboard_input' : (GObject.TYPE_BOOLEAN, "Keyboard input", "Whether the widget accepts keyboard input.", False, GObject.PARAM_READWRITE),
-			'pointer_input' : (GObject.TYPE_BOOLEAN, "Pointer input", "Whether the widget accepts pointer input.", False, GObject.PARAM_READWRITE),
-			'file_download' : (GObject.TYPE_BOOLEAN, "File download", "Whether the widget supports `file:` scheme granting access to local filesystem.", False, GObject.PARAM_READWRITE),
-			'http_download' : (GObject.TYPE_BOOLEAN, "HTTP download", "Whether the widget supports `http(s):` scheme granting access to network.", False, GObject.PARAM_READWRITE),
-			'auto_show' : (GObject.TYPE_BOOLEAN, "Auto show", "Whether the loaded image should be shown automatically.", True, GObject.PARAM_READWRITE),
-			'url' : (GObject.TYPE_STRING, "URL", "URL to load; the right scheme must be supported.", None, GObject.PARAM_READWRITE),
-			'file' : (GObject.TYPE_STRING, "File", "File to load; works even if `file:` scheme is disabled.", None, GObject.PARAM_READWRITE)
+			'keyboard_input' : (GObject.TYPE_BOOLEAN, "Keyboard input", "Whether the widget accepts keyboard input.", False, GObject.ParamFlags.READWRITE),
+			'pointer_input' : (GObject.TYPE_BOOLEAN, "Pointer input", "Whether the widget accepts pointer input.", False, GObject.ParamFlags.READWRITE),
+			'file_download' : (GObject.TYPE_BOOLEAN, "File download", "Whether the widget supports `file:` scheme granting access to local filesystem.", False, GObject.ParamFlags.READWRITE),
+			'http_download' : (GObject.TYPE_BOOLEAN, "HTTP download", "Whether the widget supports `http(s):` scheme granting access to network.", False, GObject.ParamFlags.READWRITE),
+			'auto_show' : (GObject.TYPE_BOOLEAN, "Auto show", "Whether the loaded image should be shown automatically.", True, GObject.ParamFlags.READWRITE),
+			'url' : (GObject.TYPE_STRING, "URL", "URL to load; the right scheme must be supported.", None, GObject.ParamFlags.READWRITE),
+			'file' : (GObject.TYPE_STRING, "File", "File to load; works even if `file:` scheme is disabled.", None, GObject.ParamFlags.READWRITE)
 		}
 		
 		def __init__(self, file_=None, url=None, keyboard_input=False, pointer_input=False, file_download=False, http_download=False, chrome=None, auto_show=True):
@@ -165,7 +165,7 @@ except NameError:
 			self.connections.append(self.connect('configure-event', self.model.handle_event, 'display'))
 			self.connections.append(self.connect('motion-notify-event', self.model.handle_event, 'motion'))
 			self.connections.append(self.connect('button-press-event', self.model.handle_event, 'button'))
-			self.connections.append(self.connect('button-release-event',self.model.handle_event, 'button'))
+			self.connections.append(self.connect('button-release-event', self.model.handle_event, 'button'))
 			#self.connections.append(self.connect('clicked', self.model.handle_event, 'click'))
 			#self.connections.append(self.connect('auxclicked', self.model.handle_event, 'click'))
 			#self.connections.append(self.connect('dblclicked', self.model.handle_event, 'click'))
@@ -317,14 +317,14 @@ except NameError:
 if __name__ == '__main__':
 	import signal
 	from asyncio import run, Lock, get_running_loop
-	from aiopath import AsyncPath as Path
+	if 'Path' not in globals(): from aiopath import Path
 	
 	from guixmpp.mainloop import *
 	
 	loop_init()
-		
+	
 	window = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
-	window.set_title('SVG test widget')
+	window.set_title("SVG test widget")
 	widget = DOMWidget(keyboard_input=True, pointer_input=True, file_download=True, http_download=True, auto_show=False, chrome='chrome')
 	window.add(widget)
 	

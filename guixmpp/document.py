@@ -494,7 +494,7 @@ if __name__ == '__main__':
 	from collections import deque
 	
 	from asyncio import run, Event
-	from aiopath import AsyncPath as Path
+	if 'Path' not in globals(): from aiopath import Path
 	
 	from guixmpp.format.plain import PlainFormat
 	from guixmpp.format.xml import XMLFormat
