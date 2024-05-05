@@ -37,11 +37,11 @@ if _library == '':
 
 elif _library == 'gbulb':
 	def loop_init():
-		set_event_loop_policy(asyncio_glib.GLibEventLoopPolicy())
+		gbulb.install(gtk=True)
 
 elif _library == 'asyncio_glib':
 	def loop_init():
-		gbulb.install(gtk=True)
+		set_event_loop_policy(asyncio_glib.GLibEventLoopPolicy())
 
 
 def asynchandler(coro):
