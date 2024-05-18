@@ -634,9 +634,9 @@ class ThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
 		
 		self.futures = []
 		
-		print(dir(GLib.ThreadPool))
+		#print(dir(GLib.ThreadPool))
 		pool = GLib.ThreadPool()
-		pool.func = self.__run
+		#pool.func = GLib.Func(self.__run)
 		pool.set_max_threads(max_workers)
 		self.pool = pool
 	
@@ -680,6 +680,110 @@ class ThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
 	
 	def __del__(self):
 		self.pool.free(True, False)
+'''
+
+
+'''
+class ConcurrentFuture(concurrent.futures.Future):
+	def __init__(self, thread):
+		self.thread = thread
+	
+	def cancel(self):
+		pass
+	
+	def cancelled(self):
+		pass
+	
+	def running(self):
+		return False
+	
+	def done(self):
+		...
+	
+	def __wait(self, timeout):
+		result, error = self.thread.join()
+	
+	def result(self, timeout=None):
+		if hasattr(self, '_exception'):
+			raise self._exception
+		else:
+			return self._result
+	
+	def exception(self, timeout=None):
+		if hasattr(self, '_exception'):
+			return self._exception
+		else:
+			return None
+	
+	def add_done_callback(self, fn):
+		...
+	
+	def set_running_or_notify_cancel(self):
+		...
+	
+	def set_result(self, result):
+		...
+	
+	def set_exception(self, exception):
+		...
+
+
+class ThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
+	def __init__(self, max_workers=1):
+		self.threads = {}
+		self.futures = []
+		self.max_workers = max_workers
+		
+		#print(dir(GLib.ThreadPool))
+		#pool = GLib.ThreadPool()
+		#pool.func = GLib.Func(self.__run)
+		#pool.set_max_threads(max_workers)
+		#self.pool = pool
+	
+	def __run(self, data, user_data):
+		future, fun, args, kwargs = data
+		
+		try:
+			value = fun(*args, **kwargs)
+		except Exception as error:
+			future.set_exception(error)
+		else:
+			future.set_result(value)
+	
+	def __done(self, future):
+		self.futures.remove(future)
+	
+	def submit(self, fun, *args, **kwargs):
+		future = ConcurrentFuture()
+		self.futures.append(future)
+		future.add_done_callback(self.__done)
+		#self.pool.push((future, fun, args, kwargs))
+		
+		thread = GLib.Thread.new(self.__fun.__name__, self.__run, (future, fun, args, kwargs))
+		self.threads.append(thread)
+		return future
+	
+	def map(self, fun, *iterables, timeout=None, chunksize=1):
+		futures = []
+		for iterable in iterables:
+			futures.append(self.submit(fun, iterable))
+		for future in futures:
+			yield future.result()
+	
+	def shutdown(self, wait=True, cancel_futures=False):
+		if wait:
+			for future in list(self.futures):
+				try:
+					future.result()
+				except:
+					pass
+		if cancel_futures:
+			for future in list(self.futures):
+				future.cancel()
+	
+	def __del__(self):
+		self.pool.free(True, False)
+
 '''
 
 
@@ -1290,28 +1394,28 @@ if __name__ == '__main__':
 	def some_work_1():
 		z = 0
 		for m in range(10):
-			print("1", m, z)
+			print("some_work_1", m, z)
 			for n in range(100000):
-				z *= z + 1
-				z += n
-				z %= 3456789
+				z ^= z >> 5 + z << 3
+				z ^= n ** 2
+				z %= 999997
 		return z
 	
 	def some_work_2():
 		z = 1
 		for m in range(10):
-			print("2", m, z)
+			print("some_work_2", m, z)
 			for n in range(100000):
-				z *= z + 1
-				z += n
-				z %= 9876542
+				z ^= z >> 6 + z << 4
+				z ^= n ** 2
+				z %= 999993
 		return z
 	
 	async def test_executors():
 		a = get_running_loop().run_in_executor(None, some_work_1)
 		b = get_running_loop().run_in_executor(None, some_work_2)
 		ab = await gather(a, b)
-		assert ab == [2394038, 882611]
+		assert ab == [285292, 591580], str(ab)
 	
 	async def testA():
 		print("testA", 0)

@@ -2,7 +2,7 @@
 
 """
 Asyncio path support. This library mimicks the interface of aiopath but uses GLib calls instead of spawning a thread on each async call.
-Should be faster than aiopath, but works only with gtkaio.
+Should be faster than aiopath, but works only when Gtk mainloop is running.
 """
 
 raise NotImplementedError("Module not ready yet")
@@ -15,6 +15,171 @@ from gi.repository import Gio, GLib
 from asyncio import Future, get_running_loop
 
 import pathlib
+
+
+class AsyncIOCall:
+	def __init__(self, init=None, finish=None):
+		self._init = init
+		self._finish = finish
+	
+	def init(self, *args, cancellable, on_result):
+		self._init(*args, cancellable=cancellable, on_result=on_result)
+	
+	def finish(self, obj, task):
+		return self._finish(obj, task)
+	
+	def __call__(self, *args):
+		future = get_running_loop().create_future()
+		cancellable = Gio.Cancellable()
+		
+		def on_done(future):
+			if future.cancelled():
+				cancellable.cancel() # cancel Gio operation
+		
+		future.add_done_callback(on_done)
+		
+		def on_result(obj, task):
+			try:
+				result = self.finish(obj, task)
+			except GLib.Error as error:
+				future.set_exception(error)
+			else:
+				future.set_result(result)
+		
+		self.init(*args, cancellable=cancellable, on_result=on_result)
+		
+		return future
+
+
+class File:
+	def __init__(self, path, mode, buffering, encoding, errors, newline):
+		self.gfile = Gio.File.new_for_path(str(path))
+		self.read_buffer = deque()
+		self.mode = mode
+		self.buffering = buffering
+		self.encoding = encoding
+		self.errors = errors
+		self.newline = newline
+	
+	def __del__(self):
+		if hasattr(self, 'stream'):
+			raise ValueError(f"Lost reference to open file: {self.gfile}") # will be logged
+	
+	__open_readwrite = AsyncIOCall((lambda gfile, *args, cancellable, on_result: gfile.open_readwrite_async(*args, cancellable, on_result)), (lambda gfile, task: gfile.open_readwrite_finish(task)))
+	
+	async def open(self):
+		self.stream = await self.__open_readwrite(self.gfile)
+		self.read_stream = self.stream.get_input_stream()
+		self.write_stream = self.stream.get_output_stream()
+	
+	__close = AsyncIOCall((lambda stream, *args, cancellable, on_result: stream.close_async(*args, cancellable, on_result)), (lambda stream, task: stream.close_finish(task)))
+	
+	async def close(self):
+		await self.__close(self.stream)
+		del self.stream, self.read_stream, self.write_stream
+		self.read_buffer.clear()
+	
+	async def __aenter__(self):
+		await self.open()
+		return self
+	
+	async def __aexit__(self, *args):
+		await self.close()
+	
+	async def __aiter__(self):
+		while True:
+			line = await self.readline()
+			if not line:
+				break
+			yield line
+	
+	async def is_eof(self):
+		raise NotImplementedError
+	
+	__read = AsyncIOCall((lambda stream, *args, cancellable, on_result: stream.read_async(*args, cancellable, on_result)), (lambda stream, task: stream.read_finish(task)))
+	
+	async def read(self, n):
+		if self.read_stream:
+			m = 0
+			for k, s in self.read_buffer.items():
+				m += len(s)
+				if m > n:
+					r = self.read_buffer[:k + 1]
+					del self.read_buffer[:k + 1]
+					t = r[-1][:m - n]
+					u = r[-1][m - n:]
+					self.read_buffer.insert(0, u)
+					result = b"".join(r + [t])
+					break
+			else:
+				result = b"".join(self.read_buffer)
+				self.read_buffer.clear()
+			
+			if self.encoding:
+				return result.encode(self.encoding)
+			else:
+				return result
+		
+		result = await self.__read(self.read_stream, n, GLib.PRIORITY_DEFAULT)
+		if self.encoding:
+			return result.encode(self.encoding)
+		else:
+			return result
+	
+	async def readline(self):
+		while self.newline not in self.read_buffer[-1]: # FIXME: handle case when multi-char newline spans many items
+			r = await self.__read(self.read_stream, 1024, GLib.PRIORITY_DEFAULT)
+			if not r:
+				s = self.read_buffer[:]
+				self.read_buffer.clear()
+				result = b"".join(s)
+				if self.encoding:
+					return result.encode(self.encoding)
+				else:
+					return result
+			else:
+				self.read_buffer.append(r)
+		
+		r = self.read_buffer[:-2]		
+		del self.read_buffer[:-2]
+		
+		i = self.read_buffer[-1].index(self.newline)
+		s = self.read_buffer[-1][:i]
+		del self.read_buffer[-1][:i]
+		
+		result = b"".join(r + [s])
+		if self.encoding:
+			return result.encode(self.encoding)
+		else:
+			return result
+	
+	__read_all = AsyncIOCall((lambda stream, *args, cancellable, on_result: stream.read_all_async(*args, cancellable, on_result)), (lambda stream, task: stream.read_all_finish(task)))
+	
+	async def read_all(self):
+		t = await self.__read_all(self.read_stream, GLib.PRIORITY_DEFAULT)
+		result = b"".join(list(self.read_stream.values()) + [t])
+		self.read_stream.clear()
+		
+		if self.encoding:
+			return result.encode(self.encoding)
+		else:
+			return result
+	
+	__write = AsyncIOCall((lambda stream, *args, cancellable, on_result: stream.write_async(*args, cancellable, on_result)), (lambda stream, task: stream.write_finish(task)))
+	
+	async def write(self, data):
+		return await self.__write(self.write_stream, data, len(data), GLib.PRIORITY_DEFAULT)
+	
+	__write_all = AsyncIOCall((lambda stream, *args, cancellable, on_result: stream.write_all_async(*args, cancellable, on_result)), (lambda stream, task: stream.write_all_finish(task)))
+	
+	async def write_all(self, data):
+		return await self.__write_all(self.write_stream, data, len(data), GLib.PRIORITY_DEFAULT)
+	
+	async def seek(self):
+		raise NotImplementedError
+	
+	async def tell(self):
+		raise NotImplementedError
 
 
 class PurePath(pathlib.PurePosixPath):
@@ -114,53 +279,14 @@ class Path(pathlib.Path, PurePath):
 	async def is_symlink(self) -> bool:
 		raise NotImplementedError
 	
+	__enumerate_children = AsyncIOCall((lambda gfile, *args, cancellable, on_result: gfile.enumerate_children_async(*args, cancellable, on_result)), (lambda obj, task: obj.enumerate_children_finish(task)))
+	__next_files = AsyncIOCall((lambda enumerator, *args, cancellable, on_result: enumerator.next_files_async(*args, cancellable, on_result)), (lambda enumerator, task: enumerator.next_files_finish(task)))
+	
 	async def iterdir(self):
-		path = Gio.File.new_for_path(str(self))
-		
-		future1 = get_running_loop().create_future()
-		cancellable1 = Gio.Cancellable()
-		
-		def on_done1(future):
-			if future.cancelled():
-				cancellable1.cancel()
-		
-		future1.add_done_callback(on_done1)
-		
-		def on_result1(stream, task):
-			try:
-				enumerator = stream.enumerate_children_finish(task)
-			except GLib.Error as error:
-				future1.set_exception(error)
-			else:
-				future1.set_result(enumerator)
-		
-		path.enumerate_children_async(Gio.FILE_ATTRIBUTE_STANDARD_NAME, 0, GLib.PRIORITY_DEFAULT, cancellable1, on_result1)
-		
-		enumerator = await future1
-		
+		enumerator = await self.__enumerate_children(Gio.File.new_for_path(str(self)), Gio.FILE_ATTRIBUTE_STANDARD_NAME, 0, GLib.PRIORITY_DEFAULT)
 		something = True
 		while something:
-			future2 = get_running_loop().create_future()
-			cancellable2 = Gio.Cancellable()
-			
-			def on_done2(future):
-				if future.cancelled():
-					cancellable2.cancel()
-			
-			future2.add_done_callback(on_done2)
-			
-			def on_result2(enumerator, task):
-				try:
-					file_list = enumerator.next_files_finish(task)
-				except GLib.Error as error:
-					future2.set_exception(error)
-				else:
-					future2.set_result(file_list)
-			
-			enumerator.next_files_async(4, GLib.PRIORITY_DEFAULT, cancellable2, on_result2)
-			
-			file_list = await future2
-			
+			file_list = await self.__next_files(enumerator, 4, GLib.PRIORITY_DEFAULT) # read 4 items at once
 			something = False
 			for f in file_list:
 				something = True
@@ -178,62 +304,30 @@ class Path(pathlib.Path, PurePath):
 	async def mkdir(self, mode=0o777, parents=False, exist_ok=False):
 		raise NotImplementedError
 	
-	#def open(self, mode=FileMode, buffering=-1, encoding=None, errors=None, newline=None):
-	#	raise NotImplementedError
+	def open(self, mode=FileMode, buffering=-1, encoding=None, errors=None, newline=None):
+		return File(self, mode, buffering, encoding, errors, newline)
 	
 	async def owner(self):
 		raise NotImplementedError
 	
-	async def read_bytes(self):
-		path = Gio.File.new_for_path(str(self))
-		future = get_running_loop().create_future()
-		cancellable = Gio.Cancellable()
-		
-		def on_done(future):
-			if future.cancelled():
-				cancellable.cancel()
-		
-		future.add_done_callback(on_done)
-		
-		def on_result(stream, task):
-			try:
-				result = stream.load_contents_finish(task)
-			except GLib.Error as error:
-				future.set_exception(error)
-			else:
-				future.set_result(result.contents)
-		
-		path.load_contents_async(cancellable, on_result)
-		
-		return await future
+	__load_contents = AsyncIOCall((lambda gfile, *args, cancellable, on_result: gfile.load_contents_async(*args, cancellable, on_result)), (lambda stream, task: stream.load_contents_finish(task)))
+	
+	async def read_bytes(self):		
+		return (await self.__load_contents(Gio.File.new_for_path(str(self)))).contents
+	
+	__replace_contents = AsyncIOCall((lambda gfile, *args, cancellable, on_result: gfile.replace_contents_async(*args, cancellable, on_result)), (lambda stream, task: stream.replace_contents_finish(task)))
 	
 	async def write_bytes(self, data):
-		path = Gio.File.new_for_path(str(self))
-		future = get_running_loop().create_future()
-		cancellable = Gio.Cancellable()
-		
-		def on_done(future):
-			if future.cancelled():
-				cancellable.cancel()
-		
-		future.add_done_callback(on_done)
-		
-		def on_result(stream, task):
-			try:
-				success = stream.replace_contents_finish(task)
-			except GLib.Error as error:
-				future.set_exception(error)
-			else:
-				if success:
-					future.set_result(len(data))
-				else:
-					future.set_result(0)
-		
-		path.replace_contents_async(data, len(data), None, False, 0, cancellable, on_result)
-		
-		return await future
+		success = await self.__replace_contents(Gio.File.new_for_path(str(self)), data, len(data), None, False, 0)
+		if success:
+			return len(data)
+		else:
+			return 0
 	
 	async def read_text(self, encoding=None, errors=None):
+		raise NotImplementedError
+	
+	async def write_text(self, data, encoding=None, errors=None, newline=None):
 		raise NotImplementedError
 	
 	async def readlink(self):
@@ -268,9 +362,6 @@ class Path(pathlib.Path, PurePath):
 		raise NotImplementedError
 	
 	async def unlink(self, missing_ok=False):
-		raise NotImplementedError
-	
-	async def write_text(self, data, encoding=None, errors=None, newline=None):
 		raise NotImplementedError
 
 

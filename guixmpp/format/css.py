@@ -239,7 +239,7 @@ class CSSFormat:
 		elif spec[-2:] == 'em':
 			if em_size == None:
 				raise ValueError("`em_size` not specified.")
-			scale = em_size
+			scale = em_size * 1
 			value = spec[:-2]
 		elif spec[-1:] == 'Q':
 			scale = dpi / (2.54 * 40)
@@ -482,7 +482,7 @@ class CSSFormat:
 				per_pseudoclass = defaultdict(set)
 				per_selector = defaultdict(list)
 				all_selectors = set()
-								
+				
 				for zarg in args:
 					if zarg is None: continue
 					for (tag, id_, classes, pseudoclasses), tester, selector, rules in zarg:

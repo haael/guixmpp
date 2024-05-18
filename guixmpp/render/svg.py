@@ -69,12 +69,12 @@ class SVGRender:
 	xmlns_sodipodi = 'http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd'
 	xmlns_inkscape = 'http://www.inkscape.org/namespaces/inkscape'
 	
-	web_colors = CSSFormat.web_colors
+	#web_colors = CSSFormat.web_colors
 	
 	supported_svg_features = frozenset({'http://www.w3.org/TR/SVG11/feature#Shape'})
 	supported_svg_extensions = frozenset()
 	
-	use_pango = True
+	use_pango = True # required for non-Latin scripts, may be False if using only left-to-right horizontal Latin scripts
 	
 	def __init__(self, *args, **kwargs):
 		self.__css_matcher = WeakKeyDictionary()
@@ -646,7 +646,7 @@ class SVGRender:
 		
 		if visibility != 'hidden':
 			filter_ = self.__get_attribute(view, document, ctx, box, node, em_size, 'filter', None)
-			filter_ = None # TODO
+			#filter_ = None # TODO
 		else:
 			filter_ = None
 		
@@ -1716,9 +1716,9 @@ class SVGRender:
 				
 				if txt == " ": # avoid creating many text paths with nothing but a space (usually separating <tspan/> elements)
 					if pango_layout is not None:
-						space_width = 3.1 / 1.33333 # spacing used by pango
+						space_width = 3.0 # spacing used by pango
 					else:
-						space_width = 3.4 # spacing used by cairo
+						space_width = 3.0 # spacing used by cairo
 					node_right = node_x + space_width					
 					text_right = max(text_right, node_right) if text_right is not None else node_right
 					x_advance += space_width

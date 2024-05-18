@@ -201,7 +201,7 @@ except NameError:
 			if self.prop_url:
 				coro = self.open(self.prop_url)
 			elif self.prop_file:
-				coro = self.open('')
+				coro = self.open('') # opening empty url will use 'file' property fallback
 			else:
 				return
 			
@@ -419,6 +419,5 @@ if __name__ == '__main__':
 		await loop_run()
 		window.hide()
 	#'''
-
 	
 	run(main())
