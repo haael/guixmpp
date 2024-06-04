@@ -25,7 +25,23 @@ class FileDownload:
 		if not mimetypes.inited:
 			raise RuntimeError("Run `mimetypes.init()` first.")
 		
-		path = Path(unquote(url[5:]))
+		components = url.split('/')
+		assert components[0] == 'file:'
+		if components[1]: # KDE format file:/path/to/file.ext
+			if components[2] == '.': # relative path
+				path_name = '/'.join(components[1:])
+			else: # absolute path
+				path_name = '/' + '/'.join(components[1:])
+		else: # file://<host>/path/to/file.ext
+			host = components[2]
+			if not host or host == 'localhost': # absolute path
+				path_name = '/' + '/'.join(components[3:])
+			elif host == '.': # relative path
+				path_name = '/'.join(components[3:])
+			else:
+				raise ValueError("Only localhost files are supported.")
+		
+		path = Path(unquote(path_name))
 		mime_type, encoding = mimetypes.guess_type(str(path))
 		if not mime_type:
 			mime_type = 'application/octet-stream'

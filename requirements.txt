@@ -3,5 +3,6 @@ h11
 h2
 br
 scramp
+OMEMO
 fontTools
 fontconfig-py

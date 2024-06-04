@@ -316,7 +316,7 @@ except NameError:
 
 if __name__ == '__main__':
 	import signal
-	from asyncio import run, Lock, get_running_loop
+	from asyncio import run, Lock, get_running_loop, create_task
 	if 'Path' not in globals(): from aiopath import Path
 	
 	from guixmpp.mainloop import *
@@ -390,7 +390,9 @@ if __name__ == '__main__':
 		images.sort(key=(lambda x: x.lower()))
 		await widget.open(images[image_index])
 		window.show_all()
+		print("start")
 		await loop_run()
+		print("stop")
 		window.hide()
 	#'''
 	

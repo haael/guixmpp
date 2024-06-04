@@ -58,7 +58,10 @@ class Connection:
 			raise exc # TODO: raise proper exception
 	
 	def data_received(self, data):
-		self.__arrived.set()
+		try:
+			self.__arrived.set()
+		except AttributeError:
+			pass # TODO: warning: data received on closed connection
 	
 	async def send_data(self, data):
 		await self.__writing.wait()

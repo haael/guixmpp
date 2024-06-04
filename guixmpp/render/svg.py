@@ -129,7 +129,6 @@ class SVGRender:
 					try:
 						url = spec['url']
 						font = self.get_document(url)
-						#print("font magic: ", repr(font.magic_version))
 						await self.install_font(font, font_family)
 					except (KeyError, TTLibError) as error:
 						print("Could not install font:", error) # TODO: warning
@@ -366,7 +365,6 @@ class SVGRender:
 				pseudoclasses.add('hover')
 				if self.get_buttons(view):
 					pseudoclasses.add('active')
-			#print("pseudoclasses", pseudoclasses, self.get_buttons(view))
 		return pseudoclasses
 	
 	def __get_classes(self, node):
@@ -459,20 +457,16 @@ class SVGRender:
 				view.__attr_cache[node][attr] = result
 			return result
 		else:
-			#raise KeyError(f"Attribute {attr} not found in any of ancestors")
 			return None
 	
 	def __render_group(self, view, document, ctx, box, node, em_size, pointer):
 		"Render SVG group element and its subelements."
-		
-		#print("render group", node.tag, ('#' + node.attrib['id']) if 'id' in node.attrib else '', node.attrib.get('class', ''), box, len(list(node)))
 		
 		em_size = self.__font_size(view, document, ctx, box, node, em_size)
 		
 		display = self.__get_attribute(view, document, ctx, box, node, em_size, 'display', 'block').lower()
 		visibility = self.__get_attribute(view, document, ctx, box, node, em_size, 'visibility', 'visible').lower()
 		
-		#print(visibility, display)
 		if visibility == 'collapse' or display == 'none':
 			return defaultdict(list)
 		
@@ -555,16 +549,13 @@ class SVGRender:
 		
 		hover_nodes = []
 		
-		#print("iter children", node.tag)
 		for n, child in enumerate(node):
-			#print(" child", n, child.tag, ('#' + child.attrib['id']) if 'id' in child.attrib else '', "of", node.tag)
 			if not isinstance(child.tag, str) or (child.tag == f'{{{self.xmlns_svg}}}symbol' and child not in self.__instantiated_symbols) or child.tag == f'{{{self.xmlns_sodipodi}}}namedview':
 				continue
 			
 			while child.tag in [f'{{{self.xmlns_svg}}}use', f'{{{self.xmlns_svg}}}switch']:
 				if child.tag == f'{{{self.xmlns_svg}}}use':
 					try:
-						#print("construct use")
 						child = self.__construct_use(document, child)
 					except DocumentNotFound as error:
 						self.emit_warning(view, "Root document not found.", node)
@@ -646,7 +637,7 @@ class SVGRender:
 		
 		if visibility != 'hidden':
 			filter_ = self.__get_attribute(view, document, ctx, box, node, em_size, 'filter', None)
-			#filter_ = None # TODO
+			filter_ = None # TODO (filters temporary disabled)
 		else:
 			filter_ = None
 		
@@ -815,13 +806,7 @@ class SVGRender:
 			if key in target.attrib:
 				del target.attrib[key]
 		node.getparent().replace(node, target) # TODO: shadow tree
-		
-		#target = OverlayElement(node.getparent(), node, original, original.tag, add_attrib, del_attrib)
-		#print("construct use:", node, original, target.attrib)
-		
-		#if target.tag == f'{{{self.xmlns_svg}}}symbol':
-		#	target.tag = f'{{{self.xmlns_svg}}}g'
-		
+			
 		if target.tag == f'{{{self.xmlns_svg}}}symbol':
 			self.__instantiated_symbols.append(target)
 		
@@ -1259,8 +1244,6 @@ class SVGRender:
 					except KeyError:
 						href = None
 			
-			#print("gradient", target.tag, target.attrib)
-			
 			if target.tag == f'{{{self.xmlns_svg}}}linearGradient':					
 				try:
 					spec = target.attrib['x1']
@@ -1512,14 +1495,50 @@ class SVGRender:
 		return txt.lstrip()
 	
 	def __render_text(self, view, document, ctx, box, textnode, em_size, pointer):
+		rotate = 0
+		
+		writing_mode = self.__get_attribute(view, document, ctx, box, textnode, em_size, 'writing-mode', None)
+		
+		if writing_mode in ('horizontal-tb', 'lr-tb', 'lr'):
+			if writing_mode != 'horizontal-tb':
+				direction = 'ltr'
+			rotate = 0
+		elif writing_mode in ('rl-tb', 'rl'):
+			direction = 'rtl'
+			rotate = 0
+		elif writing_mode in ('vertical-lr', 'tb-lr'):
+			if writing_mode != 'vertical-lr':
+				direction = 'ltr'
+			rotate = 90
+		elif writing_mode in ('vertical-rl', 'tb-rl', 'tb'):
+			if writing_mode != 'vertical-rl':
+				direction = 'ltr'
+			rotate = 90
+		#elif writing_mode in ('bt-rl', 'bt-lr'): # obsolete
+		#	direction = 'rtl'
+		#	rotate = 90
+		else:
+			direction = None
+			rotate = 0
+		
+		#direction = self.__get_attribute(view, document, ctx, box, textnode, em_size, 'direction', direction)
+		
 		if self.use_pango:
 			pango_layout = PangoCairo.create_layout(ctx)
+			if rotate == 90:
+				pango_layout.get_context().set_base_gravity(Pango.Gravity.EAST)
+			direction = None
 		else:
 			pango_layout = None
-		textspec = self.__produce_text(view, document, ctx, box, textnode, em_size, '', 0, 0, pango_layout)
-		return self.__render_text_spec(view, document, ctx, box, textspec, em_size, None, pango_layout, pointer)
+		
+		try:
+			ctx.save()
+			textspec = self.__produce_text(view, document, ctx, box, textnode, em_size, '', 0, 0, pango_layout, rotate)
+			return self.__render_text_spec(view, document, ctx, box, textspec, em_size, None, pango_layout, pointer, rotate)
+		finally:
+			ctx.restore()
 	
-	def __render_text_spec(self, view, document, ctx, box, textspec, em_size, ta_width, pango_layout, pointer):
+	def __render_text_spec(self, view, document, ctx, box, textspec, em_size, ta_width, pango_layout, pointer, rotate):
 		node, txt_paths, tx, ty, extents = textspec
 		
 		# TODO: support links
@@ -1578,17 +1597,25 @@ class SVGRender:
 		for spec in txt_paths:
 			if spec[0] is not None: continue
 			
-			_, txt, sx, sy, sextents = spec
-			sx += dsx
-			sy += dsy
+			_, txt, zsx, zsy, sextents = spec
+			
+			ctx.move_to(zsx, zsy)
+			if rotate == 90: # vertical text
+				ctx.save()
+				ctx.rotate(math.radians(rotate))
 			
 			if pango_layout is not None:
+				ctx.rel_move_to(dsx, dsy - pango_layout.get_baseline() / Pango.SCALE)
+				
 				pango_layout.set_text(txt)
-				ctx.move_to(sx, sy - pango_layout.get_baseline() / Pango.SCALE)
+				PangoCairo.update_context(ctx, pango_layout.get_context())
+				pango_layout.context_changed()
 				PangoCairo.layout_path(ctx, pango_layout)
 			else:
-				ctx.move_to(sx, sy)
 				ctx.text_path(txt)
+			
+			if rotate == 90: # vertical text
+				ctx.restore()
 			
 			has_fill, has_stroke = self.__apply_paint(view, document, ctx, box, node, em_size, (visibility != 'hidden'))
 			
@@ -1603,7 +1630,7 @@ class SVGRender:
 		
 		for spec in txt_paths:
 			if spec[0] is None: continue
-			hover_nodes.extend(self.__render_text_spec(view, document, ctx, box, spec, em_size, ta_width, pango_layout, pointer))
+			hover_nodes.extend(self.__render_text_spec(view, document, ctx, box, spec, em_size, ta_width, pango_layout, pointer, rotate))
 		
 		if filter_:
 			image.flush()
@@ -1626,7 +1653,7 @@ class SVGRender:
 		
 		return hover_nodes
 	
-	def __produce_text(self, view, document, ctx, box, node, em_size, whitespace, x, y, pango_layout):
+	def __produce_text(self, view, document, ctx, box, node, em_size, whitespace, x, y, pango_layout, rotate):
 		left, top, width, height = box
 		
 		x = self.units(view, node.attrib.get('x', str(x)).split()[0], percentage=width, em_size=em_size) # TODO: support sequences
@@ -1690,7 +1717,7 @@ class SVGRender:
 			node_x = x + dx + x_advance
 			node_y = y + dy + y_advance
 			
-			subnode, subpaths, span_dx, span_dy, extents = self.__produce_text(view, document, ctx, box, child, em_size, whitespace, node_x, node_y, pango_layout)
+			subnode, subpaths, span_dx, span_dy, extents = self.__produce_text(view, document, ctx, box, child, em_size, whitespace, node_x, node_y, pango_layout, rotate)
 			txt_paths.append((subnode, subpaths, span_dx, span_dy, extents))
 			
 			node_left = node_x + extents.x_bearing + span_dx - node_x
@@ -1808,11 +1835,9 @@ class SVGRender:
 					pango_font.set_weight(Pango.Weight.NORMAL)
 		
 		font_size = self.__font_size(view, document, ctx, box, node, em_size)
+		if pango_layout:
+			pango_font.set_size(font_size * Pango.SCALE / 1.33333)
 		ctx.set_font_size(font_size)
-		pango_font.set_size(font_size * Pango.SCALE / 1.33333)
-		
-		#families = [_f.get_name().lower() for _f in pango_layout.get_context().get_font_map().list_families()]
-		#print(sorted(_f for _f in families if 'noto' not in _f))
 		
 		for family in reversed(font_family.split(',')):
 			family = family.strip()
@@ -1823,7 +1848,6 @@ class SVGRender:
 			family = family.replace(':', '_')
 			
 			ctx.select_font_face(family, font_style, font_weight)
-			#print("font-family:", family, family.lower() in families)
 			pango_font.set_family(family)
 			if pango_layout is not None:
 				pango_layout.set_font_description(pango_font)

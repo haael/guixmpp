@@ -173,15 +173,25 @@ class XMPPClient:
 			await self.writer.drain()
 			
 			if self.established:
-				logger.info("Waiting for end tag...")
-				
-				end_timeout = 4
+				end_timeout = 4 # TODO: config
 				try:
 					while True:
-						if await wait_for(self.recv_stanza(), end_timeout) == None:
+						logger.info("Waiting for end tag...")
+						if (stanza := await wait_for(self.recv_stanza(), end_timeout)) in (None, Ellipsis):
+							if stanza == None:
+								logger.debug("Got end tag.")
+							elif stanza == Ellipsis:
+								logger.debug("Timeout waiting for end tag.")
+							else:
+								logger.warning("???")
 							break
+						else:
+							try:
+								logger.debug(f"Garbage stanza received: {tostring(stanza).decode('utf-8')}")
+							except TypeError:
+								logger.debug(f"Non-stanza garbage received: {repr(stanza)}")
 				except TimeoutError:
-					logger.warning("Timeout waiting for stream end tag.")
+					logger.debug("Timeout waiting for end tag.")
 			
 			self.established = False
 			self.authenticated = False

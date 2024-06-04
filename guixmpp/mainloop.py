@@ -7,7 +7,8 @@ __all__ = 'asynchandler', 'loop_init', 'loop_run', 'loop_quit'
 from asyncio import set_event_loop_policy, get_running_loop, create_task, sleep, wait, FIRST_EXCEPTION, CancelledError
 
 
-_library = ''
+from os import environ
+_library = environ.get('GUIXMPP_MAINLOOP', '')
 
 if _library == '':
 	if __name__ == '__main__':
@@ -18,8 +19,11 @@ if _library == '':
 elif _library == 'gbulb':
 	import gbulb
 
-elif _library == 'asyncio_glib':
-	import asyncio_glib
+#elif _library == 'asyncio_glib':
+#	import asyncio_glib
+
+else:
+	raise ImportError(f"Unsupported GUIXMPP_MAINLOOP: {_library}")
 
 
 import gi
@@ -39,9 +43,9 @@ elif _library == 'gbulb':
 	def loop_init():
 		gbulb.install(gtk=True)
 
-elif _library == 'asyncio_glib':
-	def loop_init():
-		set_event_loop_policy(asyncio_glib.GLibEventLoopPolicy())
+#elif _library == 'asyncio_glib':
+#	def loop_init():
+#		set_event_loop_policy(asyncio_glib.GLibEventLoopPolicy())
 
 
 def asynchandler(coro):
@@ -82,7 +86,6 @@ async def loop_run():
 	while True:
 		app_task = create_task(wait(app_tasks + [app_future], return_when=FIRST_EXCEPTION))
 		
-		Gtk.main_iteration_do(False)
 		try:
 			await app_task
 		except CancelledError:

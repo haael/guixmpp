@@ -14,6 +14,7 @@ from gi.repository import Gio, GLib
 
 from asyncio import Future, get_running_loop
 
+from collections import deque
 import pathlib
 
 
@@ -65,14 +66,27 @@ class File:
 		if hasattr(self, 'stream'):
 			raise ValueError(f"Lost reference to open file: {self.gfile}") # will be logged
 	
-	__open_readwrite = AsyncIOCall((lambda gfile, *args, cancellable, on_result: gfile.open_readwrite_async(*args, cancellable, on_result)), (lambda gfile, task: gfile.open_readwrite_finish(task)))
+	__open_readwrite = AsyncIOCall((lambda gfile, priority, cancellable, on_result: gfile.open_readwrite_async(priority, cancellable, on_result)), (lambda gfile, task: gfile.open_readwrite_finish(task)))
+	__open_readonly = AsyncIOCall((lambda gfile, priority, cancellable, on_result: gfile.read_async(priority, cancellable, on_result)), (lambda gfile, task: gfile.read_finish(task)))
+	
+	__read = AsyncIOCall((lambda stream, num, priority, cancellable, on_result: stream.read_bytes_async(num, priority, cancellable, on_result)), (lambda stream, task: stream.read_bytes_finish(task)))
+	__read_all = AsyncIOCall((lambda stream, priority, cancellable, on_result: stream.read_all_async(priority, cancellable, on_result)), (lambda stream, task: stream.read_all_finish(task)))
+	__write = AsyncIOCall((lambda stream, *args, cancellable, on_result: stream.write_async(*args, GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda stream, task: stream.write_finish(task)))
+	__write_all = AsyncIOCall((lambda stream, *args, cancellable, on_result: stream.write_all_async(*args, GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda stream, task: stream.write_all_finish(task)))
+	
+	__close = AsyncIOCall((lambda stream, *args, cancellable, on_result: stream.close_async(*args, GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda stream, task: stream.close_finish(task)))
 	
 	async def open(self):
-		self.stream = await self.__open_readwrite(self.gfile)
-		self.read_stream = self.stream.get_input_stream()
-		self.write_stream = self.stream.get_output_stream()
-	
-	__close = AsyncIOCall((lambda stream, *args, cancellable, on_result: stream.close_async(*args, cancellable, on_result)), (lambda stream, task: stream.close_finish(task)))
+		if self.mode == 'r':
+			self.stream = self.read_stream = await self.__open_readonly(self.gfile)
+			self.write_stream = None
+		elif self.mode == 'w':
+			self.read_stream = None
+			self.stream = self.write_stream = await self.__open_writeonly(self.gfile)
+		elif self.mode == 'rw':
+			self.stream = await self.__open_readwrite(self.gfile)
+			self.read_stream = self.stream.get_input_stream()
+			self.write_stream = self.stream.get_output_stream()
 	
 	async def close(self):
 		await self.__close(self.stream)
@@ -95,8 +109,6 @@ class File:
 	
 	async def is_eof(self):
 		raise NotImplementedError
-	
-	__read = AsyncIOCall((lambda stream, *args, cancellable, on_result: stream.read_async(*args, cancellable, on_result)), (lambda stream, task: stream.read_finish(task)))
 	
 	async def read(self, n):
 		if self.read_stream:
@@ -127,7 +139,7 @@ class File:
 			return result
 	
 	async def readline(self):
-		while self.newline not in self.read_buffer[-1]: # FIXME: handle case when multi-char newline spans many items
+		while not self.read_buffer or self.newline not in self.read_buffer[-1]: # FIXME: handle case when multi-char newline spans many items
 			r = await self.__read(self.read_stream, 1024, GLib.PRIORITY_DEFAULT)
 			if not r:
 				s = self.read_buffer[:]
@@ -153,10 +165,8 @@ class File:
 		else:
 			return result
 	
-	__read_all = AsyncIOCall((lambda stream, *args, cancellable, on_result: stream.read_all_async(*args, cancellable, on_result)), (lambda stream, task: stream.read_all_finish(task)))
-	
 	async def read_all(self):
-		t = await self.__read_all(self.read_stream, GLib.PRIORITY_DEFAULT)
+		t = await self.__read_all(self.read_stream)
 		result = b"".join(list(self.read_stream.values()) + [t])
 		self.read_stream.clear()
 		
@@ -165,15 +175,11 @@ class File:
 		else:
 			return result
 	
-	__write = AsyncIOCall((lambda stream, *args, cancellable, on_result: stream.write_async(*args, cancellable, on_result)), (lambda stream, task: stream.write_finish(task)))
-	
 	async def write(self, data):
-		return await self.__write(self.write_stream, data, len(data), GLib.PRIORITY_DEFAULT)
-	
-	__write_all = AsyncIOCall((lambda stream, *args, cancellable, on_result: stream.write_all_async(*args, cancellable, on_result)), (lambda stream, task: stream.write_all_finish(task)))
+		return await self.__write(self.write_stream, data, len(data))
 	
 	async def write_all(self, data):
-		return await self.__write_all(self.write_stream, data, len(data), GLib.PRIORITY_DEFAULT)
+		return await self.__write_all(self.write_stream, data, len(data))
 	
 	async def seek(self):
 		raise NotImplementedError
@@ -304,7 +310,7 @@ class Path(pathlib.Path, PurePath):
 	async def mkdir(self, mode=0o777, parents=False, exist_ok=False):
 		raise NotImplementedError
 	
-	def open(self, mode=FileMode, buffering=-1, encoding=None, errors=None, newline=None):
+	def open(self, mode='r', buffering=-1, encoding=None, errors=None, newline=None):
 		return File(self, mode, buffering, encoding, errors, newline)
 	
 	async def owner(self):
@@ -377,7 +383,12 @@ if __name__ == '__main__':
 		async for f in cwd.iterdir():
 			print("", repr(f))
 			if f.suffix == '.txt':
+				print(" read bytes")
 				print(await f.read_bytes())
+				print(" read lines")
+				async with f.open() as fd:
+					async for l in fd:
+						print(l)
 	
 	run(test())
 

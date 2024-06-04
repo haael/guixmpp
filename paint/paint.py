@@ -7,146 +7,142 @@ logger = getLogger(__name__)
 
 import gi
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, Gdk
+from gi.repository import Gtk, Gdk, GObject, GLib, GdkPixbuf
 
 
-#from guixmpp import *
+from path_editor import PathEditor
+from guixmpp import *
 
 from locale import gettext
+from secrets import choice as random_choice
 if not 'Path' in globals(): from aiopath import Path
+from asyncio import sleep, Event, Lock, create_task
+from lxml.etree import fromstring, tostring
+from random import randint
 
-from math import dist
 
-
-
-class PathEditor(Gtk.DrawingArea):
-	__gtype_name__ = 'PathEditor'
+class BuilderExtension:
+	def __init__(self, interface, translation, objects, main_widget_name):
+		self.__builder = Gtk.Builder()
+		self.__builder.set_translation_domain(translation)
+		self.__builder.add_objects_from_file(interface, objects)
+		self.__builder.connect_signals(self)
+		self.__main_widget_name = main_widget_name
 	
-	def __init__(self):
-		super().__init__()
-		
-		self.add_events(Gdk.EventMask.POINTER_MOTION_MASK)
-		self.add_events(Gdk.EventMask.BUTTON_RELEASE_MASK)
-		self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)		
-		#self.add_events(Gdk.EventMask.KEY_PRESS_MASK)
-		#self.add_events(Gdk.EventMask.KEY_RELEASE_MASK)
-		#self.add_events(Gdk.EventMask.SMOOTH_SCROLL_MASK)
-		
-		self.connect('draw', self.draw)
-		self.connect('motion-notify-event', self.pointer_event)
-		self.connect('button-press-event', self.pointer_event)
-		self.connect('button-release-event', self.pointer_event)
-		
-		#self.__paths = []
-		self.__active = {}
-		self.__cursor = {}
-		self.__last_movement = None
+	@property
+	def main_widget(self):
+		return getattr(self, self.__main_widget_name)
 	
-	def pointer_event(self, widget, event):
-		device = event.get_source_device()
-		type_ = device.get_source()
-		name = device.get_name()
-		self.__last_movement = name
-		
-		if event.type == Gdk.EventType.MOTION_NOTIFY:
-			if name not in self.__cursor:
-				self.__cursor[name] = [False, event.x, event.y]
-			else:
-				self.__cursor[name][1:] = [event.x, event.y]
-			
-			if self.__cursor[name][0]:
-				self.__active[name][1].append((event.x, event.y))
-		
-		elif event.type == Gdk.EventType.BUTTON_RELEASE:
-			#print(name)
-			self.__cursor[name] = [False, event.x, event.y]
-			if name in self.__active:
-				if type_ not in (Gdk.InputSource.TOUCHSCREEN, Gdk.InputSource.ERASER) and len(self.__active[name][1]) > 1:
-					#self.__paths.append(self.__active[name][1])
-					self.path_ready(self.__active[name][1])
-				del self.__active[name]
-		
-		elif event.type == Gdk.EventType.BUTTON_PRESS:
-			self.__cursor[name] = [True, event.x, event.y]
-			self.__active[name] = type_, [(event.x, event.y)]
-		
-		self.queue_draw()
+	def show(self):
+		self.main_widget.show()
 	
-	def path_ready(self, path):
-		pass
+	def hide(self):
+		self.main_widget.hide()
 	
-	def draw(self, widget, ctx):
-		#ctx.set_line_width(2.5)
-		#ctx.set_source_rgb(0, 0, 0)
-		#
-		#for path in self.__paths:
-		#	for n, (x, y) in enumerate(path):
-		#		if n == 0:
-		#			ctx.move_to(x, y)
-		#		else:
-		#			ctx.line_to(x, y)
-		#	
-		#	if dist(path[0], path[-1]) < 20:
-		#		ctx.close_path()
-		#	
-		#	ctx.stroke()
-		
-		for type_, path in self.__active.values():
-			if type_ in (Gdk.InputSource.TOUCHSCREEN, Gdk.InputSource.ERASER):
-				for n, (x, y) in enumerate(path[-50:]):
-					if n == 0:
-						ctx.move_to(x, y)
-					else:
-						ctx.line_to(x, y)
-				
-				ctx.set_line_width(25)
-				ctx.set_source_rgba(1, 0.5, 0.5, 0.75)
-			else:
-				for n, (x, y) in enumerate(path):
-					if n == 0:
-						ctx.move_to(x, y)
-					else:
-						ctx.line_to(x, y)
-				
-				ctx.set_line_width(2.5)
-				ctx.set_source_rgb(0, 0, 0)
-			
-			ctx.stroke()
-		
-		try:
-			cursor = self.__cursor[self.__last_movement]
-		except KeyError:
-			pass
+	def __getattr__(self, attr):
+		widget = self.__builder.get_object(attr)
+		if widget != None:
+			#setattr(self, attr, widget)
+			return widget
 		else:
-			if not cursor[0]:
-				x, y = cursor[1:]
-				
-				ctx.set_line_width(1)
-				ctx.set_source_rgb(0, 0, 1)
-				
-				ctx.move_to(x - 25, y)
-				ctx.rel_line_to(20, 0)
-				ctx.stroke()
-				
-				ctx.move_to(x + 25, y)
-				ctx.rel_line_to(-20, 0)
-				ctx.stroke()
-				
-				ctx.move_to(x, y - 25)
-				ctx.rel_line_to(0, 20)
-				ctx.stroke()
-				
-				ctx.move_to(x, y + 25)
-				ctx.rel_line_to(0, -20)
-				ctx.stroke()
+			raise AttributeError("Attribute not found in object nor in builder: " + attr)
+	
+	def replace_widget(self, name, new_widget):
+		old_widget = getattr(self, name)
+		parent = old_widget.get_parent()
+		parent.remove(old_widget)
+		parent.add(new_widget)
+		setattr(self, name, new_widget)
+	
+	def all_children(self, type_=Gtk.Widget):
+		def iter_children(widget):
+			if isinstance(widget, type_):
+				yield widget
+			if not hasattr(widget, 'get_children'):
+				return
+			for child in widget.get_children():
+				yield from iter_children(child)
+		yield from iter_children(self.main_widget)
+
+
+def return_false(meth):
+	def newm(*args):
+		meth(*args)
+		return False
+	return newm
+
+
+def return_true(meth):
+	def newm(*args):
+		meth(*args)
+		return True
+	return newm
+
+
+class MainWindow(BuilderExtension):
+	def __init__(self, interface, translation):
+		super().__init__(interface, translation, ['window_main'], 'window_main')
+		self.glade_interface = interface
+		self.translation = translation
+		
+		for domwidget in self.all_children(DOMWidget):
+			domwidget.connect('dom_event', self.svg_view_dom_event)
+		
+		self.path_editor = PathEditor()
+		self.overlay_main.add_overlay(self.path_editor)
+		self.path_editor.show()
+	
+	@asynchandler
+	async def svg_view_dom_event(self, widget, event, target):
+		"DOM event handler for non-interactive SVG widgets."
+		
+		if event.type_ == 'warning':
+			logger.warning(f"{event}")
+		
+		if event.type_ == 'download':
+			if event.detail.startswith('data:'):
+				return True
+			elif event.detail != widget.main_url:
+				return False
 
 
 if __name__ == '__main__':
-	window = Gtk.Window()
-	window.add(PathEditor())
-	window.show_all()
-	window.connect('destroy', lambda *_: Gtk.main_quit())
-	Gtk.main()
-
-
+	import sys
+	from logging import DEBUG, basicConfig
+	basicConfig(level=DEBUG)
+	logger.setLevel(DEBUG)
+	
+	logger.debug("paint")
+	
+	import sys, signal
+	from asyncio import run, get_running_loop
+	from locale import bindtextdomain, textdomain
+	from guixmpp.domevents import Event as DOMEvent
+	
+	loop_init()
+	
+	translation = 'haael_svg_paint'
+	bindtextdomain(translation, 'locale')
+	textdomain(translation)
+	
+	window = MainWindow('paint.glade', translation)
+	
+	async def main():
+		DOMEvent._time = get_running_loop().time
+		
+		await window.domwidget_main.open('file://./apu-shotgun.jpg')
+		
+		window.show()
+		try:
+			await loop_run()
+		finally:
+			window.hide()
+		
+		for domwidget in window.all_children(DOMWidget):
+			await domwidget.close()
+	
+	window.main_widget.connect('destroy', lambda window: loop_quit())
+	signal.signal(signal.SIGTERM, lambda signum, frame: loop_quit())
+	
+	run(main())
 
