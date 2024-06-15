@@ -52,7 +52,7 @@ class PointerView:
 			self.update(widget)
 		
 		elif event.type == Gdk.EventType.MOTION_NOTIFY:
-			pointed, qx, qy = widget.poke_image(event.x, event.y)
+			pointed, qx, qy = widget.poke_image(self, event.x, event.y)
 			
 			if pointed != widget.__pointed:
 				old_pointed = self.get_pointed(widget)

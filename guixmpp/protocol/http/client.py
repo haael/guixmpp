@@ -43,7 +43,7 @@ class Connection:
 			raise ValueError(f"Protocol {self.protocol} not supported.")
 		
 		self.headers = {}
-		self.headers['user-agent'] = 'guixmpp'
+		self.headers['user-agent'] = 'guixmpp' # TODO: config
 		self.headers['connection'] = 'keep-alive'
 	
 	def create_ssl_context(self):
@@ -462,36 +462,36 @@ class Url:
 		return Request(self.client, self.abspath, 'DELETE', False, None, self.build_headers(headers), False)
 	
 	def options(self):
-		...
+		raise NotImplementedError
 	
 	def trace(self):
-		...
+		raise NotImplementedError
 	
 	def patch(self):
-		...
+		raise NotImplementedError
 	
 	# DAV methods
 	
 	def copy(self):
-		...
+		raise NotImplementedError
 	
 	def lock(self):
-		...
+		raise NotImplementedError
 	
 	def mkcol(self):
-		...
+		raise NotImplementedError
 	
 	def move(self):
-		...
+		raise NotImplementedError
 	
 	def propfind(self):
-		...
+		raise NotImplementedError
 	
 	def proppatch(self):
-		...
+		raise NotImplementedError
 	
 	def unlock(self):
-		...
+		raise NotImplementedError
 
 
 class Request:

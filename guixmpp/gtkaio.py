@@ -187,7 +187,10 @@ class BaseTransport(asyncio.transports.BaseTransport):
 		self.watch_out(False)
 		
 		if self.__channel is not None:
-			self.__channel.shutdown(False)
+			try:
+				self.__channel.shutdown(False)
+			except GLib.GError: # ignore exception
+				pass
 			self.__channel = None
 		
 		self.close()
@@ -219,26 +222,27 @@ class BaseTransport(asyncio.transports.BaseTransport):
 			match name:
 				case 'peername': # the remote address to which the socket is connected, result of socket.socket.getpeername() (None on error)
 					try:
-						return self.__endpoint.getpeername()
+						return self.__endpoint.getpeername() # TODO: check for bugs, possible blocking io
 					except AttributeError:
 						raise
 					except:
+						# TODO: warning on error. Documentations says `None` should be returned on error.
 						return None
 				
 				case 'socket': # socket.socket instance
 					return self.__endpoint
 				
 				case 'sockname': # the socket’s own address, result of socket.socket.getsockname()
-					return self.__endpoint.getsockname()
+					return self.__endpoint.getsockname() # TODO: check for bugs, possible blocking io
 				
 				case 'compression': # the compression algorithm being used as a string, or None if the connection isn’t compressed; result of ssl.SSLSocket.compression()
-					return self.__endpoint.compression()
+					return self.__endpoint.compression() # TODO: check for bugs, possible blocking io
 				
 				case 'cipher': # a three-value tuple containing the name of the cipher being used, the version of the SSL protocol that defines its use, and the number of secret bits being used; result of ssl.SSLSocket.cipher()
 					return default
 				
 				case 'peercert': # peer certificate; result of ssl.SSLSocket.getpeercert()
-					return self.__endpoint.getpeercert()
+					return self.__endpoint.getpeercert() # TODO: check for bugs, possible blocking io
 				
 				case 'sslcontext': # ssl.SSLContext instance
 					return default
@@ -422,7 +426,6 @@ class ReadTransport(BaseTransport, asyncio.transports.ReadTransport):
 	
 	def pause_reading(self):
 		"""Pause the receiving end.
-
 		No data will be passed to the protocol's data_received()
 		method until resume_reading() is called.
 		"""
@@ -430,7 +433,6 @@ class ReadTransport(BaseTransport, asyncio.transports.ReadTransport):
 	
 	def resume_reading(self):
 		"""Resume the receiving end.
-
 		Data received will once again be passed to the protocol's
 		data_received() method.
 		"""
@@ -540,9 +542,7 @@ class WriteTransport(BaseTransport, asyncio.transports.WriteTransport):
 	
 	def write_eof(self):
 		"""Close the write end after flushing buffered data.
-
 		(This is like typing ^D into a UNIX program reading from stdin.)
-
 		Data may still be received.
 		"""
 		raise NotImplementedError("write_eof")
@@ -794,8 +794,8 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		self.__debug_flag = False
 		self.__exception_handler = None
 		self.__completing = None
-		self.__signal = {}
-		self.__resolver = AsyncResolver()
+		self.__signals = {}
+		self.__resolver = AsyncResolver() # DNS resolver from `guixmpp/protocol/dns/client.py`
 		self.__executor = concurrent.futures.ThreadPoolExecutor() # TODO
 	
 	def run_forever(self):
@@ -838,6 +838,8 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		Return the Future's result, or raise its exception.
 		"""
 		
+		exc = False
+		
 		if self.is_running() or self.is_closed():
 			raise RuntimeError
 		
@@ -855,7 +857,11 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		self.__completing = future
 		GLib.idle_add(self._check_completing_state)
 		Gtk.main()
-		result = self.__completing.result()
+		try:
+			result = self.__completing.result()
+		except BaseException as error:
+			result = error
+			exc = True
 		self.__completing = None
 		
 		self.__completing = self.create_task(self.__end_loop())
@@ -865,7 +871,10 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		self.__completing = None
 		
 		_set_running_loop(None)
-		return result
+		if exc:
+			raise result
+		else:
+			return result
 	
 	def stop(self):
 		"""Stop the event loop as soon as reasonable.
@@ -1132,13 +1141,10 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		ssl_transport.watch_in(True)
 		return ssl_transport
 	
-	def create_unix_connection(self, protocol_factory, path, *,
-							   ssl=None, sock=None,
-							   server_hostname=None):
+	def create_unix_connection(self, protocol_factory, path, *, ssl=None, sock=None, server_hostname=None):
 		raise NotImplementedError("create_unix_connection")
 	
-	def create_unix_server(self, protocol_factory, path, *,
-						   sock=None, backlog=100, ssl=None):
+	def create_unix_server(self, protocol_factory, path, *, sock=None, backlog=100, ssl=None):
 		"""A coroutine which creates a UNIX Domain Socket server.
 		The return value is a Server object, which can be used to stop the service.
 		path is a str, representing a file systsem path to bind the server socket to.
@@ -1148,11 +1154,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		"""
 		raise NotImplementedError("create_unix_server")
 	
-	async def create_datagram_endpoint(self, protocol_factory,
-								 local_addr=None, remote_addr=None, *,
-								 family=0, proto=0, flags=0,
-								 reuse_address=None, reuse_port=None,
-								 allow_broadcast=None, sock=None):
+	async def create_datagram_endpoint(self, protocol_factory, local_addr=None, remote_addr=None, *, family=0, proto=0, flags=0, reuse_address=None, reuse_port=None, allow_broadcast=None, sock=None):
 		"""A coroutine which creates a datagram endpoint.
 
 		This method will try to establish the endpoint in the background.
@@ -1307,11 +1309,11 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 	# Signal handling.
 	
 	def add_signal_handler(self, sig, callback, *args):
-		raise NotImplementedError
-		self.__signals[sig] = GLib.unix_signal_add(sig, callback, *args)
+		#raise NotImplementedError
+		self.__signals[sig] = GLib.unix_signal_add(GLib.PRIORITY_HIGH, sig, callback, args)
 	
 	def remove_signal_handler(self, sig):
-		raise NotImplementedError
+		#raise NotImplementedError
 		GLib.Source.remove(self.__signals[sig])
 		self.__signals[sig] = None
 	
@@ -1332,7 +1334,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		self.__exception_handler = handler
 	
 	def default_exception_handler(self, context):
-		print("exception", context) # TODO
+		raise context['exception']
 	
 	def call_exception_handler(self, context):
 		if self.__exception_handler is not None:

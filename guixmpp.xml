@@ -1,0 +1,13 @@
+<glade-catalog name="guixmpp" domain="glade-3" depends="gtk+" library="gladepython" version="1.0">
+
+ <init-function>glade_python_init</init-function>
+
+ <glade-widget-classes>
+  <glade-widget-class title="DOM Widget" name="DOMWidget" generic-name="DOMWidget"/>
+ </glade-widget-classes>
+
+ <glade-widget-group name="guixmpp" title="GUIXMPP">
+  <glade-widget-class-ref name="DOMWidget"/>
+ </glade-widget-group>
+
+</glade-catalog>

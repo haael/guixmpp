@@ -11,6 +11,11 @@ from urllib.parse import unquote
 
 
 class FileDownload:
+	"""
+	Downloader that supports `file` uri scheme. Files are searched in the local filesystem.
+	MIME types are guessed by `mimetypes` library.
+	"""
+	
 	async def begin_downloads(self):
 		if not mimetypes.inited:
 			mimetypes.init()
@@ -42,7 +47,7 @@ class FileDownload:
 				raise ValueError("Only localhost files are supported.")
 		
 		path = Path(unquote(path_name))
-		mime_type, encoding = mimetypes.guess_type(str(path))
+		mime_type, encoding = mimetypes.guess_type(str(path)) # TODO: Run in executor? Possible blocking io.
 		if not mime_type:
 			mime_type = 'application/octet-stream'
 		

@@ -93,7 +93,8 @@ class FontFormat:
 		if not font_dir:
 			font_dir = '/tmp/guixmpp-fonts'
 		self.font_dir = font_dir
-		self.__config = Config.get_current()
+		# This method will fetch the config created by PangoCairo.FontMap.new() in DOMWidget
+		self.__config = Config.get_current() # FIXME: find better way to obtain the config
 		self.__lock = Lock()
 	
 	def create_document(self, data:bytes, mime_type):

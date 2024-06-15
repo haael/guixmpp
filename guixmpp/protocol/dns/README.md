@@ -14,7 +14,7 @@ A simple DNS client written in python. It supports the following requests:
 
 Run it like this:
 
-`./dnsclient www.example.com A`
+`./client www.example.com A`
 
 ## authors
 

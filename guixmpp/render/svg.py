@@ -20,7 +20,6 @@ from itertools import chain, starmap
 from urllib.parse import quote as url_quote
 from colorsys import hls_to_rgb
 from asyncio import gather
-import fontconfig
 
 import PIL.Image, PIL.ImageFilter
 
@@ -142,11 +141,15 @@ class SVGRender:
 				loads.append(load_font(font_family, font_spec))
 		await gather(*loads)
 		
-		self.__default_pango_fontmap = PangoCairo.FontMap.get_default()
+		self.__default_pango_fontmap = PangoCairo.FontMap.get_default() # FIXME: this will cause a bug if an app uses many `DOMWidget`s because `get_default` will pick the map set in the next line here
 		PangoCairo.FontMap.set_default(PangoCairo.FontMap.new())
 	
 	async def on_close_document(self, view, document):
-		PangoCairo.FontMap.set_default(self.__default_pango_fontmap)
+		try:
+			PangoCairo.FontMap.set_default(self.__default_pango_fontmap)
+			del self.__default_pango_fontmap
+		except AttributeError:
+			pass # TODO: warning
 		await self.uninstall_fonts()
 	
 	def __stylesheets(self, document):
@@ -1495,48 +1498,21 @@ class SVGRender:
 		return txt.lstrip()
 	
 	def __render_text(self, view, document, ctx, box, textnode, em_size, pointer):
-		rotate = 0
-		
-		writing_mode = self.__get_attribute(view, document, ctx, box, textnode, em_size, 'writing-mode', None)
-		
-		if writing_mode in ('horizontal-tb', 'lr-tb', 'lr'):
-			if writing_mode != 'horizontal-tb':
-				direction = 'ltr'
-			rotate = 0
-		elif writing_mode in ('rl-tb', 'rl'):
-			direction = 'rtl'
-			rotate = 0
-		elif writing_mode in ('vertical-lr', 'tb-lr'):
-			if writing_mode != 'vertical-lr':
-				direction = 'ltr'
+		writing_mode = self.__get_attribute(view, document, ctx, box, textnode, em_size, 'writing-mode', 'horizontal-tb')
+		if writing_mode in ('vertical-lr', 'tb-lr', 'vertical-rl', 'tb-rl', 'tb'):
 			rotate = 90
-		elif writing_mode in ('vertical-rl', 'tb-rl', 'tb'):
-			if writing_mode != 'vertical-rl':
-				direction = 'ltr'
-			rotate = 90
-		#elif writing_mode in ('bt-rl', 'bt-lr'): # obsolete
-		#	direction = 'rtl'
-		#	rotate = 90
 		else:
-			direction = None
 			rotate = 0
-		
-		#direction = self.__get_attribute(view, document, ctx, box, textnode, em_size, 'direction', direction)
 		
 		if self.use_pango:
 			pango_layout = PangoCairo.create_layout(ctx)
 			if rotate == 90:
 				pango_layout.get_context().set_base_gravity(Pango.Gravity.EAST)
-			direction = None
 		else:
 			pango_layout = None
 		
-		try:
-			ctx.save()
-			textspec = self.__produce_text(view, document, ctx, box, textnode, em_size, '', 0, 0, pango_layout, rotate)
-			return self.__render_text_spec(view, document, ctx, box, textspec, em_size, None, pango_layout, pointer, rotate)
-		finally:
-			ctx.restore()
+		textspec = self.__produce_text(view, document, ctx, box, textnode, em_size, '', 0, 0, pango_layout, rotate)
+		return self.__render_text_spec(view, document, ctx, box, textspec, em_size, None, pango_layout, pointer, rotate)
 	
 	def __render_text_spec(self, view, document, ctx, box, textspec, em_size, ta_width, pango_layout, pointer, rotate):
 		node, txt_paths, tx, ty, extents = textspec
@@ -1612,6 +1588,7 @@ class SVGRender:
 				pango_layout.context_changed()
 				PangoCairo.layout_path(ctx, pango_layout)
 			else:
+				ctx.rel_move_to(dsx, dsy)
 				ctx.text_path(txt)
 			
 			if rotate == 90: # vertical text

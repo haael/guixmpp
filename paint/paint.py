@@ -107,14 +107,13 @@ class MainWindow(BuilderExtension):
 
 
 if __name__ == '__main__':
-	import sys
 	from logging import DEBUG, basicConfig
 	basicConfig(level=DEBUG)
 	logger.setLevel(DEBUG)
 	
-	logger.debug("paint")
+	logger.info("paint")
 	
-	import sys, signal
+	import sys
 	from asyncio import run, get_running_loop
 	from locale import bindtextdomain, textdomain
 	from guixmpp.domevents import Event as DOMEvent
@@ -135,14 +134,14 @@ if __name__ == '__main__':
 		window.show()
 		try:
 			await loop_run()
-		finally:
-			window.hide()
+		except KeyboardInterrupt:
+			pass
+		window.hide()
 		
 		for domwidget in window.all_children(DOMWidget):
 			await domwidget.close()
 	
 	window.main_widget.connect('destroy', lambda window: loop_quit())
-	signal.signal(signal.SIGTERM, lambda signum, frame: loop_quit())
 	
 	run(main())
 

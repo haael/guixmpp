@@ -10,6 +10,8 @@ from urllib.parse import unquote
 
 
 class DataDownload:
+	"Downloader that supports `data` uri scheme, where the content is provided in the uri itself."
+	
 	async def download_document(self, url) -> (bytes, str):
 		if not url.startswith('data:'):
 			return NotImplemented

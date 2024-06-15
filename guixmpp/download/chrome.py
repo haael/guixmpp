@@ -9,6 +9,13 @@ from aiopath import Path
 
 
 class ChromeDownload:
+	"""
+	Downloader supporting `chrome` url scheme, i.e. various resources needed by application.
+	The default implementations searches for files in `chrome_dir` argument provided to the
+	model, or `./chrome` directory if argument is not present. MIME types are determined
+	from file extension.
+	"""
+	
 	def __init__(self, *args, **kwargs):
 		self.chrome_dir = Path(kwargs.get('chrome_dir', 'chrome'))
 	
@@ -19,6 +26,12 @@ class ChromeDownload:
 		path = self.chrome_dir / url[9:]
 		if path.suffix == '.css':
 			mime = 'text/css'
+		elif path.suffix in ('.jpeg', '.jpg'):
+			mime = 'image/jpeg'
+		elif path.suffix in ('.png'):
+			mime = 'image/png'
+		elif path.suffix in ('.svg'):
+			mime = 'image/svg'
 		else:
 			mime = 'application/octet-stream'
 		return await path.read_bytes(), mime

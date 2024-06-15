@@ -5,6 +5,9 @@ This is a simple dnsclient that supports A, AAAA, MX, SOA, NS and CNAME
 queries written in python.
 """
 
+# TODO: support SRV records
+
+
 import asyncio
 import asyncio.protocols
 import socket

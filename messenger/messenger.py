@@ -11,61 +11,14 @@ from gi.repository import Gtk, Gdk, GObject, GLib, GdkPixbuf
 
 
 from guixmpp import *
+from builder_extension import *
 
 from locale import gettext
 from secrets import choice as random_choice
 if not 'Path' in globals(): from aiopath import Path
-from asyncio import sleep, Event, Lock, create_task
+from asyncio import sleep, Event, Lock, create_task, gather, wait, ALL_COMPLETED, FIRST_COMPLETED, CancelledError
 from lxml.etree import fromstring, tostring
 from random import randint
-
-
-class BuilderExtension:
-	def __init__(self, interface, translation, objects, main_widget_name):
-		self.__builder = Gtk.Builder()
-		self.__builder.set_translation_domain(translation)
-		self.__builder.add_objects_from_file(interface, objects)
-		self.__builder.connect_signals(self)
-		self.__main_widget_name = main_widget_name
-	
-	@property
-	def main_widget(self):
-		return getattr(self, self.__main_widget_name)
-	
-	def show(self):
-		self.main_widget.show()
-	
-	def hide(self):
-		self.main_widget.hide()
-	
-	def __getattr__(self, attr):
-		widget = self.__builder.get_object(attr)
-		if widget != None:
-			#setattr(self, attr, widget)
-			return widget
-		else:
-			raise AttributeError("Attribute not found in object nor in builder: " + attr)
-	
-	def replace_widget(self, name, new_widget):
-		old_widget = getattr(self, name)
-		parent = old_widget.get_parent()
-		parent.remove(old_widget)
-		parent.add(new_widget)
-		setattr(self, name, new_widget)
-	
-	def all_children(self, type_=Gtk.Widget):
-		def iter_children(widget):
-			if isinstance(widget, type_):
-				yield widget
-			if not hasattr(widget, 'get_children'):
-				return
-			for child in widget.get_children():
-				yield from iter_children(child)
-		yield from iter_children(self.main_widget)
-	
-	async def close_domwidgets(self):
-		for domwidget in self.all_children(DOMWidget):
-			await domwidget.close()
 
 
 class ListBoxWrapper:
@@ -126,19 +79,19 @@ class Spinner:
 			widget.props.sensitive = True
 
 
-class DataForm:
-	def __init__(self, title, fields):
-		grid = Gtk.Grid()
-		grid.set_columns(3)
-		grid.set_rows(len(fields) + 2)
-		grid.pack_start(Gtk.Label(title), width=3)
-		for descr, name, datatype in fields:
-			grid.pack_start(Gtk.Label(descr))
-			grid.pack_start(Gtk.Entry())
-		box = Gtk.Box()
-		grid.pack_start(box, width=3)
-		box.pack_start(Gtk.Button(gettext("Cancel")))
-		box.pack_end(Gtk.Button(gettext("Submit")))
+#class DataForm:
+#	def __init__(self, title, fields):
+#		grid = Gtk.Grid()
+#		grid.set_columns(3)
+#		grid.set_rows(len(fields) + 2)
+#		grid.pack_start(Gtk.Label(title), width=3)
+#		for descr, name, datatype in fields:
+#			grid.pack_start(Gtk.Label(descr))
+#			grid.pack_start(Gtk.Entry())
+#		box = Gtk.Box()
+#		grid.pack_start(box, width=3)
+#		box.pack_start(Gtk.Button(gettext("Cancel")))
+#		box.pack_end(Gtk.Button(gettext("Submit")))
 
 
 class SidebarContact(BuilderExtension):
@@ -167,19 +120,24 @@ def return_true(meth):
 	return newm
 
 
-class MainWindow(BuilderExtension):
+class Messenger(BuilderExtension):
 	VALIDATION_ICON = 'important'
 	BROKEN_CONNECTION_ICON = 'error'
 	
 	default_resource = 'guixmpp' # provide own branding
 	
 	def __init__(self, interface, translation):
-		super().__init__(interface, translation, ['window_main', 'entrybuffer_jid', 'popover_presence', 'filechooser_avatar', 'filefilter_images'], 'window_main')
+		BuilderExtension.__init__(self, interface, translation, ['window_main', 'entrybuffer_jid', 'popover_presence', 'filechooser_avatar', 'filefilter_images'], 'window_main')
+		
+		self.__tasks = set()
+		self.__task_added = Event()
+		
 		self.glade_interface = interface
 		self.translation = translation
 		
-		for widget_name in 'domwidget_avatar_preview', 'domwidget_avatar':
-			domwidget = getattr(self, widget_name)
+		for domwidget in self.all_children(DOMWidget):
+			domwidget.model.create_resource = self.create_resource
+			domwidget.model.chrome_dir = Path('assets')
 			domwidget.connect('dom_event', self.svg_view_dom_event)
 		
 		self.network_spinner = Spinner([self.form_login, self.form_register, self.form_server_options])
@@ -187,12 +145,112 @@ class MainWindow(BuilderExtension):
 		self.sidebar_lock = Lock()
 		
 		self.sidebar = []
-		self.listbox_main.add(BuilderExtension(interface, translation, ['sidebar_start'], 'sidebar_start').main_widget)
+		start_item = BuilderExtension(interface, translation, ['sidebar_start'], 'sidebar_start')
+		self.listbox_main.add(start_item.main_widget)
 		self.sidebar.append(('page_start', None))
 		
 		self.paned_main.set_position(425)
 		
-		self.xmpp_connections = {}
+		self.xmpp_clients = {}
+		
+		self.ended = Event()
+		
+		def on_destroy():
+			logger.info("Main window closed.")
+			self.ended.set()
+		
+		self.main_widget.connect('destroy', lambda messenger: on_destroy())
+	
+	async def __aenter__(self):
+		for domwidget in self.all_children(DOMWidget):
+			domwidget.model.create_resource = self.create_resource
+		self.listbox_main.select_row(self.listbox_main.get_row_at_index(0))
+		self.show()
+		return self
+	
+	async def __aexit__(self, exctype, exception, traceback):
+		self.hide()
+		await gather(*[_domwidget.close() for _domwidget in self.all_children(DOMWidget)])
+		
+		errors = []
+		if self.__tasks:
+			logger.warning(f"Some of tasks still running. {self.__tasks}")
+			self.cancel()
+			logger.debug("Waiting for remaining tasks to finish.")
+			done, pending = await wait(self.__tasks, return_when=ALL_COMPLETED)
+			assert not pending
+			for task in done:
+				try:
+					await task
+				except Exception as error:
+					logger.error(f"Error cancelling task: {type(exception)} {str(error)}.")
+					errors.append(error)
+				except CancelledError:
+					pass
+		
+		logger.info("Messenger exit.")
+		
+		if errors:
+			if exception:
+				raise ExceptionGroup("Error cancelling one of subtasks.", errors) from exception
+			else:
+				raise ExceptionGroup("Error cancelling one of subtasks.", errors)
+	
+	async def process(self):
+		try:
+			logger.info("Messenger main loop begin.")
+			
+			ended_task = self.create_task(self.ended.wait(), name='__check_if_loop_ended')
+			while not self.ended.is_set():
+				task_added = create_task(self.__task_added.wait(), name='__check_if_task_addded')
+				self.__task_added.clear()
+				done, pending = await wait(self.__tasks | frozenset({task_added}), return_when=FIRST_COMPLETED)
+				if not task_added.done():
+					task_added.cancel()
+				errors = []
+				for task in done:
+					try:
+						await task
+					except (ConnectionError, AuthenticationError) as error:
+						# Non-fatal exception, propagate to the calling function
+						logger.warning(f"Error in network task: {type(error)} {str(error)}")
+			
+			logger.info("Messenger main loop ended.")
+		
+		except BaseException as error:
+			if not self.__tasks:
+				raise
+			logger.error(f"Error in Messenger mainloop: {type(error)} {str(error)}.")
+			self.cancel()
+			done, pending = await wait(self.__tasks, return_when=ALL_COMPLETED)
+			assert not pending
+			errors = []
+			for task in done:
+				try:
+					await task
+				except Exception as exception:
+					logger.error(f"Error cancelling Messenger task: {type(exception)} {str(exception)}.")
+					errors.append(exception)
+				except CancelledError:
+					pass
+			if errors:
+				raise ExceptionGroup("Error cancelling one of subtasks.", errors) from error
+			else:
+				raise
+	
+	def create_task(self, coro, name=None):
+		logger.debug(f"Creating new task{ ' (' + name + ')' if name is not None else ''}.")
+		task = create_task(coro, name=name)
+		self.__tasks.add(task)
+		task.add_done_callback(self.__tasks.discard)
+		self.__task_added.set()
+		return task
+	
+	def cancel(self):
+		logger.info("Cancelling all tasks.")
+		for task in self.__tasks:
+			if not task.done():
+				task.cancel()
 	
 	@classmethod
 	def validate_username(cls, username):
@@ -298,10 +356,18 @@ class MainWindow(BuilderExtension):
 			entry.grab_focus()
 			entry.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.BROKEN_CONNECTION_ICON)
 			entry.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
+			return
 		except AuthenticationError as error:
 			self.entry_login_password.grab_focus()
 			self.entry_login_password.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.BROKEN_CONNECTION_ICON)
 			self.entry_login_password.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
+			return
+		
+		self.entry_login_jid.set_text("")
+		self.entry_login_password.set_text("")
+		self.entry_host.set_text("")
+		self.entry_port.set_text("")
+		self.toggle_legacy_ssl.set_active(False)
 	
 	@asynchandler
 	async def register(self, widget):
@@ -387,6 +453,9 @@ class MainWindow(BuilderExtension):
 			entry.grab_focus()
 			entry.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.BROKEN_CONNECTION_ICON)
 			entry.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
+			return
+		
+		# TODO: clear fields
 	
 	def choose_presence(self, widget):
 		self.popover_presence.show()
@@ -485,12 +554,33 @@ class MainWindow(BuilderExtension):
 			return
 		async with self.sidebar_lock:
 			page_name, *params = self.sidebar[listrow.get_index()]
-			self.stack_main.set_visible_child_name(page_name)
+			await self.show_main_page(page_name, *params)
 		logger.debug(f"sidebar item selected: {page_name}")
 	
+	async def show_main_page(self, page_name, *params):
+		if page_name == 'page_contact':
+			server_jid, contact_jid = params
+			
+			message_box = BuilderExtension(self.glade_interface, self.translation, ['message_box'], 'message_box')
+			
+			for domwidget in message_box.all_children(DOMWidget):
+				domwidget.model.create_resource = self.create_resource
+				domwidget.model.chrome_dir = Path('assets')
+				domwidget.connect('dom_event', self.svg_view_dom_event)
+			
+			if randint(0, 2) != 0:
+				message_box.message_nick.set_visible(False)
+				message_box.message_avatar.set_visible(False)
+			message_box.message_control.set_visible(False)
+			self.listbox_chat.add(message_box.main_widget)
+		
+		self.stack_main.set_visible_child_name(page_name)
+	
 	async def create_xmpp_connection(self, jid, host, port, legacy_ssl, password, register):
-		if jid in self.xmpp_connections:
+		if jid in self.xmpp_clients:
 			raise ValueError("Logged in already.")
+		
+		logger.debug("Creating new XMPP connection.")
 		
 		config = {}
 		if host: config['host'] = host
@@ -498,169 +588,158 @@ class MainWindow(BuilderExtension):
 		config['register'] = register
 		config['legacy_ssl'] = legacy_ssl
 		
-		added = Event() # task object added to dictionary
-		ready = get_running_loop().create_future() # connection established or failure
-		
 		sidebar_item = BuilderExtension(self.glade_interface, self.translation, ['sidebar_server'], 'sidebar_server')
 		sidebar_item.entry_account_jid.set_text(jid)
 		
-		async def guarded_task():
-			await added.wait()
-			assert jid in self.xmpp_connections
-			try:
-				await self.xmpp_connection_task(ready, jid, password, config, sidebar_item)
-			except Exception as error:
-				if not ready.done(): # connected yet?
-					ready.set_exception(error) # propagate early exceptions to `create_xmpp_connection`
-				else:
-					raise # propagage late exceptions to `destroy_xmpp_connection`
-			finally:
-				GLib.idle_add(return_false(self.destroy_xmpp_connection), jid)
-		
-		self.xmpp_connections[jid] = create_task(guarded_task())
-		
-		async with self.sidebar_lock:		
-			self.listbox_main.add(sidebar_item.main_widget)
-			self.sidebar.append(('page_server', jid))
-			self.listbox_main.select_row(self.listbox_main.get_row_at_index(len(self.sidebar) - 1))
-		
-		logger.info("xmpp connection created")
-		added.set()
-		await ready # may raise exception from `guarded_task`
-	
-	@asynchandler
-	async def destroy_xmpp_connection(self, jid):
-		async with self.sidebar_lock:
-			c = None
-			for n, (label, njid) in enumerate(self.sidebar):
-				if label == 'page_server' and njid == jid:
-					c = n
-					break
-			assert c is not None
-			self.listbox_main.remove(self.listbox_main.get_row_at_index(c))
-			del self.sidebar[c]
-		
-		task = self.xmpp_connections[jid]
-		del self.xmpp_connections[jid]
-		await task # may raise exception from `guarded_task` TODO: show error popup
-		logger.info("xmpp connection destroyed")
-	
-	async def xmpp_connection_task(self, ready, jid, password, config, sidebar_item):
-		logger.debug(f"xmpp_connection_task {config}")
-		
-		async with XMPPClient(jid, config=config) as client:
-			if not config['register']:
+		async def xmpp_task(ready):
+			async with XMPPClient(jid, config=config) as client:
 				client.password = password
-			
-			async for stanza in client:
-				if stanza is None:
-					continue
-				elif hasattr(stanza, 'tag'):
-					event_struct = await client.on_stanza(stanza)
-					if event_struct is None:
-						continue
-					event, id_, from_, *elements = event_struct
-					if event is None:
-						continue
-				else:
-					event = stanza
 				
-				if event == 'ready':
-					if not client.established:
-						raise ConnectionError("Connection failed.")
-					elif not client.authenticated:
-						raise ConnectionError("Login failed or not attempted.")
-					else:
-						logger.info(f"Login successful: {jid}")
-						ready.set_result(None) # mark login success
+				if not register:
+					logger.debug("XMPP login.")
+					await client.login()
+					#raise AuthenticationError("zonk")
+				else:
+					logger.debug("XMPP register.")
+					form = await client.register()
+					while form not in (True, False):
+						self.registration_form(form)
+					if not form:
+						raise 
+				
+				async with self.sidebar_lock:
+					"Create sidebar item for the new connection."
+					self.xmpp_clients[jid] = client
+					self.listbox_main.add(sidebar_item.main_widget)
+					self.sidebar.append(('page_server', jid))
+					self.listbox_main.select_row(self.listbox_main.get_row_at_index(len(self.sidebar) - 1)) # FIXME: will cause segfault if listbox item is removed too early
+				
+				try:
+					logger.debug("XMPP connection ready.")
+					ready.set() # mark login success
 					
-					@client.handle
-					async def get_roster(expect):
-						roster, = await client.query('get', None, fromstring('<query xmlns="jabber:iq:roster"/>'))
-						sidebar_item.label_account_contacts.set_text(str(len(roster)))
-						for item in roster:
-							logger.debug(f"roster item: {tostring(item)}")
-							contact_sidebar_item = await self.show_contact(jid, item.attrib['jid'])
-							if contact_sidebar_item:
-								try:
-									contact_sidebar_item.entry_contact_name.set_text(item.attrib['name'])
-								except KeyError:
-									contact_sidebar_item.entry_contact_name.set_placeholder_text(item.attrib['jid'])
-								contact_sidebar_item.domwidget_contact_avatar.set_property('file', f'assets/anon{randint(1, 11)}.jpeg')
-						#client.stop()
+					@client.task
+					async def message(client):
+						while (stanza := await client.expect('self::client:message')) is not None:
+							await self.on_message(client, stanza)
+					
+					@client.task
+					async def presence(client):
+						while (stanza := await client.expect('self::client:presence')) is not None:
+							await self.on_presence(client, stanza)
+					
+					await client.process()
 				
-				elif event == 'register':
-					@client.handle
-					async def register(expect):
-						reg_query, = await client.query('get', None, fromstring('<query xmlns="jabber:iq:register"/>'))
-						for child in reg_query:
-							logger.debug(f"registration field: {tostring(child)}")
-						client.stop()
-						# TODO: fill out password
-				
-				else:
-					logger.info(f"Ignored event: {event}")
+				finally:					
+					logger.debug("Cleaning up after client exit.")
+					await sleep(0.5) # FIXME: self.listbox_main.remove segfaults
+					async with self.sidebar_lock:
+						"Remove sidebar item for this connection."
+						if jid in self.xmpp_clients:
+							self.listbox_main.select_row(self.listbox_main.get_row_at_index(0))
+							del self.xmpp_clients[jid]
+							c = None
+							for n, (label, njid) in enumerate(self.sidebar):
+								if label == 'page_server' and njid == jid:
+									c = n
+									break
+							assert c is not None
+							child = self.listbox_main.get_row_at_index(c)
+							if child is not None:
+								self.listbox_main.remove(child)
+							del self.sidebar[c]
+					logger.debug("...")
+		
+		ready = Event()
+		task = self.create_task(xmpp_task(ready), name=f'jid:{jid}')
+		wait_for_ready = create_task(ready.wait(), name='__wait_for_ready')
+		await wait([task, wait_for_ready], return_when=FIRST_COMPLETED)
+		if not ready.is_set():
+			ready.set()
+			await wait_for_ready
+			await task
+		else:
+			await wait_for_ready
 	
-	async def show_contact(self, server_jid, contact_jid):
+	async def show_contact(self, server_jid, item):
+		contact_jid = item.attrib['jid']
+		
 		sidebar_item = SidebarContact(self.glade_interface, self.translation)
 		
+		for domwidget in sidebar_item.all_children(DOMWidget):
+			domwidget.model.create_resource = self.create_resource
+			domwidget.model.chrome_dir = Path('assets')
+			domwidget.connect('dom_event', self.svg_view_dom_event)
+		
+		try:
+			contact_name = item.attrib['name']
+		except KeyError:
+			sidebar_item.entry_contact_name.set_placeholder_text(contact_jid)
+		else:
+			sidebar_item.entry_contact_name.set_text(contact_name)
+		
 		async with self.sidebar_lock:
 			c = None
-			for n, (label, njid) in enumerate(self.sidebar):
-				if label == 'page_server' and njid == server_jid:
+			for n, (label, *njid) in enumerate(self.sidebar):
+				if label == 'page_server' and njid[0] == server_jid:
 					c = n
 					break
 			if c is None:
 				return None
 			
-			for n, (label, njid) in enumerate(self.sidebar[c + 1:]):
+			for n, (label, *njid) in enumerate(self.sidebar[c + 1:]):
 				if label == 'page_server':
 					break
 				c += 1
 			c += 1
 			
 			self.listbox_main.insert(sidebar_item.main_widget, c)
-			self.sidebar.insert(c, ('page_contact', (server_jid, contact_jid)))
+			self.sidebar.insert(c, ('page_contact', server_jid, contact_jid))
 			sidebar_item.set_listbox_row(self.listbox_main.get_row_at_index(c))
-			
-			return sidebar_item
+		
+		await sidebar_item.domwidget_contact_avatar.open(f'resource://guixmpp/jabber-avatar?account={server_jid}&contact={contact_jid}')
+	
+	async def create_resource(self, model, url):
+		scheme, realm, server, *path = url.split('/')
+		assert scheme == 'resource:'
+		assert realm == ''
+		assert server == 'guixmpp'
+		path = '/'.join(path)
+		path, *query = path.split('?')
+		query = '?'.join(query)
+		query = dict(_q.split('=') for _q in query.split('&'))
+		
+		if path == 'jabber-avatar':
+			return await self.get_jabber_avatar(model, query['account'], query['contact'])
+		else:
+			return None, 'application/x-null'
+	
+	async def get_jabber_avatar(self, model, account_jid, contact_jid):
+		client = self.xmpp_clients[account_jid]
+		assert client.jid == account_jid
+		return await model.download_document(f'chrome://anon{randint(1, 11)}.jpeg')
 
 
 if __name__ == '__main__':
-	import sys
-	from logging import DEBUG, StreamHandler, basicConfig
+	from logging import DEBUG, basicConfig
 	basicConfig(level=DEBUG)
 	logger.setLevel(DEBUG)
-	#logger.addHandler(StreamHandler())
 	
-	logger.debug("???")
+	logger.info("messenger")
 	
-	import sys, signal
 	from asyncio import run, get_running_loop
 	from locale import bindtextdomain, textdomain
 	from guixmpp.domevents import Event as DOMEvent
 	
 	loop_init()
-	
 	translation = 'haael_svg_messenger'
 	bindtextdomain(translation, 'locale')
 	textdomain(translation)
 	
-	window = MainWindow('messenger.glade', translation)
-	
 	async def main():
 		DOMEvent._time = get_running_loop().time
-		
-		window.listbox_main.select_row(window.listbox_main.get_row_at_index(0))
-		window.show()
-		try:
-			await loop_run()
-		finally:
-			window.hide()
-		await window.close_domwidgets()
+		async with Messenger('messenger.glade', translation) as messenger:
+			await messenger.process()
 	
-	window.main_widget.connect('destroy', lambda window: loop_quit())
-	signal.signal(signal.SIGTERM, lambda signum, frame: loop_quit())
-	
-	run(main())
+	run(loop_main(main()))
 

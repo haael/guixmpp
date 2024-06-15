@@ -41,6 +41,7 @@ if __name__ == '__main__':
 	from guixmpp.download.file import FileDownload
 	from guixmpp.download.http import HTTPDownload
 	from guixmpp.download.chrome import ChromeDownload
+	from guixmpp.download.resource import ResourceDownload
 	
 	from guixmpp.view.display import DisplayView
 	from guixmpp.view.keyboard import KeyboardView
@@ -68,7 +69,8 @@ else:
 	from .download.file import FileDownload
 	from .download.http import HTTPDownload
 	from .download.chrome import ChromeDownload
-
+	from .download.resource import ResourceDownload
+	
 	from .view.display import DisplayView
 	from .view.keyboard import KeyboardView
 	from .view.pointer import PointerView
@@ -148,16 +150,16 @@ except NameError:
 			if self.http_download:
 				features.append(HTTPDownload)
 				cc.append('H')
-			if self.chrome:
-				features.append(ChromeDownload)
-				cc.append('C')
+			#if self.chrome:
+			#	features.append(ChromeDownload)
+			#	cc.append('C')
 			
 			if cc:
 				cc.insert(0, '_')
 			else:
 				cc.append('_X')
 			
-			DOMWidgetModel = Model.features('<local>.DOMWidgetModel' + ''.join(cc), DisplayView, SVGRender, PNGRender, PixbufRender, HTMLRender, FontFormat, *features, XMLFormat, CSSFormat, PlainFormat, NullFormat, DataDownload)
+			DOMWidgetModel = Model.features('<local>.DOMWidgetModel' + ''.join(cc), DisplayView, SVGRender, PNGRender, PixbufRender, HTMLRender, FontFormat, *features, ChromeDownload, ResourceDownload, XMLFormat, CSSFormat, PlainFormat, NullFormat, DataDownload)
 			self.model = DOMWidgetModel(chrome_dir=self.chrome)
 			
 			self.connections = []
@@ -210,15 +212,16 @@ except NameError:
 			except RuntimeError:
 				loop = None
 			
+			async def work():
+				DOMEvent._time = get_running_loop().time
+				await coro
+			
 			if not loop:
-				async def work():
-					DOMEvent._time = get_running_loop().time
-					await coro
 				run(work())
 			elif not loop.is_running():
-				loop.run_until_complete(coro)
+				loop.run_until_complete(work())
 			else:
-				loop.create_task(coro)
+				loop.create_task(work())
 		
 		async def open(self, url):
 			"Open document identified by the provided url."
@@ -230,6 +233,7 @@ except NameError:
 				image = await self.model.open_document(self, url)
 				if self.auto_show:
 					self.set_image(image)
+					# TODO: synthesize initial pointer and keyboard events
 		
 		async def close(self):
 			"Close current document, reverting to default state."
@@ -242,10 +246,12 @@ except NameError:
 						self.set_image(None)
 		
 		def set_image(self, image):
+			"Directly set image to display (document returned by `model.create_document`). None to unset."
+			
 			self.model.set_image(self, image)
 		
 		def draw_image(self, model):
-			"Draw the currently opened image to a Cairo surface. Returns the rendered surface."
+			"Draw the currently opened image to a Cairo surface. Returns the rendered surface. `model` argument is to allow multi-model widgets."
 			
 			viewport_width = model.get_viewport_width(self)
 			viewport_height = model.get_viewport_height(self)
@@ -254,34 +260,34 @@ except NameError:
 			#surface = cairo.ImageSurface(cairo.Format.ARGB32, viewport_width, viewport_height) # faster, but uses more memory (as much as unscaled image size, which can lead to exploits)
 			context = cairo.Context(surface)
 			
-			image = self.model.get_image(self)
+			image = model.get_image(self)
 			if (image is not None) and (viewport_width > 0) and (viewport_height > 0):
 				try:
-					w, h = self.model.image_dimensions(self, image)
+					w, h = model.image_dimensions(self, image)
 					
 					if w <= viewport_width and h <= viewport_height:
 						bw = w
 						bh = h
 					elif w / h <= viewport_width / viewport_height:
-						bw = self.model.image_width_for_height(self, image, viewport_height)
+						bw = model.image_width_for_height(self, image, viewport_height)
 						bh = viewport_height
 					else:
 						bw = viewport_width
-						bh = self.model.image_height_for_width(self, image, viewport_width)
+						bh = model.image_height_for_width(self, image, viewport_width)
 					
 					model.draw_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh))
 				
 				except NotImplementedError as error:
-					self.model.emit_warning(self, f"NotImplementedError: {error}", image)
+					model.emit_warning(self, f"NotImplementedError: {error}", image)
 					pass # draw placeholder for non-image formats
 			
 			return surface
 		
-		def poke_image(self, px, py):
+		def poke_image(self, model, px, py):
 			"Simulate pointer event at widget coordinates (px, py). Returns a list of nodes under the provided point and coordinates (qx, qy) after Cairo context transformations."
 			
-			viewport_width = self.model.get_viewport_width(self)
-			viewport_height = self.model.get_viewport_height(self)
+			viewport_width = model.get_viewport_width(self)
+			viewport_height = model.get_viewport_height(self)
 			
 			surface = cairo.RecordingSurface(cairo.Content.COLOR_ALPHA, (0, 0, viewport_width, viewport_height))
 			context = cairo.Context(surface)
@@ -289,25 +295,26 @@ except NameError:
 			qx, qy = px, py
 			nop = []
 			
-			image = self.model.get_image(self)
+			image = model.get_image(self)
 			if (image is not None) and (viewport_width > 0) and (viewport_height > 0):			
 				try:
-					w, h = self.model.image_dimensions(self, image)
+					w, h = model.image_dimensions(self, image)
 					
 					if w <= viewport_width and h <= viewport_height:
 						bw = w
 						bh = h
 					elif w / h <= viewport_width / viewport_height:
-						bw = self.model.image_width_for_height(self, image, viewport_height)
+						bw = model.image_width_for_height(self, image, viewport_height)
 						bh = viewport_height
 					else:
 						bw = viewport_width
-						bh = self.model.image_height_for_width(self, image, viewport_width)	
+						bh = model.image_height_for_width(self, image, viewport_width)	
 					
 					qx, qy = context.device_to_user(px, py)
-					nop = self.model.poke_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh), px, py)
+					nop = model.poke_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh), px, py)
+				
 				except NotImplementedError as error:
-					self.model.emit_warning(self, f"NotImplementedError: {error}", image)
+					model.emit_warning(self, f"NotImplementedError: {error}", image)
 					pass
 			
 			surface.finish()
@@ -315,7 +322,6 @@ except NameError:
 
 
 if __name__ == '__main__':
-	import signal
 	from asyncio import run, Lock, get_running_loop, create_task
 	if 'Path' not in globals(): from aiopath import Path
 	
@@ -329,7 +335,6 @@ if __name__ == '__main__':
 	window.add(widget)
 	
 	window.connect('destroy', lambda window: loop_quit())
-	signal.signal(signal.SIGTERM, lambda signum, frame: loop_quit())
 	
 	event_lock = Lock()
 	
@@ -391,7 +396,10 @@ if __name__ == '__main__':
 		await widget.open(images[image_index])
 		window.show_all()
 		print("start")
-		await loop_run()
+		try:
+			await loop_run()
+		except KeyboardInterrupt:
+			pass
 		print("stop")
 		window.hide()
 	#'''
@@ -404,7 +412,10 @@ if __name__ == '__main__':
 			images.append(f'https://www.w3.org/Consortium/Offices/Presentations/SVG/{n}.svg')
 		await widget.open(images[image_index])
 		window.show_all()
-		await loop_run()
+		try:
+			await loop_run()
+		except KeyboardInterrupt:
+			pass
 		window.hide()
 	#'''
 	
@@ -418,7 +429,10 @@ if __name__ == '__main__':
 		images.sort(key=(lambda x: x.lower()))
 		await widget.open_document(images[image_index])
 		window.show_all()
-		await loop_run()
+		try:
+			await loop_run()
+		except KeyboardInterrupt:
+			pass
 		window.hide()
 	#'''
 	
