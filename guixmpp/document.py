@@ -270,7 +270,7 @@ class Model:
 			try:
 				if url != '':
 					data, mime_type = await self.download_document(url)
-				else:
+				elif view.prop_file:
 					path = Path(view.prop_file) # load document set through 'set_file'
 					match path.suffix.lower():
 						case '.svg':
@@ -285,7 +285,9 @@ class Model:
 						data = await path.read_bytes()
 					except (OSError, IOError) as error:
 						self.emit_warning(view, f"Error opening file: {type(error).__name__}: {str(error)}", url)
-						data, mime_type = None, 'application/x-null'						
+						data, mime_type = None, 'application/x-null'
+				else:
+					data, mime_type = None, 'application/x-null'
 			except (RuntimeError, NameError, KeyError, IndexError, AttributeError, ArithmeticError, CancelledError, KeyboardInterrupt, AssertionError):
 				raise
 			except Exception as error: # Ignore all other errors, issue a warning.

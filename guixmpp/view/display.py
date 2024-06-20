@@ -44,6 +44,7 @@ class DisplayView:
 			widget.__viewport_width = event.width
 			widget.__viewport_height = event.height
 			self.update(widget)
+			#GLib.idle_add(self.update, widget)
 	
 	def update(self, widget):
 		if hasattr(widget, '_DisplayView__surface') and widget.__surface:

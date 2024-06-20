@@ -43,44 +43,6 @@ _loop_result = None
 _loop_error = None
 
 
-
-
-
-
-
-
-
-
-'''
-def asynchandler(coro):
-	"Takes a coroutine and changes it into normal method that schedules the coroutine and adds the task to the main app task list."
-	
-	def method(self, *args, **kwargs):
-		future = get_running_loop().create_future()
-		
-		async def guarded_coro(self, *args, **kwargs):
-			try:
-				value = await coro(self, *args, **kwargs)
-			except BaseException as error:
-				future.set_exception(error)
-				raise
-			else:
-				future.set_result(value)
-				return value
-		
-		task = create_task(guarded_coro(self, *args, **kwargs), name=coro.__name__)
-		app_tasks.append(task)
-		task.add_done_callback(app_task.discard)
-		if app_task and not app_task.done():
-			app_task.cancel()
-		return future
-	
-	method.__name__ = coro.__name__
-	
-	return method
-'''
-
-
 def asynchandler(coro):
 	"Takes a coroutine and changes it into normal method that schedules the coroutine and adds the task to the main app task list."
 	
@@ -94,45 +56,6 @@ def asynchandler(coro):
 	method.__name__ = coro.__name__
 	
 	return method
-
-
-'''
-async def loop_run():
-	"Run the loop that schedules tasks created by `asynchandler`."
-	
-	global app_tasks, app_task, app_future
-	
-	get_running_loop().add_signal_handler(signal.SIGTERM, lambda signum: loop_interrupt(SystemExit("SIGTERM")))
-	get_running_loop().add_signal_handler(signal.SIGINT, lambda signum: loop_interrupt(KeyboardInterrupt("SIGINT")))
-	
-	app_tasks = []
-	app_future = get_running_loop().create_future()
-	
-	while True:
-		app_task = create_task(wait(app_tasks + [app_future], return_when=FIRST_EXCEPTION))
-		
-		try:
-			await app_task
-		except CancelledError:
-			pass
-		
-		for task in app_tasks[:]:
-			if task.done():
-				app_tasks.remove(task)
-				if exc := task.exception():
-					raise exc
-		
-		if app_future.done():
-			break
-	
-	assert app_future.done()
-	
-	for task in app_tasks:
-		if not task.done():
-			task.cancel()
-	
-	return app_future.result()
-'''
 
 
 async def _loop_running():
@@ -156,14 +79,24 @@ async def loop_run():
 	
 	try:
 		loop_running_task = create_task(_loop_running(), name='__loop_running')
+		task_added_task = None
 		while not loop_running_task.done():
-			task_added_task = create_task(_task_added.wait(), name='__task_added')
+			if task_added_task is None:
+				task_added_task = create_task(_task_added.wait(), name='__task_added')
 			done, pending = await wait(_loop_tasks | frozenset({loop_running_task, task_added_task}), return_when=FIRST_COMPLETED)
-			if not task_added_task.done():
-				task_added_task.cancel()
+			
+			if task_added_task.done():
+				await task_added_task
+				_task_added.clear()
+				task_added_task = None
+			
 			for task in done:
-				if task != loop_running_task:
+				if task != loop_running_task and task != task_added_task:
+					#print(task)
 					await task
+		
+		if task_added_task is not None and not task_added_task.done():
+			task_added_task.cancel()
 		
 		assert loop_running_task.done()
 		
@@ -240,7 +173,7 @@ def loop_interrupt(error):
 
 
 async def loop_main(app):
-	"Run the specified coroutine in the loop. Quit loop when coroutine ended."
+	"Run the specified coroutine in the loop. Quit loop when coroutine ends."
 	
 	looptask = create_task(loop_run())
 	apptask = create_task(app)

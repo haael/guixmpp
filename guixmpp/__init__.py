@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 
-__all__ = 'DOMWidget', 'XMPPClient', 'AuthenticationError', 'QueryError', 'asynchandler', 'loop_init', 'loop_main'
+__all__ = 'DOMWidget', 'XMPPClient', 'ProtocolError', 'AuthenticationError', 'QueryError', 'asynchandler', 'loop_init', 'loop_main', 'loop_run', 'loop_quit'
 
 
 if __name__ == '__main__':

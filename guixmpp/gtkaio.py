@@ -1331,6 +1331,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		return self.__exception_handler
 	
 	def set_exception_handler(self, handler):
+		print("set_exception_handler", handler)
 		self.__exception_handler = handler
 	
 	def default_exception_handler(self, context):

@@ -55,6 +55,10 @@ class PNGRender:
 		
 		w, h = self.image_dimensions(view, document)
 		x, y, ww, hh = box
+		
+		if x == 0 and y == 0:
+			x -= 0.1 # FIXME: workaround; for some reason the surface is not drawn if translation is 0, 0
+		
 		if x != 0 or y != 0 or ww != w or hh != h:
 			ctx.save()
 			if x != 0 or y != 0:

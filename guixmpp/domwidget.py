@@ -40,6 +40,7 @@ if __name__ == '__main__':
 	from guixmpp.download.data import DataDownload
 	from guixmpp.download.file import FileDownload
 	from guixmpp.download.http import HTTPDownload
+	from guixmpp.download.cid import CIDDownload
 	from guixmpp.download.chrome import ChromeDownload
 	from guixmpp.download.resource import ResourceDownload
 	
@@ -68,6 +69,7 @@ else:
 	from .download.data import DataDownload
 	from .download.file import FileDownload
 	from .download.http import HTTPDownload
+	from .download.cid import CIDDownload
 	from .download.chrome import ChromeDownload
 	from .download.resource import ResourceDownload
 	
@@ -99,12 +101,13 @@ except NameError:
 			'pointer_input' : (GObject.TYPE_BOOLEAN, "Pointer input", "Whether the widget accepts pointer input.", False, GObject.ParamFlags.READWRITE),
 			'file_download' : (GObject.TYPE_BOOLEAN, "File download", "Whether the widget supports `file:` scheme granting access to local filesystem.", False, GObject.ParamFlags.READWRITE),
 			'http_download' : (GObject.TYPE_BOOLEAN, "HTTP download", "Whether the widget supports `http(s):` scheme granting access to network.", False, GObject.ParamFlags.READWRITE),
+			'cid_download' : (GObject.TYPE_BOOLEAN, "CID download", "Whether the widget supports `cid:` scheme granting access to XMPP network.", False, GObject.ParamFlags.READWRITE),
 			'auto_show' : (GObject.TYPE_BOOLEAN, "Auto show", "Whether the loaded image should be shown automatically.", True, GObject.ParamFlags.READWRITE),
 			'url' : (GObject.TYPE_STRING, "URL", "URL to load; the right scheme must be supported.", None, GObject.ParamFlags.READWRITE),
 			'file' : (GObject.TYPE_STRING, "File", "File to load; works even if `file:` scheme is disabled.", None, GObject.ParamFlags.READWRITE)
 		}
 		
-		def __init__(self, file_=None, url=None, keyboard_input=False, pointer_input=False, file_download=False, http_download=False, chrome=None, auto_show=True):
+		def __init__(self, file_=None, url=None, keyboard_input=False, pointer_input=False, file_download=False, http_download=False, cid_download=False, chrome=None, auto_show=True):
 			super().__init__()
 			
 			self.set_can_focus(True)
@@ -118,6 +121,7 @@ except NameError:
 			self.pointer_input = pointer_input
 			self.file_download = file_download
 			self.http_download = http_download
+			self.cid_download = cid_download
 			self.chrome = chrome
 			self.auto_show = auto_show
 			
@@ -150,6 +154,9 @@ except NameError:
 			if self.http_download:
 				features.append(HTTPDownload)
 				cc.append('H')
+			if self.cid_download:
+				features.append(CIDDownload)
+				cc.append('C')
 			#if self.chrome:
 			#	features.append(ChromeDownload)
 			#	cc.append('C')

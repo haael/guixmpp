@@ -28,6 +28,7 @@ class PixbufRender:
 			loader.close()
 			return loader.get_pixbuf()
 	
+	'''
 	def create_document_from_bytes(self, data, mime_type):
 		try:
 			loader = GdkPixbuf.PixbufLoader.new_with_mime_type(mime_type)
@@ -59,6 +60,7 @@ class PixbufRender:
 				loader.write(data) # TODO: run in executor
 			loader.close()
 			return loader.get_pixbuf()
+	'''
 	
 	def is_image_document(self, document):
 		return isinstance(document, GdkPixbuf.Pixbuf)
@@ -96,6 +98,10 @@ class PixbufRender:
 		
 		w, h = self.image_dimensions(view, document)
 		x, y, ww, hh = box
+		
+		#if x == 0 and y == 0:
+		#	x -= 0.1 # FIXME: workaround; for some reason the surface is not drawn if translation is 0, 0
+		
 		if x != 0 or y != 0 or ww != w or hh != h:
 			ctx.save()
 			if x != 0 or y != 0:
@@ -103,7 +109,7 @@ class PixbufRender:
 			if ww != w or hh != h:
 				ctx.scale(ww / w, hh / h)
 		ctx.set_source_surface(Gdk.cairo_surface_create_from_pixbuf(document, 0, None))
-		ctx.rectangle(0, 0, w, h)
+		ctx.rectangle(0.1, 0, w - 0.1, h)
 		ctx.fill()
 		if x != 0 or y != 0 or ww != w or hh != h:
 			ctx.restore()

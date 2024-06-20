@@ -56,7 +56,10 @@ class XMPPClient:
 		'xmpp-streams': 'urn:ietf:params:xml:ns:xmpp-streams',
 		'xmpp-stanzas': 'urn:ietf:params:xml:ns:xmpp-stanzas',
 		'xmpp-bind': 'urn:ietf:params:xml:ns:xmpp-bind',
-		'xep-0077': 'jabber:iq:register'
+		'xep-0004': 'jabber:x:data',
+		'xep-0077': 'jabber:iq:register',
+		'xep-0221': 'urn:xmpp:media-element',
+		'xep-0231': 'urn:xmpp:bob'
 	}
 	
 	def __init__(self, jid, password=None, config=None):
@@ -95,6 +98,8 @@ class XMPPClient:
 		
 		if config:
 			self.config.update(config)
+		
+		self.__resource = {}
 	
 	def ssl_context(self):
 		return create_default_context()
@@ -199,6 +204,7 @@ class XMPPClient:
 					except TimeoutError:
 						logger.debug("Timeout waiting for end tag.")
 					finally:
+						logger.debug("End tag received.")
 						await self.state_condition.acquire()
 						await self.read_lock.acquire()
 			
@@ -224,6 +230,7 @@ class XMPPClient:
 		"Receive raw stanza from the stream. Will return None when stream ends."
 		
 		if self.inside_task.get():
+			"We're inside managed task, use `expect` instead."
 			return await self.expect('self::*')
 		
 		async with self.state_condition:
@@ -241,7 +248,7 @@ class XMPPClient:
 						self.end_of_stream.set()
 						return None
 					elif element.getparent().tag == f'{{{self.namespace["stream"]}}}stream' and element.getparent().getparent() == None:
-						#logger.debug(f"received stanza: {tostring(element).decode('utf-8')}.")
+						logger.debug(f"received stanza: {tostring(element).decode('utf-8')}.")
 						self.recv_stanza_counter += 1
 						return element
 	
@@ -253,7 +260,9 @@ class XMPPClient:
 	async def __aexit__(self, exctype, exception, traceback):
 		errors = []
 		if self.__tasks:
-			logger.warning(f"Some of tasks still running. {self__tasks}")
+			logger.warning(f"Some of tasks still running.")
+			for task in self.__tasks:
+				logger.debug(f" {task}")
 			self.cancel()
 			logger.debug("Waiting for remaining tasks to finish.")
 			done, pending = await wait(self.__tasks, return_when=ALL_COMPLETED)
@@ -303,6 +312,7 @@ class XMPPClient:
 		try:
 			logger.info("XMPPClient main loop begin.")
 			
+			task_added = None
 			while self.n_tasks:
 				#logger.debug(f"process {self.n_tasks}")
 				gather_expectations_task = self.create_task(gather_expectations(), name='__gather_expectations') # TODO: wait_for
@@ -310,15 +320,20 @@ class XMPPClient:
 				
 				del stanza
 				while self.n_tasks and not (gather_expectations_task.done() and recv_stanza_task.done()):
-					task_added = create_task(self.__task_added.wait(), name='__check_if_task_added')
-					self.__task_added.clear()
+					if task_added is None:
+						task_added = create_task(self.__task_added.wait(), name='__check_if_task_added')
 					done, pending = await wait(self.__tasks | frozenset({task_added}), return_when=FIRST_COMPLETED)
-					if not task_added.done():
-						task_added.cancel()
+					
+					if task_added.done():
+						await task_added
+						self.__task_added.clear()
+						task_added = None
+					
 					for task in done:
-						result = await task
-						if task == recv_stanza_task:
-							stanza = result
+						if task != task_added:
+							result = await task
+							if task == recv_stanza_task:
+								stanza = result
 				
 				if not self.n_tasks:
 					break
@@ -342,6 +357,9 @@ class XMPPClient:
 						await queue.put(None)
 					break
 			
+			if task_added is not None and not task_added.done():
+				task_added.cancel()
+			
 			logger.info("XMPPClient main loop ended.")
 			
 			if self.__tasks:
@@ -363,7 +381,7 @@ class XMPPClient:
 		except BaseException as error:
 			if not self.__tasks:
 				raise
-			logger.warning(f"Error in XMPPClient mainloop: {type(error)} {str(error)}.")
+			logger.warning(f"Error in XMPPClient mainloop: ({type(error).__name__}) {str(error)}")
 			self.cancel()
 			done, pending = await wait(self.__tasks, return_when=ALL_COMPLETED)
 			assert not pending
@@ -401,6 +419,7 @@ class XMPPClient:
 		#logger.debug(f"expect {xpath}")
 		
 		if not self.inside_task.get():
+			"We're not inside managed task, resort to recv_stanza."
 			while True:
 				stanza = await self.recv_stanza()
 				if stanza is None:
@@ -524,6 +543,8 @@ class XMPPClient:
 		return True
 	
 	async def bind(self, resource=None):
+		"Bind to resource, that means the last part of jid. Should be used after receiving <bind/> stream feature."
+		
 		if resource is None:
 			resource = self.jid.split('/')[1]
 		
@@ -617,6 +638,7 @@ class XMPPClient:
 			message.text = text_body
 		
 		await self.send_stanza(message)
+	'''
 	
 	async def presence(self, to=None, type_=None, show=None, status=None, priority=None):
 		presence = fromstring('<presence/>')
@@ -631,7 +653,6 @@ class XMPPClient:
 		if priority is not None:
 			presence.append(fromstring(f'<priority>{priority}</priority>'))
 		await self.send_stanza(presence)
-	'''
 	
 	async def iq_get(self, to, body, timeout=10):
 		return await self.query('get', to, body, timeout=timeout)
@@ -680,8 +701,8 @@ class XMPPClient:
 			if len(errors) != 1:
 				raise ProtocolError("Expected exactly 1 error child.")
 			
-			logger.error("Query error.")
-			raise QueryError(errors[0])
+			logger.error("Query error: {tostring(errors[0]).decode('utf-8')}")
+			raise QueryError(tostring(errors[0]).decode('utf-8'))
 		else:
 			raise RuntimeError
 	
@@ -733,8 +754,50 @@ class XMPPClient:
 			else:
 				logging.error("No required features found.")
 				raise ProtocolError("Initialization sequence failed.")
-
-
+	
+	async def register(self, timeout=10):
+		"Account registration sequence. Returns a registration form, which has to be responded to."
+		
+		while True:
+			if timeout is None:
+				features = await self.expect('self::stream:features')
+			else:
+				features = await wait_for(self.expect('self::stream:features'), timeout)
+			
+			if features is None: # end of stream
+				logger.warning("Stream ended prematurely.")
+				return
+			elif any(_child.tag == f'{{{self.namespace["xmpp-tls"]}}}starttls' for _child in features):
+				await self.starttls()
+			elif any(_child.tag == f'{{{self.namespace["iq-register"]}}}register' for _child in features):
+				if not self.encrypted:
+					raise ProtocolError("Registration available only on encrypted stream.")
+				break
+			else:
+				raise ProtocolError("Server does not support registration.")
+		
+		server_jid = self.jid.split('@')[1].split('/')[0]
+		form = await self.iq_get(server_jid, fromstring(f'<query xmlns="{self.namespace["xep-0077"]}"/>'))
+		if form.tag != f'{{{self.namespace["xep-0077"]}}}query':
+			raise ProtocolError("Invalid response for registration request.")
+		return form
+	
+	def set_resource(self, cid, resource, mime):
+		cid = cid.strip()
+		if not cid.startswith('cid:'):
+			cid = 'cid:' + cid
+		self.__resource[cid] = resource, mime
+	
+	async def get_resource(self, cid):
+		cid = cid.strip()
+		if not cid.startswith('cid:'):
+			cid = 'cid:' + cid
+		
+		if cid in self.__resource:
+			return self.__resource[cid]
+		else:
+			 raise NotImplementedError("BOB not implemented.")
+ 
 
 if __name__ == '__main__':
 	from logging import DEBUG, StreamHandler
@@ -796,33 +859,13 @@ if __name__ == '__main__':
 					print("got bind")
 			
 			else:
-				@client.task
-				async def register(client, timeout=10):
-					while True:
-						if timeout is None:
-							features = await client.expect('self::stream:features')
-						else:
-							features = await wait_for(client.expect('self::stream:features'), timeout)
-						
-						if features is None: # end of stream
-							logger.warning("Stream ended prematurely.")
-							return
-						elif any(_child.tag == f'{{{client.namespace["xmpp-tls"]}}}starttls' for _child in features):
-							await client.starttls()
-						elif any(_child.tag == f'{{{client.namespace["iq-register"]}}}register' for _child in features):
-							break
-						else:
-							raise ProtocolError("Initialization sequence failed.")
-					
-					server_jid = client.jid.split('@')[1].split('/')[0]
-					r = await client.iq_get(server_jid, fromstring(f'<query xmlns="{client.namespace["xep-0077"]}"/>'))
-					print(tostring(r, pretty_print=True).decode('utf-8'))
+				@client.task(client.__class__.register)
 				
 				#@client.task
 				async def answer_ping(client):
 					self.namespace['xep-0199'] = 'urn:xmpp:ping'
 					try:
-						while (stanza := await client.expect(f'self::client:iq[@type="get"]/xep-0199:ping')) is not None:
+						while (stanza := await client.expect('self::client:iq[@type="get"]/xep-0199:ping')) is not None:
 							try:
 								id_ = stanza.attrib['id']
 								type_ = stanza.attrib['type']
@@ -842,7 +885,7 @@ if __name__ == '__main__':
 				async def invalid_iq_errors(client):
 					"Send errors in response to invalid <iq/>s."
 					
-					while (stanza := await client.expect(f'self::client:iq')) is not None:
+					while (stanza := await client.expect('self::client:iq')) is not None:
 						id_ = stanza.attrib['id']
 						peer = stanza.attrib.get('from', None)
 						
