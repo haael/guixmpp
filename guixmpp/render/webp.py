@@ -2,60 +2,67 @@
 #-*- coding:utf-8 -*-
 
 
-__all__ = 'PNGRender',
+__all__ = 'WEBPRender',
+
+
+if __name__ == '__main__':
+	import sys
+	del sys.path[0]
 
 
 import cairo
-from io import BytesIO
-from collections import defaultdict
+import webp
 
 
-class PNGImage:
+class WEBPImage:
 	def __init__(self, surface, width, height):
 		self.surface = surface
 		self.width = width
 		self.height = height
 
 
-class PNGRender:
-	"Supports creating and rendering PNG images, using Cairo only."
-	
+class WEBPRender:
 	def create_document(self, data, mime_type):
-		if mime_type == 'image/png':
-			s = cairo.ImageSurface.create_from_png(BytesIO(data))
-			return PNGImage(s, s.get_width(), s.get_height())
+		if mime_type == 'image/webp':
+			webp_data = webp.WebPData.from_buffer(data)
+			arr = webp_data.decode(color_mode=webp.WebPColorMode.BGRA)
+			w = arr.shape[1]
+			h = arr.shape[0]
+			s = arr.shape[1] * arr.shape[2]
+			ba = bytearray(arr.tobytes())
+			return WEBPImage(cairo.ImageSurface.create_for_data(ba, cairo.Format.ARGB32, w, h, s), w, h)
 		else:
 			return NotImplemented
 	
-	def is_png_document(self, document):
-		return isinstance(document, PNGImage)
+	def is_webp_document(self, document):
+		return isinstance(document, WEBPImage)
 	
 	def scan_document_links(self, document):
-		if self.is_png_document(document):
+		if self.is_webp_document(document):
 			return []
 		else:
 			return NotImplemented
 	
 	def image_dimensions(self, view, document):
-		if self.is_png_document(document):
+		if self.is_webp_document(document):
 			return document.width, document.height
 		else:
 			return NotImplemented
 	
 	def image_width_for_height(self, view, document, height):
-		if not self.is_png_document(document):
+		if not self.is_webp_document(document):
 			return NotImplemented
 		p_width, p_height = self.image_dimensions(view, document)
 		return height * p_width / p_height
 	
 	def image_height_for_width(self, view, document, width):
-		if not self.is_png_document(document):
+		if not self.is_webp_document(document):
 			return NotImplemented
 		p_width, p_height = self.image_dimensions(view, document)
 		return width * p_height / p_width
 	
 	def draw_image(self, view, document, ctx, box):
-		if not self.is_png_document(document):
+		if not self.is_webp_document(document):
 			return NotImplemented
 		
 		vw = self.get_viewport_width(view)
@@ -77,7 +84,7 @@ class PNGRender:
 			ctx.restore()
 	
 	def poke_image(self, view, document, ctx, box, px, py):
-		if not self.is_png_document(document):
+		if not self.is_webp_document(document):
 			return NotImplemented
 		
 		x, y, w, h = box
@@ -88,7 +95,7 @@ class PNGRender:
 		return hover_nodes
 	
 	def element_tabindex(self, document, element):
-		if self.is_png_document(document):
+		if self.is_webp_document(document):
 			return None
 		else:
 			return NotImplemented
@@ -97,16 +104,16 @@ class PNGRender:
 if __debug__ and __name__ == '__main__':
 	from pathlib import Path
 	
-	print("png image")
+	print("webp image")
 	
-	model = PNGRender()
+	model = WEBPRender()
 	
 	for example in Path('examples').iterdir():
 		if not example.is_dir(): continue
 		for filepath in example.iterdir():
-			if filepath.suffix == '.png':
-				mime_type = 'image/png'
+			if filepath.suffix == '.webp':
+				mime_type = 'image/webp'
 			else:
 				continue
 			document = model.create_document(filepath.read_bytes(), mime_type)
-			assert model.is_png_document(document)
+			assert model.is_webp_document(document)

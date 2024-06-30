@@ -52,6 +52,8 @@
                         <property name="height-request">60</property>
                         <property name="visible">True</property>
                         <property name="can-focus">True</property>
+                        <property name="can-default">True</property>
+                        <property name="has-default">True</property>
                         <property name="receives-default">True</property>
                         <property name="margin-start">8</property>
                         <property name="margin-top">8</property>
@@ -140,6 +142,7 @@
                     <property name="editable">False</property>
                     <property name="has-frame">False</property>
                     <property name="caps-lock-warning">False</property>
+                    <signal name="icon-press" handler="entry_icon_press" swapped="no"/>
                   </object>
                   <packing>
                     <property name="expand">False</property>
@@ -196,6 +199,7 @@
                     <property name="visible">True</property>
                     <property name="can-focus">True</property>
                     <property name="caps-lock-warning">False</property>
+                    <signal name="icon-press" handler="entry_icon_press" swapped="no"/>
                   </object>
                   <packing>
                     <property name="expand">False</property>
@@ -241,6 +245,7 @@
                     <property name="can-focus">True</property>
                     <property name="margin-end">4</property>
                     <property name="visibility">False</property>
+                    <signal name="icon-press" handler="entry_icon_press" swapped="no"/>
                   </object>
                   <packing>
                     <property name="expand">False</property>
@@ -254,6 +259,7 @@
                     <property name="can-focus">True</property>
                     <property name="margin-start">4</property>
                     <property name="visibility">False</property>
+                    <signal name="icon-press" handler="entry_icon_press" swapped="no"/>
                   </object>
                   <packing>
                     <property name="expand">False</property>

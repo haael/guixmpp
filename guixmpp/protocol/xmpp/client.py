@@ -56,6 +56,7 @@ class XMPPClient:
 		'xmpp-streams': 'urn:ietf:params:xml:ns:xmpp-streams',
 		'xmpp-stanzas': 'urn:ietf:params:xml:ns:xmpp-stanzas',
 		'xmpp-bind': 'urn:ietf:params:xml:ns:xmpp-bind',
+		'iq-roster': 'jabber:iq:roster',
 		'xep-0004': 'jabber:x:data',
 		'xep-0077': 'jabber:iq:register',
 		'xep-0221': 'urn:xmpp:media-element',
@@ -91,9 +92,13 @@ class XMPPClient:
 			'host': None,
 			'port': None,
 			'legacy_ssl': False,
-			'ssl_timeout': 10,
-			'end_timeout': 4,
-			'encryption_required': True
+			'ssl_timeout': 7,
+			'end_timeout': 3,
+			'initial_write_timeout': 10,
+			'initial_read_timeout': 4,
+			'encryption_required': True,
+			'plaintext_login': False,
+			'write_timeout': 7
 		}
 		
 		if config:
@@ -126,10 +131,13 @@ class XMPPClient:
 		
 		logger.info(f"Connecting to XMPP server {host}:{port}, legacy_ssl={legacy_ssl}.")
 		
-		if not timeout:
+		if timeout is None:
 			self.reader, self.writer = await open_connection(host, port, ssl=legacy_ssl)
 		else:
-			self.reader, self.writer = await wait_for(open_connection(host, port, ssl=legacy_ssl), timeout)
+			try:
+				self.reader, self.writer = await wait_for(open_connection(host, port, ssl=legacy_ssl), timeout)
+			except TimeoutError as error:
+				raise TimeoutError(f"Timeout opening connection to {host}:{port}.") from error
 		
 		self.encrypted = bool(legacy_ssl)
 	
@@ -155,11 +163,30 @@ class XMPPClient:
 				
 				data = f'<?xml version="1.0"?><stream:stream from="{bare_jid}" to="{server}" version="1.0" xmlns="{self.namespace["client"]}" xmlns:stream="{self.namespace["stream"]}">'.encode('utf-8')
 				self.writer.write(data)
-				await self.writer.drain()
 				
+				timeout = self.config['initial_write_timeout']
+				
+				if timeout is None:
+					await self.writer.drain()
+				else:
+					try:
+						await wait_for(self.writer.drain(), timeout)
+					except TimeoutError as error:
+						raise TimeoutError("Timeout writing to XMPP stream.") from error
+				
+				timeout = self.config['initial_read_timeout']
 				stream_tag = False
 				while not stream_tag:
-					data = await self.reader.readuntil(b'>')
+					if timeout is None:
+						data = await self.reader.readuntil(b'>')
+					else:
+						try:
+							data = await wait_for(self.reader.readuntil(b'>'), timeout)
+						except TimeoutError as error:
+							raise TimeoutError("Timeout reading from XMPP stream.") from error
+						else:
+							timeout = None
+					
 					self.parser.feed(data)
 					for event, element in self.parser.read_events(): # TODO: raise StreamError on parsing error
 						if event == 'start' and element.tag == f'{{{self.namespace["stream"]}}}stream':
@@ -194,8 +221,11 @@ class XMPPClient:
 						
 						stanza = ''
 						while stanza != None:
-							logger.info("Waiting for end tag... ")
-							stanza = await self.recv_stanza() # TODO: wait_for
+							logger.debug("Waiting for end tag... ")
+							if end_timeout is None:
+								stanza = await self.recv_stanza()
+							else:
+								stanza = await wait_for(self.recv_stanza(), end_timeout)
 							if stanza != None:
 								try:
 									logger.warning(f"Garbage stanza received: {tostring(stanza).decode('utf-8')}")
@@ -203,8 +233,9 @@ class XMPPClient:
 									logger.warning(f"Non-stanza garbage received: {repr(stanza)}")
 					except TimeoutError:
 						logger.debug("Timeout waiting for end tag.")
-					finally:
+					else:
 						logger.debug("End tag received.")
+					finally:
 						await self.state_condition.acquire()
 						await self.read_lock.acquire()
 			
@@ -222,8 +253,16 @@ class XMPPClient:
 		async with self.write_lock:
 			rawdata = tostring(stanza)
 			self.writer.write(rawdata)
-			logger.debug(f"sending stanza: {tostring(stanza).decode('utf-8')}")
-			await self.writer.drain()
+			#logger.debug(f"sending stanza: {tostring(stanza).decode('utf-8')}")
+			logger.debug(f"sending stanza: {stanza.tag} {dict(stanza.attrib)}")
+			timeout = self.config['write_timeout']
+			if timeout is None:
+				await self.writer.drain()
+			else:
+				try:
+					await wait_for(self.writer.drain(), timeout)
+				except TimeoutError as error:
+					raise TimeoutError("Timeout waiting for stream write.") from error
 			self.sent_stanza_counter += 1
 	
 	async def recv_stanza(self):
@@ -248,7 +287,8 @@ class XMPPClient:
 						self.end_of_stream.set()
 						return None
 					elif element.getparent().tag == f'{{{self.namespace["stream"]}}}stream' and element.getparent().getparent() == None:
-						logger.debug(f"received stanza: {tostring(element).decode('utf-8')}.")
+						#logger.debug(f"received stanza: {tostring(element).decode('utf-8')}.")
+						logger.debug(f"received stanza: {element.tag} {dict(element.attrib)}.")
 						self.recv_stanza_counter += 1
 						return element
 	
@@ -287,7 +327,7 @@ class XMPPClient:
 				raise ExceptionGroup("Error cancelling one of XMPP tasks.", errors)
 	
 	def create_task(self, coro, name=None):
-		logger.info(f"Creating new task{ ' (' + name + ')' if name is not None else ''}.")
+		logger.debug(f"Creating new task{ ' (' + name + ')' if name is not None else ''}.")
 		task = create_task(coro, name=name)
 		self.__tasks.add(task)
 		task.add_done_callback(self.__tasks.discard)
@@ -493,6 +533,10 @@ class XMPPClient:
 		logger.debug(f"        available mechanisms: {available_mechanisms}")
 		
 		if not available_mechanisms:
+			if 'PLAIN' in mechanisms and self.config['plaintext_login']:
+				#logger.warning("Implement plaintext login.")
+				# TODO
+				pass
 			logger.error("No supported authentication mechanism found.")
 			raise AuthenticationError("No supported authentication mechanism found.")
 		
@@ -614,7 +658,6 @@ class XMPPClient:
 		else:
 			return await self.on_other_query(method, id_, from_, *body)
 	
-	
 	async def message(self, to, svg_body=None, html_body=None, text_body=None):
 		message = fromstring(f'<message to="{to}"/>')
 		
@@ -641,6 +684,8 @@ class XMPPClient:
 	'''
 	
 	async def presence(self, to=None, type_=None, show=None, status=None, priority=None):
+		logger.info(f"Sending presence: to={repr(to)}, type={repr(type_)}, show={repr(show)}, status={repr(status)}, priority={repr(priority)}.")
+		
 		presence = fromstring('<presence/>')
 		if to:
 			presence.attrib['to'] = to
@@ -652,6 +697,8 @@ class XMPPClient:
 			presence.append(fromstring(f'<status>{status}</status>'))
 		if priority is not None:
 			presence.append(fromstring(f'<priority>{priority}</priority>'))
+		
+		logger.debug(f"Presence stanza: {tostring(presence).decode('utf-8')}")
 		await self.send_stanza(presence)
 	
 	async def iq_get(self, to, body, timeout=10):
@@ -687,7 +734,10 @@ class XMPPClient:
 		if timeout is None:
 			result = await self.expect(f'self::client:iq[@id="{id_}" and (@type="result" or @type="error")]')
 		else:
-			result = await wait_for(self.expect(f'self::client:iq[@id="{id_}" and (@type="result" or @type="error")]'), timeout)
+			try:
+				result = await wait_for(self.expect(f'self::client:iq[@id="{id_}" and (@type="result" or @type="error")]'), timeout)
+			except TimeoutError as error:
+				raise TimeoutError(f"Timeout waiting for IQ response: method={method}, to={to}, body={tostring(body).decode('utf-8')}") from error
 		
 		if result.attrib['type'] == 'result':
 			if len(result) == 0:

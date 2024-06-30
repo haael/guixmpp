@@ -33,6 +33,7 @@ if __name__ == '__main__':
 	
 	from guixmpp.render.svg import SVGRender
 	from guixmpp.render.png import PNGRender
+	from guixmpp.render.webp import WEBPRender
 	from guixmpp.render.pixbuf import PixbufRender
 	from guixmpp.render.html import HTMLRender
 	#from guixmpp.format.xforms import XFormsFormat
@@ -62,6 +63,7 @@ else:
 
 	from .render.svg import SVGRender
 	from .render.png import PNGRender
+	from .render.webp import WEBPRender
 	from .render.pixbuf import PixbufRender
 	from .render.html import HTMLRender
 	#from .format.xforms import XFormsFormat
@@ -166,7 +168,7 @@ except NameError:
 			else:
 				cc.append('_X')
 			
-			DOMWidgetModel = Model.features('<local>.DOMWidgetModel' + ''.join(cc), DisplayView, SVGRender, PNGRender, PixbufRender, HTMLRender, FontFormat, *features, ChromeDownload, ResourceDownload, XMLFormat, CSSFormat, PlainFormat, NullFormat, DataDownload)
+			DOMWidgetModel = Model.features('<local>.DOMWidgetModel' + ''.join(cc), DisplayView, SVGRender, PNGRender, WEBPRender, PixbufRender, HTMLRender, FontFormat, *features, ChromeDownload, ResourceDownload, XMLFormat, CSSFormat, PlainFormat, NullFormat, DataDownload)
 			self.model = DOMWidgetModel(chrome_dir=self.chrome)
 			
 			self.connections = []
@@ -394,7 +396,7 @@ if __name__ == '__main__':
 	async def main():
 		"Display images from local directory, switch using left-right cursor key."
 		global images, image_index, model
-		DOMEvent._time = get_running_loop().time		
+		DOMEvent._time = get_running_loop().time
 		async for dir_ in (Path.cwd() / 'examples').iterdir():
 			async for doc in dir_.iterdir():
 				if doc.suffix not in ('.css', '.svg_'):

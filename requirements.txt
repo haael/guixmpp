@@ -6,3 +6,4 @@ scramp
 OMEMO
 fontTools
 fontconfig-py
+webp

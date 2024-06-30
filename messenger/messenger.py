@@ -20,6 +20,8 @@ if not 'Path' in globals(): from aiopath import Path
 from asyncio import sleep, Event, Lock, create_task, gather, wait, ALL_COMPLETED, FIRST_COMPLETED, CancelledError
 from lxml.etree import fromstring, tostring
 from random import randint
+from os import environ, uname
+from hashlib import sha3_256
 
 
 class Spinner:
@@ -36,32 +38,10 @@ class Spinner:
 			widget.props.sensitive = True
 
 
-'''
-class DataForm:
-	def __init__(self, title, fields):
-		grid = Gtk.Grid()
-		grid.set_columns(3)
-		grid.set_rows(len(fields) + 2)
-		grid.pack_start(Gtk.Label(title), width=3)
-		for descr, name, datatype in fields:
-			grid.pack_start(Gtk.Label(descr))
-			grid.pack_start(Gtk.Entry())
-		box = Gtk.Box()
-		grid.pack_start(box, width=3)
-		box.pack_start(Gtk.Button(gettext("Cancel")))
-		box.pack_end(Gtk.Button(gettext("Submit")))
-'''
-
-
 class SidebarContact(BuilderExtension):
 	def __init__(self, parent):
 		super().__init__(parent, ['sidebar_contact'], 'sidebar_contact')
 		self.listbox_row = None
-		
-		#for domwidget in self.all_children(DOMWidget):
-		#	domwidget.model.create_resource = parent.create_resource
-		#	domwidget.model.chrome_dir = parent.chrome_dir
-		#	domwidget.connect('dom_event', parent.dom_event)
 	
 	def set_listbox_row(self, listbox_row):
 		self.listbox_row = listbox_row
@@ -88,7 +68,10 @@ class Messenger(BuilderExtension):
 	VALIDATION_ICON = 'important'
 	BROKEN_CONNECTION_ICON = 'error'
 	
-	default_resource = 'guixmpp' # provide own branding
+	LOGIN_ICONS = 'chrome://login_validation.png', 'chrome://login_server.png', 'chrome://login_network.png'
+	PRESENCE_ICONS = {'talkative':'chrome://presence_chat.png', 'online':'chrome://presence_online.png', 'busy':'chrome://presence_busy.png', 'away':'chrome://presence_away.png', 'offline':'chrome://presence_offline.png', 'error':'chrome://presence_error.png'}
+	icon_width = 16
+	icon_height = 16
 	
 	def __init__(self, interface, translation):
 		class Props:
@@ -96,12 +79,12 @@ class Messenger(BuilderExtension):
 			gettext_translation = translation
 			chrome_dir = Path('assets')
 		
-		BuilderExtension.__init__(self, Props(), ['window_main', 'entrybuffer_jid', 'popover_presence', 'filechooser_avatar', 'filefilter_images'], 'window_main')
+		BuilderExtension.__init__(self, Props(), ['window_main', 'entrybuffer_jid', 'filechooser_avatar', 'filefilter_images', 'popover_birthday', 'adjustment_talkative', 'adjustment_available', 'adjustment_busy', 'adjustment_away'], 'window_main')
 		
 		self.__tasks = set()
 		self.__task_added = Event()
 		
-		self.network_spinner = Spinner([self.form_login, self.form_register, self.form_server_options])
+		self.network_spinner = Spinner([self.form_login, self.form_register, self.form_server_options, self.login_register_stackswitch])
 		
 		self.xmpp_servers = {}
 		self.xmpp_contacts = {}
@@ -111,11 +94,15 @@ class Messenger(BuilderExtension):
 		self.listbox_main.add(start_item.main_widget)
 		self.sidebar.append(((), 'page_start', start_item))
 		
-		self.paned_main.set_position(425)
+		self.paned_main.set_position(445)
 		
 		self.xmpp_clients = {}
+		self.foreground_server_jid = None
+		self.global_presence = None
+		self.global_status = "Kra kra kraj"
 		
 		self.ended = Event()
+		self.registration_form_ok = Event()
 		
 		def on_destroy():
 			logger.info("Main window closed.")
@@ -123,7 +110,43 @@ class Messenger(BuilderExtension):
 		
 		self.main_widget.connect('destroy', lambda messenger: on_destroy())
 	
+	resource_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	
 	async def start(self):
+		"Perform all startup tasks that require asyncio."
+		
+		u = uname()
+		s = u.nodename + ":" + u.version + ":" + u.release + ":" + u.sysname + ":" + u.machine + ":" + "guixmpp_resource"
+		d = sha3_256(s.encode('utf-8'))
+		r = ''.join(self.resource_chars[_b % len(self.resource_chars)] for _b in d.digest())
+		self.resource = r[:12]
+		logger.info(f"Calculated resource: {self.resource}")
+		
+		self.toggle_save_login_password.set_sensitive(True)
+		self.toggle_save_registration_password.set_sensitive(True)
+		self.toggle_save_login_password.set_active(True)
+		self.toggle_save_registration_password.set_active(True)
+		
+		presence_icons = [self.PRESENCE_ICONS[_status] for _status in ('talkative', 'online', 'busy', 'away', 'offline')]
+		l_validation, l_server, l_network, s_chat, s_online, s_busy, s_away, s_offline = await gather(*[render_to_surface(self.icon_width, self.icon_height, _url, chrome=self.chrome_dir) for _url in list(self.LOGIN_ICONS) + presence_icons])
+		
+		self.login_validation_icon = Gdk.pixbuf_get_from_surface(l_validation, 0, 0, self.icon_width, self.icon_height)
+		self.login_server_icon = Gdk.pixbuf_get_from_surface(l_server, 0, 0, self.icon_width, self.icon_height)
+		self.login_network_icon = Gdk.pixbuf_get_from_surface(l_network, 0, 0, self.icon_width, self.icon_height)
+		
+		presence_chat_icon = Gdk.pixbuf_get_from_surface(s_chat, 0, 0, self.icon_width, self.icon_height)
+		presence_online_icon = Gdk.pixbuf_get_from_surface(s_online, 0, 0, self.icon_width, self.icon_height)
+		presence_busy_icon = Gdk.pixbuf_get_from_surface(s_busy, 0, 0, self.icon_width, self.icon_height)
+		presence_away_icon = Gdk.pixbuf_get_from_surface(s_away, 0, 0, self.icon_width, self.icon_height)
+		presence_offline_icon = Gdk.pixbuf_get_from_surface(s_offline, 0, 0, self.icon_width, self.icon_height)
+		#self.presence_error_icon = Gdk.pixbuf_get_from_surface(s_error, 0, 0, self.icon_width, self.icon_height)
+		
+		self.get_widget_by_name(self.layout_presence, 'status_talkative').set_image(Gtk.Image.new_from_pixbuf(presence_chat_icon))
+		self.get_widget_by_name(self.layout_presence, 'status_available').set_image(Gtk.Image.new_from_pixbuf(presence_online_icon))
+		self.get_widget_by_name(self.layout_presence, 'status_busy').set_image(Gtk.Image.new_from_pixbuf(presence_busy_icon))
+		self.get_widget_by_name(self.layout_presence, 'status_away').set_image(Gtk.Image.new_from_pixbuf(presence_away_icon))
+		self.button_logout.set_image(Gtk.Image.new_from_pixbuf(presence_offline_icon))
+		
 		await self.sidebar[0][2].start()
 		await super().start()
 	
@@ -268,27 +291,32 @@ class Messenger(BuilderExtension):
 	async def login(self, widget):
 		if not self.entrybuffer_jid.get_text():
 			self.entry_login_jid.grab_focus()
-			self.entry_login_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+			#self.entry_login_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+			self.entry_login_jid.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, self.login_validation_icon)
 			self.entry_login_jid.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext("Provide a JID."))
 			return
 		else:
-			self.entry_login_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			#self.entry_login_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			self.entry_login_jid.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, None)
 		
 		try:
 			username, host, resource = self.split_jid(self.entrybuffer_jid.get_text())
 		except ValueError as error:
 			self.entry_login_jid.grab_focus()
-			self.entry_login_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+			#self.entry_login_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+			self.entry_login_jid.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, self.login_validation_icon)
 			self.entry_login_jid.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
 			return
 		else:
-			self.entry_login_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			#self.entry_login_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			self.entry_login_jid.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, None)
 		
 		if not resource:
-			resource = self.default_resource
+			resource = self.resource
 		jid = username + '@' + host + '/' + resource
 		password = self.entry_login_password.get_text()
-		self.entry_login_password.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+		#self.entry_login_password.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+		self.entry_login_password.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, None)
 		
 		alt_host = self.entry_host.get_text()
 		if alt_host:
@@ -296,13 +324,16 @@ class Messenger(BuilderExtension):
 				self.validate_host(alt_host)
 			except ValueError as error:
 				self.entry_host.grab_focus()
-				self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+				#self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+				self.entry_host.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, self.login_validation_icon)
 				self.entry_host.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
 				return
 			else:
-				self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+				#self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+				self.entry_host.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, None)
 		else:
-			self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			#self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			self.entry_host.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, None)
 			alt_host = None
 		
 		try:
@@ -315,29 +346,43 @@ class Messenger(BuilderExtension):
 				port = None
 		except ValueError:
 			self.entry_port.grab_focus()
-			self.entry_port.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+			#self.entry_port.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+			self.entry_port.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, self.login_validation_icon)
 			self.entry_port.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
 			return
 		else:
-			self.entry_port.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			#self.entry_port.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			self.entry_port.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, None)
 		
 		legacy_ssl = self.toggle_legacy_ssl.get_active()
 		
 		try:
 			with self.network_spinner:
 				await self.create_xmpp_connection(jid, alt_host, port, legacy_ssl, password, register=False)
-		except (ConnectionError, ProtocolError) as error:
+		except (ConnectionError, AllConnectionAttemptsFailedError, TimeoutError) as error:
 			if self.entry_host.get_text():
 				entry = self.entry_host
 			else:
 				entry = self.entry_login_jid			
 			entry.grab_focus()
-			entry.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.BROKEN_CONNECTION_ICON)
+			#entry.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.BROKEN_CONNECTION_ICON)
+			entry.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, self.login_network_icon)
+			entry.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
+			return
+		except ProtocolError as error:
+			if self.entry_host.get_text():
+				entry = self.entry_host
+			else:
+				entry = self.entry_login_jid			
+			entry.grab_focus()
+			#entry.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.BROKEN_CONNECTION_ICON)
+			entry.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, self.login_server_icon)
 			entry.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
 			return
 		except AuthenticationError as error:
 			self.entry_login_password.grab_focus()
-			self.entry_login_password.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.BROKEN_CONNECTION_ICON)
+			#self.entry_login_password.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.BROKEN_CONNECTION_ICON)
+			self.entry_login_password.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, self.login_server_icon)
 			self.entry_login_password.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
 			return
 		
@@ -351,40 +396,48 @@ class Messenger(BuilderExtension):
 	async def register(self, widget):
 		if not self.entrybuffer_jid.get_text():
 			self.entry_registration_jid.grab_focus()
-			self.entry_registration_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+			#self.entry_registration_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+			self.entry_registration_jid.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, self.login_validation_icon)
 			self.entry_registration_jid.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext("Provide a JID."))
 			return
 		else:
-			self.entry_registration_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			#self.entry_registration_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			self.entry_registration_jid.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, None)
 		
 		try:
 			username, host, resource = self.split_jid(self.entrybuffer_jid.get_text())
 		except ValueError as error:
 			self.entry_registration_jid.grab_focus()
-			self.entry_registration_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+			#self.entry_registration_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+			self.entry_registration_jid.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, self.login_validation_icon)
 			self.entry_registration_jid.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
 			return
 		else:
-			self.entry_registration_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			#self.entry_registration_jid.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			self.entry_registration_jid.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, None)
 		
-		if len(self.entry_registration_password_1.get_text()) < 8:
+		if len(self.entry_registration_password_1.get_text()) < 8: # TODO: config
 			self.entry_registration_password_1.grab_focus()
-			self.entry_registration_password_1.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+			#self.entry_registration_password_1.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+			self.entry_registration_password_1.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, self.login_validation_icon)
 			self.entry_registration_password_1.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext("Provide password at least 8 characters long."))
 			return
 		else:
-			self.entry_registration_password_1.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			#self.entry_registration_password_1.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			self.entry_registration_password_1.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, None)
 		
 		if self.entry_registration_password_1.get_text() != self.entry_registration_password_2.get_text():
 			self.entry_registration_password_2.grab_focus()
-			self.entry_registration_password_2.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+			#self.entry_registration_password_2.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+			self.entry_registration_password_2.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, self.login_validation_icon)
 			self.entry_registration_password_2.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext("Passwords do not match."))
 			return
 		else:
-			self.entry_registration_password_2.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			#self.entry_registration_password_2.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			self.entry_registration_password_2.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, None)
 		
 		if not resource:
-			resource = self.default_resource
+			resource = self.resource
 		jid = username + '@' + host + '/' + resource
 		password = self.entry_registration_password_2.get_text()
 		
@@ -394,13 +447,16 @@ class Messenger(BuilderExtension):
 				self.validate_host(alt_host)
 			except ValueError as error:
 				self.entry_host.grab_focus()
-				self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+				#self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+				self.entry_host.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, self.login_validation_icon)
 				self.entry_host.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
 				return
 			else:
-				self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+				#self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+				self.entry_host.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, None)
 		else:
-			self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			#self.entry_host.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			self.entry_host.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, None)
 			alt_host = None
 		
 		try:
@@ -413,26 +469,42 @@ class Messenger(BuilderExtension):
 				port = None
 		except ValueError:
 			self.entry_port.grab_focus()
-			self.entry_port.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+			#self.entry_port.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+			self.entry_port.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, self.login_validation_icon)
 			self.entry_port.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
 			return
 		else:
-			self.entry_port.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			#self.entry_port.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			self.entry_port.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, None)
 		
 		legacy_ssl = self.toggle_legacy_ssl.get_active()
 		
 		try:
 			with self.network_spinner:
 				await self.create_xmpp_connection(jid, alt_host, port, legacy_ssl, password, register=True)
-		except (ConnectionError, ProtocolError) as error:
+		except (ConnectionError, AllConnectionAttemptsFailedError, TimeoutError) as error:
 			if self.entry_host.get_text():
 				entry = self.entry_host
 			else:
-				entry = self.entry_registration_jid			
+				entry = self.entry_registration_jid
 			entry.grab_focus()
-			entry.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.BROKEN_CONNECTION_ICON)
+			#entry.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.BROKEN_CONNECTION_ICON)
+			entry.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, self.login_network_icon)
 			entry.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
 			return
+		except ProtocolError as error:
+			if self.entry_host.get_text():
+				entry = self.entry_host
+			else:
+				entry = self.entry_registration_jid
+			entry.grab_focus()
+			#entry.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.BROKEN_CONNECTION_ICON)
+			entry.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, self.login_server_icon)
+			entry.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext(str(error)))
+			return
+		else:
+			self.entry_host.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, None)
+			self.entry_registration_jid.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, None)
 		
 		self.entry_registration_jid.set_text("")
 		self.entry_registration_password_1.set_text("")
@@ -441,8 +513,73 @@ class Messenger(BuilderExtension):
 		self.entry_port.set_text("")
 		self.toggle_legacy_ssl.set_active(False)
 	
-	def choose_presence(self, widget):
-		self.popover_presence.show()
+	def logout(self, widget):
+		print("logout")
+	
+	@asynchandler
+	async def presence_global_toggled(self, widget):
+		self.xmpp_clients[self.foreground_server_jid].__global_presence = widget.get_active()
+		
+		if not widget.get_active(): return
+		
+		if self.xmpp_clients[self.foreground_server_jid].__presence != self.global_presence:
+			self.xmpp_clients[self.foreground_server_jid].__presence = self.global_presence
+			await self.update_presence()
+	
+	@asynchandler
+	async def presence_switch(self, widget):
+		if not widget.get_active(): return
+		
+		match widget.get_name():
+			case 'status_talkative':
+				presence = 'chat'
+			case 'status_available':
+				presence = None
+			case 'status_busy':
+				presence = 'dnd'
+			case 'status_away':
+				presence = 'xa'
+			case _:
+				raise ValueError
+		
+		current_local = self.xmpp_clients[self.foreground_server_jid].__presence
+		current_global = self.global_presence
+		use_global = self.togglebutton_presence_global.get_active()
+		
+		if use_global and current_global != presence:
+			self.global_presence = presence
+		
+		if current_local != presence:
+			self.xmpp_clients[self.foreground_server_jid].__presence = presence
+		
+		if current_local != presence or (use_global and current_global != presence):
+			await self.update_presence()
+	
+	def priority_change(self, widget):
+		print("priority change", widget)
+	
+	@asynchandler
+	async def status_global_toggled(self, widget):
+		self.xmpp_clients[self.foreground_server_jid].__global_status = widget.get_active()
+		
+		if not widget.get_active(): return
+		
+		if self.xmpp_clients[self.foreground_server_jid].__status != self.global_status:
+			self.entry_status.set_text(self.global_status)
+			self.xmpp_clients[self.foreground_server_jid].__status = self.global_status
+			await self.update_presence()
+	
+	@asynchandler
+	async def status_change(self, widget):
+		new_status = self.entry_status.get_text()
+		if self.xmpp_clients[self.foreground_server_jid].__status == new_status:
+			return
+		
+		self.xmpp_clients[self.foreground_server_jid].__status = new_status
+		if self.xmpp_clients[self.foreground_server_jid].__global_status:
+			self.global_status = new_status
+		
+		await self.update_presence()
 	
 	def choose_avatar(self, widget):
 		"Open avatar selection dialog."
@@ -480,21 +617,50 @@ class Messenger(BuilderExtension):
 		
 		self.filechooser_avatar.hide()
 	
-	@asynchandler
-	async def set_presence(self, widget):
-		if widget.get_active():
-			logger.debug(f"set presence: {widget.props.name}")
-			await sleep(1/20)
-			self.popover_presence.hide()
+	async def update_presence(self):
+		for client in self.xmpp_clients.values():
+			if client.__global_presence:
+				client.__presence = self.global_presence
+			if client.__global_status:
+				client.__status = self.global_status
+		
+		await gather(*[_client.presence(show=_client.__presence, status=_client.__status, priority=10) for _client in self.xmpp_clients.values()])
+	
+	def birthday_selected(self, widget):
+		self.menubutton_birthday.set_active(False)
+		y, m, d = widget.get_date()
+		m += 1 # months in 'get_date' are 0 based (0 = January)
+		self.entry_birthday.set_text(f"{y:04d}-{m:02d}-{d:02d}")
+		self.entry_birthday.grab_focus()
+	
+	def birthday_show(self, widget):
+		try:
+			y, m, d = map(int, self.entry_birthday.get_text().split("-"))
+		except (TypeError, ValueError) as error:
+			logger.warning("Invalid birthday date format: " + self.entry_birthday.get_text())
+		else:
+			m -= 1 # months are 0 based
+			self.calendar_birthday.select_month(m, y)
+			self.calendar_birthday.select_day(d)
+	
+	def update_profile(self, widget):
+		print("update_profile")
 	
 	@asynchandler
 	async def generate_password(self, widget):
 		if widget.get_active():
-			self.entry_registration_password_1.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			#self.entry_registration_password_1.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+			self.entry_registration_password_1.set_icon_from_pixbuf(Gtk.EntryIconPosition.PRIMARY, None)
 			self.entry_registration_password_1.set_text("")
 			self.entry_registration_password_1.set_visibility(True)
 			self.entry_registration_password_1.set_sensitive(False)
-			wordlist = (await Path('wordlist.txt').read_text('utf-8')).split("\n")
+			
+			# TODO: config
+			dictionary_path = Path(f'wordlist.{environ["LANGUAGE"]}.txt') # use LANGUAGE environment variable
+			if not await dictionary_path.exists():
+				dictionary_path = Path('wordlist.en.txt') # default to English dictionary if no locale found
+			
+			wordlist = (await dictionary_path.read_text('utf-8')).split("\n")
 			pwd = []
 			for n in range(4):
 				pwd.append(random_choice(wordlist).strip())
@@ -505,7 +671,8 @@ class Messenger(BuilderExtension):
 			self.entry_registration_password_1.set_sensitive(True)
 	
 	def entry_icon_press(self, widget, icon_pos, event):
-		widget.set_icon_from_icon_name(icon_pos, None) # hide error icon when it's clicked on
+		#widget.set_icon_from_icon_name(icon_pos, None) # hide error icon when it's clicked on
+		widget.set_icon_from_pixbuf(icon_pos, None) # hide error icon when it's clicked on
 	
 	def allow_legacy_ssl(self, widget):
 		if widget.get_active():
@@ -541,7 +708,46 @@ class Messenger(BuilderExtension):
 			await self.show_main_page(page_name, key, sidebar_item)
 		logger.debug(f"sidebar item selected: {page_name}")
 	
+	def get_widget_by_name(self, parent, name):
+		for child in parent.get_children():
+			if child.get_name() == name:
+				return child
+		else:
+			raise KeyError(f"Child not found: {name}")
+	
 	async def show_main_page(self, page_name, key, sidebar_item):
+		if page_name == 'page_server':
+			self.foreground_server_jid = key[0]
+			self.foreground_contact_jid = None
+			
+			client = self.xmpp_clients[self.foreground_server_jid]
+			self.togglebutton_presence_global.set_active(client.__global_presence)
+			match client.__presence:
+				case 'chat':
+					self.get_widget_by_name(self.layout_presence, 'status_talkative').set_active(True)
+				case 'dnd':
+					self.get_widget_by_name(self.layout_presence, 'status_busy').set_active(True)
+				case 'xa':
+					self.get_widget_by_name(self.layout_presence, 'status_away').set_active(True)
+				case _:
+					self.get_widget_by_name(self.layout_presence, 'status_available').set_active(True)
+			
+			self.togglebutton_status_global.set_active(client.__global_status)
+			self.entry_status.set_text(client.__status)
+			
+			self.entry_profile_jid.set_text(self.foreground_server_jid)
+			self.entry_nickname.set_text(client.__nickname)
+		
+		elif page_name == 'page_contact':
+			self.foreground_server_jid = key[0]
+			self.foreground_contact_jid = key[1]
+			
+			self.paned_contact.set_position(self.paned_contact.get_allocated_height() - 150)
+		
+		else:
+			self.foreground_server_jid = None
+			self.foreground_contact_jid = None
+		
 		#if page_name == 'page_contact':
 		#	server_jid, contact_jid = params
 		#	
@@ -557,8 +763,15 @@ class Messenger(BuilderExtension):
 		#		message_box.message_avatar.set_visible(False)
 		#	message_box.message_control.set_visible(False)
 		#	self.listbox_chat.add(message_box.main_widget)
-		#
+		
 		self.stack_main.set_visible_child_name(page_name)
+	
+	def paned_contact_moved(self, widget):
+		print("paned_contact_moved", widget.get_position())
+	
+	def paned_contact_resized(self, widget, event):
+		print("paned_contact_resized", event)
+		self.paned_contact.set_position(self.paned_contact.get_allocated_height() - 150)	
 	
 	async def registration_form(self, data, client):
 		if hasattr(self, '_Messenger__registration_form'):
@@ -600,6 +813,9 @@ class Messenger(BuilderExtension):
 		
 		return registration_form.proceed
 	
+	def registration_form_understood_clicked(self, widget):
+		self.registration_form_ok.set()
+	
 	async def create_xmpp_connection(self, jid, host, port, legacy_ssl, password, register):
 		if jid in self.xmpp_clients:
 			raise ValueError("Logged in already.")
@@ -627,37 +843,53 @@ class Messenger(BuilderExtension):
 							logger.debug("XMPP register.")
 							form = await client.register()
 							
-							# <query xmlns="jabber:iq:register"><username/><password/><instructions>Choose a username and password to register with this server</instructions></query>
+							if instructions := form.xpath('xep-0077:instructions', namespaces=client.namespace):
+								self.registration_form_instructions.set_text(instructions[0].text)
+								self.registration_form_instructions.show()
 							
-							try:
-								form.xpath('xep-0077:username', namespaces=client.namespace)[0].text = jid.split('@')[0]
-								form.xpath('xep-0077:password', namespaces=client.namespace)[0].text = password
+							if regform := form.xpath('xep-0004:x', namespaces=client.namespace):
+								from base64 import b64decode # TODO
+								for medium in form.xpath('xep-0231:data', namespaces=client.namespace):
+									#print("set_resource", medium)
+									client.set_resource(medium.attrib['cid'], b64decode(medium.text), medium.attrib['type'])
+								proceed = await self.registration_form(regform[0], client)
+							elif (userfield := form.xpath('xep-0077:username', namespaces=client.namespace)) and (passwordfield := form.xpath('xep-0077:password', namespaces=client.namespace)):
+								userfield[0].text = jid.split('@')[0]
+								passwordfield[0].text = password
 								if form.xpath('xep-0077:email', namespaces=client.namespace):
 									email_form = fromstring(f'<x xmlns="jabber:x:data" type="form"><field type="text-single" label="{gettext("Email address")}" var="email"><required/></field></x>')
 									proceed = await self.registration_form(email_form, client)
 									form.xpath('xep-0077:email', namespaces=client.namespace)[0].text = email_form.xpath('xep-0004:field[@var="email"]', namespaces=client.namespace)[0].text
 								else:
 									proceed = True
-							except IndexError:
-								from base64 import b64decode # TODO
-								for medium in form.xpath('xep-0231:data', namespaces=client.namespace):
-									#print("set_resource", medium)
-									client.set_resource(medium.attrib['cid'], b64decode(medium.text), medium.attrib['type'])
-								proceed = await self.registration_form(form.xpath('xep-0004:x', namespaces=client.namespace)[0], client)
+							else:
+								self.registration_form_ok.clear()
+								self.registration_form_understood.show()
+								await self.registration_form_ok.wait()
+								proceed = False
+							
+							self.registration_form_instructions.hide()
+							self.registration_form_understood.hide()
 							
 							if not proceed:
 								break
 							result = await client.iq_set(jid.split('@')[1].split('/')[0], form)
 							register = False
 						
+						client.__global_presence = True
+						client.__global_status = True
+						client.__presence = self.global_presence
+						client.__status = self.global_status
+						client.__nickname = ""
 						self.xmpp_clients[jid] = client
-						await self.add_sidebar_server(jid)
-						await self.select_sidebar_item(jid)
 						
 						try:
+							await self.add_sidebar_server(jid)
+							await self.select_sidebar_item(jid)
+							
 							logger.debug("XMPP connection ready.")
 							ready.set() # mark login success
-							retry = 3
+							retry = 3 # TODO: config
 							
 							@client.task
 							async def message(client):
@@ -669,14 +901,30 @@ class Messenger(BuilderExtension):
 								while (stanza := await client.expect('self::client:presence')) is not None:
 									await self.presence(client, stanza)
 							
+							roster = await client.iq_get(None, fromstring(f'<query xmlns="{client.namespace["iq-roster"]}"/>'))
+							for item in roster.xpath('iq-roster:item', namespaces=client.namespace):
+								await self.add_sidebar_contact(jid, item.attrib['jid'], item.attrib.get('name', None))
+							
+							await self.update_presence()
+							
+							#last_query = fromstring(f'<query xmlns="{client.namespace["xep-0012"]}"/>')
+							#for contact_jid in roster.xpath('iq-roster:item/@jid', namespaces=client.namespace):
+							#	last = await client.iq_get(contact_jid, last_query)
+							#	print(" last", tostring(last))
+							#last_result = await gather(*[client.iq_get(_jid, last_query) for _jid in roster.xpath('iq-roster:item/@jid', namespaces=client.namespace)])
+							#for last in last_result:
+							#	print(" last", tostring(last))
+							
 							await client.process()
 						
 						finally:
+							logger.debug("XMPP cleanup...")
+							await client.presence(type_='unavailable', status=client.__status)
 							await self.remove_sidebar_item(jid)
 							del self.xmpp_clients[jid]
 				
 				except ConnectionError as error:
-					logger.error("Connection error in XMPP client: {errror}")
+					logger.error(f"Connection error in XMPP client: {error}")
 					# TODO: display warning, configure option
 					
 					if retry > 0:
@@ -693,10 +941,17 @@ class Messenger(BuilderExtension):
 		wait_for_ready = create_task(ready.wait(), name='__wait_for_ready')
 		wait_for_ended = create_task(self.ended.wait(), name='__wait_for_ended')
 		await wait([task, wait_for_ready, wait_for_ended], return_when=FIRST_COMPLETED)
+		logger.debug(f"XMPP connection creation: ready: {wait_for_ready.done()}; connection done: {task.done()}; ended: {wait_for_ended.done()}.")
 		
 		if not wait_for_ended.done():
 			wait_for_ended.cancel()
+		else:
+			if not wait_for_ready.done():
+				wait_for_ready.cancel()
+			ready.set()
 			await task # should exit gracefully
+			logger.debug("XMPP connection creation ended.")
+			return
 		
 		if not ready.is_set():
 			ready.set()
@@ -709,13 +964,8 @@ class Messenger(BuilderExtension):
 		else:
 			await wait_for_ready
 			self.wrap_task(task)
-	
-	@asynchandler
-	async def xmpp_logout(self, widget):
-		...
-	
-	#async def presence(self, client, stanza):
-	#	...
+		
+		logger.debug("XMPP connection creation done.")
 	
 	async def add_sidebar_item(self, key, page_name, item):
 		async with self.sidebar_lock:
@@ -734,6 +984,8 @@ class Messenger(BuilderExtension):
 			
 			if hasattr(item, 'start'):
 				await item.start()
+			
+			return self.listbox_main.get_row_at_index(n)
 	
 	async def remove_sidebar_item(self, *key):
 		async with self.sidebar_lock:
@@ -778,16 +1030,41 @@ class Messenger(BuilderExtension):
 			if p is not None:
 				self.listbox_main.select_row(self.listbox_main.get_row_at_index(p))
 	
+	async def selected_sidebar_key(self):
+		async with self.sidebar_lock:
+			sel = self.listbox_main.get_selected_row()
+			for n, key in enumerate(self.sidebar):
+				el = self.listbox_main.get_row_at_index(n)
+				if sel == el:
+					return key
+			else:
+				return None
+	
+	async def update_sidebar_item(self, *key):
+		if await self.selected_sidebar_key() == key:
+			await self.select_sidebar_item(*key)
+	
 	async def add_sidebar_server(self, server_jid):
 		"Create sidebar item for the new connection."
 		sidebar_item = BuilderExtension(self, ['sidebar_server'], 'sidebar_server')
 		sidebar_item.entry_account_jid.set_text(server_jid)
-		await self.add_sidebar_item((server_jid,), 'page_server', sidebar_item)
+		return await self.add_sidebar_item((server_jid,), 'page_server', sidebar_item)
 	
-	async def add_sidebar_contact(self, server_jid, contact_jid):
+	async def add_sidebar_contact(self, server_jid, contact_jid, contact_name=None):
 		sidebar_item = SidebarContact(self)
-		await self.add_sidebar_item((server_jid, contact_jid), 'page_contact', sidebar_item)
+		
+		listbox_row = await self.add_sidebar_item((server_jid, contact_jid), 'page_contact', sidebar_item)
+		sidebar_item.set_listbox_row(listbox_row)
+		await sidebar_item.domwidget_contact_presence.open(self.PRESENCE_ICONS['offline'])
+		
+		if contact_name:
+			sidebar_item.entry_contact_name.set_text(contact_name)
+		else:
+			sidebar_item.entry_contact_name.set_placeholder_text(contact_jid)
+		
 		await sidebar_item.domwidget_contact_avatar.open(f'resource://guixmpp/jabber-avatar?account={server_jid}&contact={contact_jid}')
+		
+		return listbox_row
 	
 	async def create_resource(self, model, url):
 		scheme, realm, server, *path = url.split('/')
@@ -808,12 +1085,24 @@ class Messenger(BuilderExtension):
 		client = self.xmpp_clients[account_jid]
 		assert client.jid == account_jid
 		return await model.download_document(f'chrome://anon{randint(1, 11)}.jpeg')
+	
+	async def message(self, client, stanza):
+		print(" message", tostring(stanza))
+	
+	async def presence(self, client, stanza):
+		print(" presence", tostring(stanza))
 
 
 if __name__ == '__main__':
-	from logging import DEBUG, basicConfig
-	basicConfig(level=DEBUG)
-	logger.setLevel(DEBUG)
+	from logging import DEBUG, INFO, basicConfig
+	from sys import argv
+	
+	if '--verbose' in argv[1:]:
+		basicConfig(level=DEBUG)
+		logger.setLevel(DEBUG)
+	else:
+		basicConfig(level=INFO)
+		logger.setLevel(INFO)
 	
 	logger.info("messenger")
 	
@@ -821,15 +1110,19 @@ if __name__ == '__main__':
 	from locale import bindtextdomain, textdomain
 	from guixmpp.domevents import Event as DOMEvent
 	
-	loop_init()
 	translation = 'haael_svg_messenger'
 	bindtextdomain(translation, 'locale')
 	textdomain(translation)
+	
+	loop_init()
 	
 	async def main():
 		DOMEvent._time = get_running_loop().time
 		async with Messenger('messenger.glade', translation) as messenger:
 			await messenger.process()
 	
-	run(loop_main(main()))
+	try:
+		run(loop_main(main()))
+	except KeyboardInterrupt:
+		pass
 

@@ -25,6 +25,7 @@ import ssl
 from math import floor
 from collections import deque
 import concurrent.futures
+from os import strerror
 
 
 if __name__ == '__main__':
@@ -42,6 +43,10 @@ else:
 #		if self.gtk_cancellable:
 #			self.gtk_cancellable.cancel()
 #		super().cancel(msg=msg)
+
+
+class AllConnectionAttemptsFailedError(ExceptionGroup):
+	pass
 
 
 class Handle(asyncio.events.Handle):
@@ -342,7 +347,7 @@ class NetworkTransport(BaseTransport):
 			self.watch_out(True)
 			await self.__established.wait()
 			if self.__errno:
-				raise OSError("Error establishing connection", self.__errno)
+				raise OSError(strerror(self.__errno))
 			del self.__established, self.__errno
 	
 	def start(self):
@@ -1086,7 +1091,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 			else:
 				return transport, protocol
 		
-		raise ExceptionGroup(f"Could not establish connection to {host}:{port}", errors)
+		raise AllConnectionAttemptsFailedError(f"Could not establish connection to {host}:{port}: {' '.join(str(_error) for _error in errors)}", errors)
 	
 	'''
 	def create_server(self, protocol_factory, host=None, port=None, *,
@@ -1335,7 +1340,11 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		self.__exception_handler = handler
 	
 	def default_exception_handler(self, context):
-		raise context['exception']
+		if 'exception' in context:
+			raise context['exception']
+		else:
+			print(context)
+			raise RuntimeError
 	
 	def call_exception_handler(self, context):
 		if self.__exception_handler is not None:

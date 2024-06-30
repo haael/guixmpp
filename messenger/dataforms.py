@@ -8,8 +8,127 @@ from gi.repository import Gtk
 from guixmpp import *
 from builder_extension import *
 from locale import gettext
-from lxml.etree import fromstring, tostring
+from lxml.etree import fromstring, tostring, Element
 from asyncio import gather, Event
+
+
+class FormField(BuilderExtension):
+	VALIDATION_ICON = 'important'
+	
+	def get_text(self):
+		return self.main_entry.get_text()
+	
+	def set_text(self, text):
+		self.main_entry.set_text(text)
+	
+	@property
+	def main_entry(self):
+		return None
+	
+	@property
+	def main_label(self):
+		return None
+	
+	def required(self):
+		if self.field.xpath('xep-0004:required', namespaces=XMPPClient.namespace):
+			if not self.get_text():
+				self.main_entry.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+				self.main_entry.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext("This field is required."))
+				return False
+			else:
+				self.main_entry.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+		
+		return True
+	
+	def validate(self):
+		if not self.required():
+			return False
+		return True
+	
+	def read_field(self):
+		if 'label' in self.field.attrib:
+			self.main_label.set_text(self.field.attrib['label'] + ":")
+			self.main_label.show()
+		elif self.main_label:
+			self.main_label.hide()
+		
+		try:
+			value = self.field.xpath('xep-0004:value', namespaces=XMPPClient.namespace)[0]
+		except IndexError:
+			self.set_text("")
+		else:
+			self.set_text(value.text)
+	
+	def write_field(self):
+		try:
+			value = self.field.xpath('xep-0004:value', namespaces=XMPPClient.namespace)[0]
+		except IndexError:
+			value = Element('value') # FIXME: assumes that default namespace is xep-0004
+			self.field.append(value)
+		value.text = self.get_text()
+	
+	def set_field(self, field):
+		self.field = field
+		self.read_field()
+	
+	def entry_icon_press(self, widget, icon_pos, event):
+		widget.set_icon_from_icon_name(icon_pos, None) # hide error icon when it's clicked on
+
+
+class TextField(FormField):
+	@property
+	def main_entry(self):
+		return self.entry_text
+	
+	@property
+	def main_label(self):
+		return self.label_text
+
+
+class PasswordField(FormField):
+	@property
+	def main_entry(self):
+		return self.entry_password_1
+	
+	@property
+	def main_label(self):
+		return self.label_password
+	
+	def get_text(self):
+		return self.entry_password_1.get_text()
+	
+	def set_text(self, text):
+		self.entry_password_1.set_text(text)
+		self.entry_password_2.set_text(text)
+	
+	def validate(self):
+		if not self.required():
+			return False
+		
+		if self.entry_password_1.get_text() != self.entry_password_2.get_text():
+			self.entry_password_2.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, self.VALIDATION_ICON)
+			self.entry_password_2.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, gettext("Passwords do not match."))
+			return False
+		else:
+			self.entry_password_2.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, None)
+		
+		return True
+
+
+class FixedField(FormField):
+	@property
+	def main_entry(self):
+		return self.entry_fixed
+	
+	@property
+	def main_label(self):
+		return self.label_fixed
+
+
+class InstructionsField(FormField):
+	@property
+	def main_entry(self):
+		return self.label_instructions
 
 
 class DataForm(BuilderExtension):
@@ -19,6 +138,7 @@ class DataForm(BuilderExtension):
 		self.__elements = []
 		self.completed = Event()
 		self.proceed = False
+		self.field_spacing = 4
 	
 	@property
 	def glade_interface(self):
@@ -48,25 +168,16 @@ class DataForm(BuilderExtension):
 		
 		for field in data:
 			if field.tag == f'{{{XMPPClient.namespace["xep-0004"]}}}instructions':
-				element = BuilderExtension(self, ['label_instructions'], 'label_instructions')
-				element.label_instructions.set_text(field.text)
+				element = InstructionsField(self, ['label_instructions'], 'label_instructions')
+				element.set_field(field)
+				#element.label_instructions.set_text(field.text)
 				
-				self.box_content.pack_start(element.main_widget, False, True, 4)
+				self.box_content.pack_start(element.main_widget, False, True, self.field_spacing)
 				added.append(element)
 			
 			elif field.tag == f'{{{XMPPClient.namespace["xep-0004"]}}}field' and (('type' not in field.attrib) or (field.attrib['type'] == 'text-single')):
-				element = BuilderExtension(self, ['form_text'], 'form_text')
-				if 'label' in field.attrib:
-					element.label_text.set_text(field.attrib['label'] + ":")
-					element.label_text.show()
-				else:
-					element.label_text.hide()
-				
-				try:
-					text = field.xpath('xep-0004:value', namespaces=XMPPClient.namespace)[0].text
-					element.entry_text.set_text(text)
-				except IndexError:
-					pass
+				element = TextField(self, ['form_text'], 'form_text')
+				element.set_field(field)
 				
 				try:
 					media = field.xpath('xep-0221:media', namespaces=XMPPClient.namespace)[0]
@@ -74,47 +185,24 @@ class DataForm(BuilderExtension):
 				except IndexError:
 					element.media_text.hide()
 				else:
-					#element.media_text.set_size_request(300, 200)
 					element.media_text.show()
-					#await element.media_text.open(cid)
 					cids.append((element.media_text, cid))
 				
-				self.box_content.pack_start(element.main_widget, False, True, 4)
+				self.box_content.pack_start(element.main_widget, False, True, self.field_spacing)
 				added.append(element)
 			
 			elif field.tag == f'{{{XMPPClient.namespace["xep-0004"]}}}field' and field.attrib['type'] == 'fixed':
-				element = BuilderExtension(self, ['form_fixed'], 'form_fixed')
-				if 'label' in field.attrib:
-					element.label_fixed.set_text(field.attrib['label'] + ":")
-					element.label_fixed.show()
-				else:
-					element.label_fixed.hide()
+				element = FixedField(self, ['form_fixed'], 'form_fixed')
+				element.set_field(field)
 				
-				try:
-					text = field.xpath('xep-0004:value', namespaces=XMPPClient.namespace)[0].text
-					element.entry_fixed.set_text(text)
-				except IndexError:
-					pass
-				
-				self.box_content.pack_start(element.main_widget, False, True, 4)
+				self.box_content.pack_start(element.main_widget, False, True, self.field_spacing)
 				added.append(element)
 			
 			elif field.tag == f'{{{XMPPClient.namespace["xep-0004"]}}}field' and field.attrib['type'] == 'text-private':
-				element = BuilderExtension(self, ['form_password'], 'form_password')
-				if 'label' in field.attrib:
-					element.label_password.set_text(field.attrib['label'] + ":")
-					element.label_password.show()
-				else:
-					element.label_password.hide()
+				element = PasswordField(self, ['form_password'], 'form_password')
+				element.set_field(field)
 				
-				try:
-					text = field.xpath('xep-0004:value', namespaces=XMPPClient.namespace)[0].text
-					element.entry_password_1.set_text(text)
-					element.entry_password_2.set_text(text)
-				except IndexError:
-					pass
-				
-				self.box_content.pack_start(element.main_widget, False, True, 4)
+				self.box_content.pack_start(element.main_widget, False, True, self.field_spacing)
 				added.append(element)
 			
 			elif field.tag == f'{{{XMPPClient.namespace["xep-0004"]}}}field' and field.attrib['type'] == 'hidden':
@@ -135,6 +223,19 @@ class DataForm(BuilderExtension):
 		self.completed.set()
 	
 	def dataform_submit(self, widget):
+		ok = True
+		for element in self.__elements:
+			v = element.validate()
+			if not v and ok:
+				element.main_entry.grab_focus() # TODO: focus the widget with error
+			ok &= v
+		
+		if not ok:
+			return
+		
+		for element in self.__elements:
+			element.write_field()
+		
 		self.proceed = True
 		self.completed.set()
 	
@@ -146,7 +247,6 @@ class DataForm(BuilderExtension):
 if __name__ == '__main__':
 	from locale import bindtextdomain, textdomain
 	from aiopath import Path
-	from guixmpp import *
 	from asyncio import run, get_running_loop
 	from base64 import b64decode
 	from guixmpp.domevents import Event as DOMEvent
@@ -202,6 +302,8 @@ if __name__ == '__main__':
 		except KeyboardInterrupt:
 			pass
 		await dataform.stop()
+		print(tostring(form).decode('utf-8'))
 	
 	run(main())
+	
 
