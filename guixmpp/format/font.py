@@ -5,12 +5,16 @@
 __all__ = 'FontDocument', 'FontFormat', 'TTLibError'
 
 
+if __name__ == '__main__':
+	from guixmpp.gtkaiopath import Path
+else:
+	from ..gtkaiopath import Path
+
 from io import BytesIO
 from itertools import product
 from fontTools import ttLib
 from fontTools.ttLib import woff2
 from fontconfig import Config, query
-from aiopath import Path
 from hashlib import sha3_256
 from asyncio import get_running_loop, Lock
 
@@ -162,6 +166,7 @@ class FontFormat:
 if __name__ == '__main__':
 	from base64 import b64decode
 	from asyncio import run
+	from aiopath import Path
 	
 	print("font format")
 	

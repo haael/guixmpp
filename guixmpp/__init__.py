@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 
-__all__ = 'DOMWidget', 'XMPPClient', 'ProtocolError', 'AuthenticationError', 'QueryError', 'asynchandler', 'loop_init', 'loop_main', 'loop_run', 'loop_quit', 'AllConnectionAttemptsFailedError', 'Renderer', 'render_to_surface'
+__all__ = 'DOMWidget', 'XMPPClient', 'ProtocolError', 'AuthenticationError', 'QueryError', 'asynchandler', 'loop_init', 'loop_main', 'loop_run', 'loop_quit', 'AllConnectionAttemptsFailedError', 'Renderer', 'render_to_surface', 'BuilderExtension'
 
 
 if __name__ == '__main__':
@@ -20,5 +20,7 @@ else:
 	from .mainloop import *
 	
 	from .gtkaio import AllConnectionAttemptsFailedError
+	
+	from .builder_extension import *
 
 

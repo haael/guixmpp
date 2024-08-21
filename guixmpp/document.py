@@ -8,12 +8,13 @@ __all__ = 'DocumentModel',
 from collections import defaultdict
 from asyncio import gather, Lock, Event, TaskGroup, CancelledError, get_running_loop
 from inspect import isawaitable
-from aiopath import Path
 
 if __name__ == '__main__':
 	from guixmpp.domevents import UIEvent, CustomEvent
+	from guixmpp.gtkaiopath import Path
 else:
 	from .domevents import UIEvent, CustomEvent
+	from .gtkaiopath import Path
 
 
 class DocumentNotFound(Exception):
@@ -496,7 +497,7 @@ if __name__ == '__main__':
 	from collections import deque
 	
 	from asyncio import run, Event
-	if 'Path' not in globals(): from aiopath import Path
+	from aiopath import Path
 	
 	from guixmpp.format.plain import PlainFormat
 	from guixmpp.format.xml import XMLFormat

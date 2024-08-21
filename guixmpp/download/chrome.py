@@ -5,7 +5,10 @@
 __all__ = 'ChromeDownload',
 
 
-from aiopath import Path
+if __name__ == '__main__':
+	from guixmpp.gtkaiopath import Path
+else:
+	from ..gtkaiopath import Path
 
 
 class ChromeDownload:
@@ -39,6 +42,7 @@ class ChromeDownload:
 
 if __debug__ and __name__ == '__main__':
 	from asyncio import run
+	from aiopath import Path
 	
 	print("chrome download")
 		

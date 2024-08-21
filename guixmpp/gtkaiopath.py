@@ -5,7 +5,8 @@ Asyncio path support. This library mimicks the interface of aiopath but uses GLi
 Should be faster than aiopath, but works only when Gtk mainloop is running.
 """
 
-raise NotImplementedError("Module not ready yet")
+
+__all__ = 'PurePath', 'Path'
 
 
 import gi
@@ -16,9 +17,10 @@ from asyncio import Future, get_running_loop
 
 from collections import deque
 import pathlib
+from os import SEEK_SET, SEEK_CUR, SEEK_END
 
 
-class AsyncIOCall:
+class _AsyncIOCall:
 	def __init__(self, init=None, finish=None):
 		self._init = init
 		self._finish = finish
@@ -55,43 +57,68 @@ class AsyncIOCall:
 class File:
 	def __init__(self, path, mode, buffering, encoding, errors, newline):
 		self.gfile = Gio.File.new_for_path(str(path))
-		self.read_buffer = deque()
 		self.mode = mode
 		self.buffering = buffering
 		self.encoding = encoding
 		self.errors = errors
 		self.newline = newline
+		self.__eof = False
+		self.__read_buffer = bytearray()
 	
 	def __del__(self):
 		if hasattr(self, 'stream'):
 			raise ValueError(f"Lost reference to open file: {self.gfile}") # will be logged
 	
-	__open_readwrite = AsyncIOCall((lambda gfile, priority, cancellable, on_result: gfile.open_readwrite_async(priority, cancellable, on_result)), (lambda gfile, task: gfile.open_readwrite_finish(task)))
-	__open_readonly = AsyncIOCall((lambda gfile, priority, cancellable, on_result: gfile.read_async(priority, cancellable, on_result)), (lambda gfile, task: gfile.read_finish(task)))
+	__open_readwrite = _AsyncIOCall((lambda gfile, cancellable, on_result: gfile.open_readwrite_async(GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda gfile, task: gfile.open_readwrite_finish(task))) # r+
+	__open_readonly = _AsyncIOCall((lambda gfile, cancellable, on_result: gfile.read_async(GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda gfile, task: gfile.read_finish(task))) # r
+	__create_readwrite = _AsyncIOCall((lambda gfile, cancellable, on_result: gfile.create_readwrite_async(GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda gfile, task: gfile.create_readwrite_finish(task))) # x+
+	__create_writeonly = _AsyncIOCall((lambda gfile, cancellable, on_result: gfile.create_async(GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda gfile, task: gfile.create_finish(task))) # x
+	__replace_readwrite = _AsyncIOCall((lambda gfile, cancellable, on_result: gfile.replace_readwrite_async(GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda gfile, task: gfile.replace_readwrite_finish(task))) # w+
+	__replace_writeonly = _AsyncIOCall((lambda gfile, cancellable, on_result: gfile.replace_async(None, False, 0, GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda gfile, task: gfile.replace_finish(task))) # w
+	__append_writeonly = _AsyncIOCall((lambda gfile, cancellable, on_result: gfile.append_to_async(0, cancellable, on_result)), (lambda gfile, task: gfile.append_to_finish(task))) # a
 	
-	__read = AsyncIOCall((lambda stream, num, priority, cancellable, on_result: stream.read_bytes_async(num, priority, cancellable, on_result)), (lambda stream, task: stream.read_bytes_finish(task)))
-	__read_all = AsyncIOCall((lambda stream, priority, cancellable, on_result: stream.read_all_async(priority, cancellable, on_result)), (lambda stream, task: stream.read_all_finish(task)))
-	__write = AsyncIOCall((lambda stream, *args, cancellable, on_result: stream.write_async(*args, GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda stream, task: stream.write_finish(task)))
-	__write_all = AsyncIOCall((lambda stream, *args, cancellable, on_result: stream.write_all_async(*args, GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda stream, task: stream.write_all_finish(task)))
+	__read = _AsyncIOCall((lambda stream, num, cancellable, on_result: stream.read_bytes_async(num, GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda stream, task: stream.read_bytes_finish(task)))
+	__write = _AsyncIOCall((lambda stream, bytes_, cancellable, on_result: stream.write_async(bytes_, GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda stream, task: stream.write_finish(task)))
+	__write_all = _AsyncIOCall((lambda stream, bytes_, cancellable, on_result: stream.write_all_async(bytes_, GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda stream, task: stream.write_all_finish(task)))
 	
-	__close = AsyncIOCall((lambda stream, *args, cancellable, on_result: stream.close_async(*args, GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda stream, task: stream.close_finish(task)))
+	__close = _AsyncIOCall((lambda stream, *args, cancellable, on_result: stream.close_async(*args, GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda stream, task: stream.close_finish(task)))
 	
 	async def open(self):
-		if self.mode == 'r':
+		if 'r' in self.mode and '+' not in self.mode:
 			self.stream = self.read_stream = await self.__open_readonly(self.gfile)
 			self.write_stream = None
-		elif self.mode == 'w':
-			self.read_stream = None
-			self.stream = self.write_stream = await self.__open_writeonly(self.gfile)
-		elif self.mode == 'rw':
+		elif 'r' in self.mode and '+' in self.mode:
 			self.stream = await self.__open_readwrite(self.gfile)
 			self.read_stream = self.stream.get_input_stream()
 			self.write_stream = self.stream.get_output_stream()
+		
+		elif 'w' in self.mode and '+' not in self.mode:
+			self.read_stream = None
+			self.stream = self.write_stream = await self.__replace_writeonly(self.gfile)
+		elif 'w' in self.mode and '+' in self.mode:
+			self.stream = await self.__replace_readwrite(self.gfile)
+			self.read_stream = self.stream.get_input_stream()
+			self.write_stream = self.stream.get_output_stream()
+		
+		elif 'x' in self.mode and '+' not in self.mode:
+			self.read_stream = None
+			self.stream = self.write_stream = await self.__create_writeonly(self.gfile)
+		elif 'x' in self.mode and '+' in self.mode:
+			self.stream = await self.__create_readwrite(self.gfile)
+			self.read_stream = self.stream.get_input_stream()
+			self.write_stream = self.stream.get_output_stream()
+		
+		elif 'a' in self.mode:
+			self.read_stream = None
+			self.stream = self.write_stream = await self.__append_writeonly(self.gfile)
+		
+		else:
+			raise ValueError("Invalid file mode.")
 	
 	async def close(self):
 		await self.__close(self.stream)
 		del self.stream, self.read_stream, self.write_stream
-		self.read_buffer.clear()
+		self.__read_buffer.clear()
 	
 	async def __aenter__(self):
 		await self.open()
@@ -108,84 +135,93 @@ class File:
 			yield line
 	
 	async def is_eof(self):
-		raise NotImplementedError
+		return self.__eof
 	
 	async def read(self, n):
-		if self.read_stream:
-			m = 0
-			for k, s in self.read_buffer.items():
-				m += len(s)
-				if m > n:
-					r = self.read_buffer[:k + 1]
-					del self.read_buffer[:k + 1]
-					t = r[-1][:m - n]
-					u = r[-1][m - n:]
-					self.read_buffer.insert(0, u)
-					result = b"".join(r + [t])
-					break
-			else:
-				result = b"".join(self.read_buffer)
-				self.read_buffer.clear()
-			
-			if self.encoding:
-				return result.encode(self.encoding)
-			else:
-				return result
+		if not self.read_stream:
+			raise IOError("Stream is not readable.")
 		
-		result = await self.__read(self.read_stream, n, GLib.PRIORITY_DEFAULT)
+		if not self.__eof and len(self.__read_buffer) < n:
+			chunk = (await self.__read(self.read_stream, n - len(self.__read_buffer))).get_data()
+			if not chunk:
+				self.__eof = True
+			self.__read_buffer += chunk
+		
+		result = bytes(self.__read_buffer[:n])
+		del self.__read_buffer[:n]
+		
 		if self.encoding:
-			return result.encode(self.encoding)
+			return result.decode(self.encoding)
 		else:
 			return result
 	
 	async def readline(self):
-		while not self.read_buffer or self.newline not in self.read_buffer[-1]: # FIXME: handle case when multi-char newline spans many items
-			r = await self.__read(self.read_stream, 1024, GLib.PRIORITY_DEFAULT)
-			if not r:
-				s = self.read_buffer[:]
-				self.read_buffer.clear()
-				result = b"".join(s)
-				if self.encoding:
-					return result.encode(self.encoding)
-				else:
-					return result
-			else:
-				self.read_buffer.append(r)
+		while not self.__eof and self.newline not in self.__read_buffer:
+			chunk = (await self.__read(self.read_stream, 4096)).get_data()
+			if not chunk:
+				self.__eof = True
+				break
+			self.__read_buffer += chunk
 		
-		r = self.read_buffer[:-2]		
-		del self.read_buffer[:-2]
+		if self.newline in self.__read_buffer:
+			p = self.__read_buffer.index(self.newline) + 1
+			result = bytes(self.__read_buffer[:p])
+			del self.__read_buffer[:p]
+		else:
+			result = bytes(self.__read_buffer)
+			self.__read_buffer.clear()
 		
-		i = self.read_buffer[-1].index(self.newline)
-		s = self.read_buffer[-1][:i]
-		del self.read_buffer[-1][:i]
-		
-		result = b"".join(r + [s])
 		if self.encoding:
-			return result.encode(self.encoding)
+			return result.decode(self.encoding)
 		else:
 			return result
 	
 	async def read_all(self):
-		t = await self.__read_all(self.read_stream)
-		result = b"".join(list(self.read_stream.values()) + [t])
-		self.read_stream.clear()
+		while not self.__eof:
+			chunk = (await self.__read(self.read_stream, 4096)).get_data()
+			if not chunk:
+				self.__eof = True
+			self.__read_buffer += chunk
+		
+		result = bytes(self.__read_buffer)
+		self.__read_buffer.clear()
 		
 		if self.encoding:
-			return result.encode(self.encoding)
+			return result.decode(self.encoding)
 		else:
 			return result
 	
 	async def write(self, data):
-		return await self.__write(self.write_stream, data, len(data))
+		if not self.write_stream:
+			raise IOError("Stream is not writable.")
+		
+		if self.encoding:
+			data = data.encode(self.encoding)
+		
+		return await self.__write(self.write_stream, data)
 	
 	async def write_all(self, data):
-		return await self.__write_all(self.write_stream, data, len(data))
+		if not self.write_stream:
+			raise IOError("Stream is not writable.")
+		
+		if self.encoding:
+			data = data.encode(self.encoding)
+		
+		return await self.__write_all(self.write_stream, data)
 	
-	async def seek(self):
-		raise NotImplementedError
+	async def seek(self, offset, whence=SEEK_SET):
+		if whence == SEEK_SET:
+			w = GLib.SeekType.SET
+		elif whence == SEEK_CUR:
+			w = GLib.SeekType.CUR
+		elif whence == SEEK_END:
+			w = GLib.SeekType.END
+		else:
+			raise ValueError("Allowed values for whence: SEEK_SET, SEEK_CUR, SEEK_END.")
+		self.stream.seek(offset, w)
 	
 	async def tell(self):
-		raise NotImplementedError
+		return self.stream.tell()
 
 
 class PurePath(pathlib.PurePosixPath):
@@ -222,11 +258,11 @@ class Path(pathlib.Path, PurePath):
 	__slots__ = pathlib.Path.__slots__
 	
 	@classmethod
-	async def cwd(cls):
+	def cwd(cls):
 		return cls(GLib.get_current_dir())
 	
 	@classmethod
-	async def home(cls):
+	def home(cls):
 		return cls(GLib.get_home_dir())
 	
 	async def absolute(self):
@@ -241,7 +277,6 @@ class Path(pathlib.Path, PurePath):
 		raise NotImplementedError
 	
 	async def expanduser(self):
-		raise NotImplementedError
 		path = await get_running_loop().run_in_executor(None, pathlib.Path.expanduser, self)
 		return Path(path)
 	
@@ -285,14 +320,14 @@ class Path(pathlib.Path, PurePath):
 	async def is_symlink(self) -> bool:
 		raise NotImplementedError
 	
-	__enumerate_children = AsyncIOCall((lambda gfile, *args, cancellable, on_result: gfile.enumerate_children_async(*args, cancellable, on_result)), (lambda obj, task: obj.enumerate_children_finish(task)))
-	__next_files = AsyncIOCall((lambda enumerator, *args, cancellable, on_result: enumerator.next_files_async(*args, cancellable, on_result)), (lambda enumerator, task: enumerator.next_files_finish(task)))
+	__enumerate_children = _AsyncIOCall((lambda gfile, x, y, cancellable, on_result: gfile.enumerate_children_async(x, y, GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda obj, task: obj.enumerate_children_finish(task)))
+	__next_files = _AsyncIOCall((lambda enumerator, n, cancellable, on_result: enumerator.next_files_async(n, GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda enumerator, task: enumerator.next_files_finish(task)))
 	
 	async def iterdir(self):
-		enumerator = await self.__enumerate_children(Gio.File.new_for_path(str(self)), Gio.FILE_ATTRIBUTE_STANDARD_NAME, 0, GLib.PRIORITY_DEFAULT)
+		enumerator = await self.__enumerate_children(Gio.File.new_for_path(str(self)), Gio.FILE_ATTRIBUTE_STANDARD_NAME, 0)
 		something = True
 		while something:
-			file_list = await self.__next_files(enumerator, 4, GLib.PRIORITY_DEFAULT) # read 4 items at once
+			file_list = await self.__next_files(enumerator, 4) # read 4 items at once
 			something = False
 			for f in file_list:
 				something = True
@@ -310,18 +345,30 @@ class Path(pathlib.Path, PurePath):
 	async def mkdir(self, mode=0o777, parents=False, exist_ok=False):
 		raise NotImplementedError
 	
-	def open(self, mode='r', buffering=-1, encoding=None, errors=None, newline=None):
+	def open(self, mode='r', buffering=-1, encoding=None, errors=None, newline=b"\n"):
+		if 't' in mode and 'b' in mode:
+			raise ValueError("Text and binary modes are exclusive.")
+		
+		if 'b' in mode and encoding:
+			raise ValueError("Can not set encoding in binary mode.")
+		
+		if 'b' not in mode and not encoding:
+			encoding = 'utf-8'
+		
+		if encoding and not isinstance(newline, bytes):
+			newline = newline.encode(encoding)
+		
 		return File(self, mode, buffering, encoding, errors, newline)
 	
 	async def owner(self):
 		raise NotImplementedError
 	
-	__load_contents = AsyncIOCall((lambda gfile, *args, cancellable, on_result: gfile.load_contents_async(*args, cancellable, on_result)), (lambda stream, task: stream.load_contents_finish(task)))
+	__load_contents = _AsyncIOCall((lambda gfile, *args, cancellable, on_result: gfile.load_contents_async(*args, cancellable, on_result)), (lambda stream, task: stream.load_contents_finish(task)))
 	
 	async def read_bytes(self):		
 		return (await self.__load_contents(Gio.File.new_for_path(str(self)))).contents
 	
-	__replace_contents = AsyncIOCall((lambda gfile, *args, cancellable, on_result: gfile.replace_contents_async(*args, cancellable, on_result)), (lambda stream, task: stream.replace_contents_finish(task)))
+	__replace_contents = _AsyncIOCall((lambda gfile, *args, cancellable, on_result: gfile.replace_contents_async(*args, cancellable, on_result)), (lambda stream, task: stream.replace_contents_finish(task)))
 	
 	async def write_bytes(self, data):
 		success = await self.__replace_contents(Gio.File.new_for_path(str(self)), data, len(data), None, False, 0)
@@ -330,11 +377,11 @@ class Path(pathlib.Path, PurePath):
 		else:
 			return 0
 	
-	async def read_text(self, encoding=None, errors=None):
-		raise NotImplementedError
+	async def read_text(self, encoding='utf-8', errors=None):
+		return (await self.read_bytes()).decode(encoding)
 	
-	async def write_text(self, data, encoding=None, errors=None, newline=None):
-		raise NotImplementedError
+	async def write_text(self, data, encoding='utf-8', errors=None):
+		await self.write_bytes(data.encode(encoding))
 	
 	async def readlink(self):
 		raise NotImplementedError
@@ -380,11 +427,26 @@ if __name__ == '__main__':
 	async def test():
 		cwd = await Path.cwd()
 		print(repr(cwd))
+		
+		async with (cwd / 'ttt1.txt').open('wb') as fd:
+			await fd.write(b"teeest me")
+
+		async with (cwd / 'ttt2.txt').open('w') as fd:
+			await fd.write("teeest me tooo")
+		
 		async for f in cwd.iterdir():
 			print("", repr(f))
 			if f.suffix == '.txt':
 				print(" read bytes")
 				print(await f.read_bytes())
+				print(" read text")
+				print(await f.read_text())
+				print(" read parts")
+				async with f.open() as fd:
+					print(await fd.read(5))
+					print(await fd.tell())
+					await fd.seek(4)
+					print(await fd.read_all())
 				print(" read lines")
 				async with f.open() as fd:
 					async for l in fd:

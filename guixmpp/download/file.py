@@ -5,9 +5,15 @@
 __all__ = 'FileDownload',
 
 
-from aiopath import AsyncPath as Path
-import mimetypes
+if __name__ == '__main__':
+	from guixmpp.gtkaiopath import Path
+else:
+	from ..gtkaiopath import Path
+
 from urllib.parse import unquote
+import magic
+import mimetypes
+from asyncio import get_running_loop
 
 
 class FileDownload:
@@ -19,6 +25,7 @@ class FileDownload:
 	async def begin_downloads(self):
 		if not mimetypes.inited:
 			mimetypes.init()
+		pass
 	
 	async def end_downloads(self):
 		pass
@@ -48,6 +55,7 @@ class FileDownload:
 		
 		path = Path(unquote(path_name))
 		mime_type, encoding = mimetypes.guess_type(str(path)) # TODO: Run in executor? Possible blocking io.
+		#mime_type = await get_running_loop().run_in_executor(None, (lambda _filename: magic.from_file(_filename, mime=True)), str(path))
 		if not mime_type:
 			mime_type = 'application/octet-stream'
 		
@@ -75,7 +83,7 @@ if __debug__ and __name__ == '__main__':
 			elif filepath.suffix == '.svg':
 				assert mime_type == 'image/svg+xml', mime_type
 			elif filepath.suffix == '.css':
-				assert mime_type == 'text/css', mime_type
+				assert mime_type == 'text/css', f"{filepath.as_uri()} : {mime_type}"
 			elif filepath.suffix == '.png':
 				assert mime_type == 'image/png', mime_type
 			elif filepath.suffix == '.jpeg':

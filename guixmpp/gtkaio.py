@@ -26,6 +26,7 @@ from math import floor
 from collections import deque
 import concurrent.futures
 from os import strerror
+import subprocess
 
 
 if __name__ == '__main__':
@@ -281,6 +282,13 @@ class BaseTransport(asyncio.transports.BaseTransport):
 	
 	def set_protocol(self, protocol):
 		self.__protocol = protocol
+	
+	def start(self):
+		protocol = self.get_protocol()
+		if protocol is not None:
+			protocol.connection_made(self)
+		
+		self.watch_in(True)
 
 
 class NetworkTransport(BaseTransport):
@@ -349,13 +357,6 @@ class NetworkTransport(BaseTransport):
 			if self.__errno:
 				raise OSError(strerror(self.__errno))
 			del self.__established, self.__errno
-	
-	def start(self):
-		protocol = self.get_protocol()
-		if protocol is not None:
-			protocol.connection_made(self)
-		
-		self.watch_in(True)
 
 
 class UDPTransport(NetworkTransport, asyncio.transports.DatagramTransport):
@@ -400,8 +401,12 @@ class UDPTransport(NetworkTransport, asyncio.transports.DatagramTransport):
 
 
 class ReadTransport(BaseTransport, asyncio.transports.ReadTransport):
-	def __init__(self):
-		pass
+	def __init__(self, file=None):
+		if file is not None:
+			file.setblocking(False)
+			channel = GLib.IOChannel.unix_new(file.fileno())
+			channel.set_encoding(None)
+			BaseTransport.__init__(self, file, channel)
 	
 	def _data_in(self, channel):
 		sock = self.get_extra_info('read_endpoint')
@@ -445,11 +450,16 @@ class ReadTransport(BaseTransport, asyncio.transports.ReadTransport):
 
 
 class WriteTransport(BaseTransport, asyncio.transports.WriteTransport):
-	def __init__(self):
+	def __init__(self, file=None):
 		self.__write_high = 4096
 		self.__write_low = 4096
 		self.__write_buffer = deque()
 		self.__writing = True
+		
+		if file is not None:
+			channel = GLib.IOChannel.unix_new(file.fileno())
+			channel.set_encoding(None)
+			BaseTransport.__init__(self, file, channel)
 	
 	def _data_out(self, channel):
 		sock = self.get_extra_info('write_endpoint')
@@ -624,6 +634,59 @@ class SSLTransport(TCPTransport):
 			return None
 		else:
 			return super()._data_in(channel)
+
+
+class SubprocessTransport(BaseTransport, asyncio.transports.SubprocessTransport):
+	def __init__(self, cmd):
+		self.__returncode = None
+		self.__pipe_transport = {}
+		
+		child = Gio.Subprocess.newv([], 0, None)
+		
+		channel = GLib.IOChannel.unix_new(...)
+		channel.set_encoding(None)
+		
+		BaseTransport.__init__(self, child, channel)
+	
+	def get_pid(self):
+		"Return the subprocess process id as an integer."
+		return self.__pid
+	
+	def get_pipe_transport(self, fd):
+		"""Return the transport for the communication pipe corresponding to the integer file descriptor fd:
+		0: readable streaming transport of the standard input (stdin), or None if the subprocess was not created with stdin=PIPE
+		1: writable streaming transport of the standard output (stdout), or None if the subprocess was not created with stdout=PIPE
+		2: writable streaming transport of the standard error (stderr), or None if the subprocess was not created with stderr=PIPE
+		other fd: None"""
+		try:
+			return self.__pipe_transport[fd]
+		except KeyError:
+			return None
+	
+	def get_returncode(self):
+		"Return the subprocess return code as an integer or None if it hasn’t returned, which is similar to the subprocess.Popen.returncode attribute."
+		return self.__returncode
+	
+	def kill(self):
+		"""Kill the subprocess.
+		On POSIX systems, the function sends SIGKILL to the subprocess. On Windows, this method is an alias for terminate().
+		See also subprocess.Popen.kill()."""
+		raise NotImplementedError("kill")
+	
+	def send_signal(self, signal):
+		"Send the signal number to the subprocess, as in subprocess.Popen.send_signal()."
+		raise NotImplementedError("send_signal")
+	
+	def terminate(self):
+		"""Stop the subprocess.
+		On POSIX systems, this method sends SIGTERM to the subprocess. On Windows, the Windows API function TerminateProcess() is called to stop the subprocess.
+		See also subprocess.Popen.terminate()."""
+		raise NotImplementedError("terminate")
+	
+	def close(self):
+		"Kill the subprocess by calling the kill() method."
+		raise NotImplementedError("close")
+
 
 
 '''
@@ -1039,10 +1102,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 			gremote_addr = Gio.InetSocketAddress.new_from_string(nhost, nport)
 			yield gremote_addr, nfamily, proto
 	
-	async def create_connection(self, protocol_factory, host=None, port=None, *,
-						  ssl=None, family=0, proto=0, flags=0, sock=None,
-						  local_addr=None, server_hostname=None):
-		
+	async def create_connection(self, protocol_factory, host=None, port=None, *, ssl=None, family=0, proto=0, flags=0, sock=None, local_addr=None, server_hostname=None):
 		if local_addr is not None:
 			glocal_addr = Gio.InetSocketAddress.new_from_string(*local_addr)
 		else:
@@ -1253,7 +1313,15 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		# is: we need to own pipe and close it at transport finishing
 		# Can got complicated errors if pass f.fileno(),
 		# close fd in pipe transport then close f and vise versa.
-		raise NotImplementedError("connect_read_pipe")
+		
+		transport = ReadTransport(pipe)
+		
+		protocol = protocol_factory()
+		transport.set_protocol(protocol)
+		
+		transport.resume_reading()
+		
+		return transport, protocol
 	
 	def connect_write_pipe(self, protocol_factory, pipe):
 		"""Register write pipe in event loop.
@@ -1266,19 +1334,19 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		# is: we need to own pipe and close it at transport finishing
 		# Can got complicated errors if pass f.fileno(),
 		# close fd in pipe transport then close f and vise versa.
+		
+		transport = WriteTransport(pipe)
+		
+		protocol = protocol_factory()
+		transport.set_protocol(protocol)
+		
+		return transport, protocol
+	
+	def subprocess_shell(self, protocol_factory, cmd, *, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs):
 		raise NotImplementedError
 	
-	'''
-	def subprocess_shell(self, protocol_factory, cmd, *, stdin=subprocess.PIPE,
-						 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-						 **kwargs):
+	def subprocess_exec(self, protocol_factory, *args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs):
 		raise NotImplementedError
-
-	def subprocess_exec(self, protocol_factory, *args, stdin=subprocess.PIPE,
-						stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-						**kwargs):
-		raise NotImplementedError
-	'''
 	
 	# Ready-based callback registration methods.
 	# The add_*() methods return None.
@@ -1336,15 +1404,14 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		return self.__exception_handler
 	
 	def set_exception_handler(self, handler):
-		print("set_exception_handler", handler)
 		self.__exception_handler = handler
 	
 	def default_exception_handler(self, context):
+		if 'message' in context:
+			print(context['message'])
+		
 		if 'exception' in context:
 			raise context['exception']
-		else:
-			print(context)
-			raise RuntimeError
 	
 	def call_exception_handler(self, context):
 		if self.__exception_handler is not None:
@@ -1402,6 +1469,22 @@ if __name__ == '__main__':
 	from protocol.http.client import Connection1
 	
 	set_event_loop_policy(GtkAioEventLoopPolicy())
+	
+	child = Gio.Subprocess.new(['/usr/bin/cut', '-c4-'], Gio.SubprocessFlags.STDIN_PIPE | Gio.SubprocessFlags.STDOUT_PIPE)
+	inp = child.get_stdin_pipe()
+	outp = child.get_stdout_pipe()
+	print(outp.read_bytes.__doc__)
+	inp.write(b"abcdefgh\n")
+	inp.write(b"abcdefgh\n")
+	inp.write(b"abcdefgh\n")
+	inp.write(b"abcdefgh\n")
+	inp.flush()
+	inp.close()
+	rd = outp.read_bytes(4096, None)
+	print(dir(rd))
+	print(rd.get_data())
+	
+	quit()
 	
 	def some_work_1():
 		z = 0

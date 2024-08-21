@@ -208,7 +208,7 @@ class XMPPClient:
 		
 		async with self.state_condition:
 			logger.info("End XMPP stream.")
-
+			
 			async with (self.read_lock, self.write_lock):
 				self.writer.write(b'</stream:stream>')
 				await self.writer.drain()
@@ -953,7 +953,6 @@ if __name__ == '__main__':
 							await client.iq_error(id_, peer, fromstring('<error/>')) # TODO
 			
 			await client.process()
-			
 	
 	run(main())
 

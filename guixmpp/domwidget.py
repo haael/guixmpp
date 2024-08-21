@@ -214,7 +214,7 @@ except NameError:
 			elif self.prop_file:
 				coro = self.open('') # opening empty url will use 'file' property fallback
 			else:
-				return
+				coro = self.close()
 			
 			try:
 				loop = get_event_loop()
@@ -332,8 +332,7 @@ except NameError:
 
 if __name__ == '__main__':
 	from asyncio import run, Lock, get_running_loop, create_task
-	if 'Path' not in globals(): from aiopath import Path
-	
+	from guixmpp.gtkaiopath import Path
 	from guixmpp.mainloop import *
 	
 	loop_init()

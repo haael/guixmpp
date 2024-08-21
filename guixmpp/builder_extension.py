@@ -9,7 +9,7 @@ gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk
 
 from asyncio import gather
-from guixmpp import DOMWidget
+from .domwidget import DOMWidget
 
 
 class BuilderExtension:
@@ -31,6 +31,10 @@ class BuilderExtension:
 			domwidget.model.create_resource = self.create_resource
 			domwidget.model.chrome_dir = self.chrome_dir
 			domwidget.connect('dom_event', self.dom_event)
+	
+	@property
+	def builder_parent(self):
+		return self.__parent
 	
 	@property
 	def main_widget(self):

@@ -44,10 +44,13 @@ _loop_error = None
 
 
 def asynchandler(coro):
-	"Takes a coroutine and changes it into normal method that schedules the coroutine and adds the task to the main app task list."
+	"Takes a coroutine and changes it into normal method that schedules the coroutine and adds the task to the main app task list. Returns the task object that can be awaited."
 	
 	def method(self, *args, **kwargs):
-		task = create_task(coro(self, *args, **kwargs), name=coro.__name__)
+		try:
+			task = create_task(coro(self, *args, **kwargs), name=coro.__name__)
+		except Exception as error:
+			raise RuntimeError(f"Error creating task {coro.__name__}") from error
 		_loop_tasks.add(task)
 		task.add_done_callback(_loop_tasks.discard)
 		_task_added.set()
