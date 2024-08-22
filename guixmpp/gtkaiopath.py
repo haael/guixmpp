@@ -55,6 +55,8 @@ class _AsyncIOCall:
 
 
 class File:
+	"Object returned by Path.open() method. Supports interface similar to file-like object, but async."
+	
 	def __init__(self, path, mode, buffering, encoding, errors, newline):
 		self.gfile = Gio.File.new_for_path(str(path))
 		self.mode = mode
@@ -430,7 +432,7 @@ if __name__ == '__main__':
 		
 		async with (cwd / 'ttt1.txt').open('wb') as fd:
 			await fd.write(b"teeest me")
-
+		
 		async with (cwd / 'ttt2.txt').open('w') as fd:
 			await fd.write("teeest me tooo")
 		
