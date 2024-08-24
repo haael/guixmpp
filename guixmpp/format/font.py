@@ -16,7 +16,7 @@ from fontTools import ttLib
 from fontTools.ttLib import woff2
 from fontconfig import Config, query
 from hashlib import sha3_256
-from asyncio import get_running_loop, Lock
+from asyncio import Lock, to_thread
 
 
 TTLibError = ttLib.TTLibError
@@ -147,20 +147,20 @@ class FontFormat:
 					await src_file_path.write_bytes(font_doc.data)
 				if font_doc.format_ == 'woff':
 					assert src_file_path != dst_file_path
-					await get_running_loop().run_in_executor(None, self.__open_fds, str(src_file_path), str(dst_file_path), woff2.decompress)
+					await to_thread(self.__open_fds, str(src_file_path), str(dst_file_path), woff2.decompress)
 			
-			await get_running_loop().run_in_executor(None, self.__config.app_font_add_file, str(dst_file_path))
+			await to_thread(self.__config.app_font_add_file, str(dst_file_path))
 		
 		assert await self.is_font_installed(font_family), f"Failed to install font: {font_family}"
 		print(" font installed:", font_family, font_doc.format_)
 	
 	async def is_font_installed(self, font_family):
 		async with self.__lock:
-			return bool(await get_running_loop().run_in_executor(None, query, ':family=' + font_family))
+			return bool(await to_thread(query, ':family=' + font_family))
 	
 	async def uninstall_fonts(self):
 		async with self.__lock:
-			await get_running_loop().run_in_executor(None, self.__config.app_font_clear)
+			await to_thread(self.__config.app_font_clear)
 
 
 if __name__ == '__main__':

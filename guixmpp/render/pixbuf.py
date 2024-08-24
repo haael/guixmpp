@@ -28,40 +28,6 @@ class PixbufRender:
 			loader.close()
 			return loader.get_pixbuf()
 	
-	'''
-	def create_document_from_bytes(self, data, mime_type):
-		try:
-			loader = GdkPixbuf.PixbufLoader.new_with_mime_type(mime_type)
-		except GLib.Error:
-			return NotImplemented
-		else:
-			loader.write(data)
-			loader.close()
-			return loader.get_pixbuf()
-	
-	def create_document_from_iter(self, iter_, mime_type):
-		try:
-			loader = GdkPixbuf.PixbufLoader.new_with_mime_type(mime_type)
-		except GLib.Error:
-			return NotImplemented
-		else:
-			for data in iter_:
-				loader.write(data)
-			loader.close()
-			return loader.get_pixbuf()
-	
-	async def create_document_from_aiter(self, aiter_, mime_type):
-		try:
-			loader = GdkPixbuf.PixbufLoader.new_with_mime_type(mime_type)
-		except GLib.Error:
-			return NotImplemented
-		else:
-			async for data in aiter_:
-				loader.write(data) # TODO: run in executor
-			loader.close()
-			return loader.get_pixbuf()
-	'''
-	
 	def is_image_document(self, document):
 		return isinstance(document, GdkPixbuf.Pixbuf)
 	

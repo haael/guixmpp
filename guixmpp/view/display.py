@@ -9,8 +9,6 @@ import gi
 gi.require_version('Gdk', '3.0')
 from gi.repository import Gdk, GLib
 
-import cairo
-
 
 class DisplayView:
 	def set_image(self, widget, image):
@@ -41,20 +39,31 @@ class DisplayView:
 		if name != 'display': return NotImplemented
 		
 		if event.type == Gdk.EventType.CONFIGURE:
+			try:
+				if widget.__viewport_width == event.width and widget.__viewport_height == event.height:
+					return
+			except AttributeError:
+				pass
 			widget.__viewport_width = event.width
 			widget.__viewport_height = event.height
 			self.update(widget)
-			#GLib.idle_add(self.update, widget)
 	
 	def update(self, widget):
-		if hasattr(widget, '_DisplayView__surface') and widget.__surface:
-			widget.__surface.finish()
-			del widget.__surface
+		try:
+			if widget.__surface:
+				widget.dispose_surface(widget.__surface, self)
+				del widget.__surface
+		except AttributeError:
+			pass
 		widget.__surface = widget.draw_image(self)
 		widget.queue_draw()
+		return False
 	
 	def draw(self, widget, ctx):
-		if hasattr(widget, '_DisplayView__surface') and widget.__surface:
-			ctx.set_source_surface(widget.__surface)
+		try:
+			if widget.__surface:
+				ctx.set_source_surface(widget.__surface)
+		except AttributeError:
+			pass
 		ctx.paint()
 

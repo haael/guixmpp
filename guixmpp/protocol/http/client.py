@@ -18,7 +18,7 @@ class HTTPError(Exception):
 
 
 class Connection:
-	"Base class"
+	"Abstract HTTP connection class."
 	
 	def __init__(self, baseurl):
 		self.baseurl = baseurl
@@ -508,6 +508,8 @@ class Request:
 		self.return_headers = return_headers
 	
 	def __await__(self):
+		"Return the request result in one go."
+		
 		result = None
 		
 		async def execute():
@@ -525,11 +527,13 @@ class Request:
 		return result
 	
 	async def open(self):
+		"Open connection to the server for writing."
 		self.stream = await self.client.begin_stream()
 		if self.body is not None:
 			await self.write(body)
 	
 	async def close(self):
+		"Close connection."
 		await self.client.end_stream(self.stream)
 		self.closed = True
 		del self.stream
@@ -542,6 +546,7 @@ class Request:
 		await self.close()
 	
 	async def response(self):
+		"Get status response and headers from the server on open connection. Marks end of writing, reading is possible afterwards."
 		if not self.request_sent:
 			await self.client.send_request(self.stream, self.method, self.path, self.headers)
 		else:
@@ -555,24 +560,28 @@ class Request:
 			raise HTTPError(f"HTTP error {status}.", status)
 	
 	async def read(self, bufsize=None):
+		"Read response data from server as bytes. Can only be used after calling response()."
 		if bufsize is not None:
 			return await self.client.read(self.stream, bufsize)
 		else:
 			return bytes().join(await self.readchunks())
 	
 	async def readchunks(self):
+		"Read response data from server as list of bytes."
 		result = []
 		async for chunk in self:
 			result.append(chunk)
 		return result
 	
 	async def __aiter__(self):
+		"Read response data from server iteratively, chunk by chunk."
 		chunk = await self.client.read(self.stream, self.chunk_size)
 		while chunk:
 			yield chunk
 			chunk = await self.client.read(self.stream, self.chunk_size)
 	
 	async def write(self, data):
+		"Write request body to the server."
 		if not self.writable():
 			raise ValueError
 		

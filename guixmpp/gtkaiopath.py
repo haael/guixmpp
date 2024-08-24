@@ -6,18 +6,19 @@ Should be faster than aiopath, but works only when Gtk mainloop is running.
 """
 
 
-__all__ = 'PurePath', 'Path'
+__all__ = 'Path', 'SEEK_SET', 'SEEK_CUR', 'SEEK_END'
 
 
 import gi
 gi.require_version('GLib', '2.0')
 from gi.repository import Gio, GLib
 
-from asyncio import Future, get_running_loop
+from asyncio import Future, gather, to_thread, get_running_loop
 
 from collections import deque
 import pathlib
 from os import SEEK_SET, SEEK_CUR, SEEK_END
+import os.path
 
 
 class _AsyncIOCall:
@@ -45,6 +46,12 @@ class _AsyncIOCall:
 			try:
 				result = self.finish(obj, task)
 			except GLib.Error as error:
+				if error.code == 1:
+					future.set_exception(FileNotFoundError(str(error)))
+					# TODO: raise proper exception classes instead of GLib.Error
+				else:
+					future.set_exception(error)
+			except BaseException as error:
 				future.set_exception(error)
 			else:
 				future.set_result(result)
@@ -83,7 +90,7 @@ class File:
 	__write = _AsyncIOCall((lambda stream, bytes_, cancellable, on_result: stream.write_async(bytes_, GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda stream, task: stream.write_finish(task)))
 	__write_all = _AsyncIOCall((lambda stream, bytes_, cancellable, on_result: stream.write_all_async(bytes_, GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda stream, task: stream.write_all_finish(task)))
 	
-	__close = _AsyncIOCall((lambda stream, *args, cancellable, on_result: stream.close_async(*args, GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda stream, task: stream.close_finish(task)))
+	__close = _AsyncIOCall((lambda stream, cancellable, on_result: stream.close_async(GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda stream, task: stream.close_finish(task)))
 	
 	async def open(self):
 		if 'r' in self.mode and '+' not in self.mode:
@@ -226,37 +233,7 @@ class File:
 		return self.stream.tell()
 
 
-class PurePath(pathlib.PurePosixPath):
-	__slots__ = pathlib.PurePosixPath.__slots__
-	
-	def __rtruediv__(self, key):
-		return Path(super().__rtruediv__(key))
-	
-	def __truediv__(self, key):
-		return Path(super().__truediv__(key))
-	
-	@property
-	def parent(self):
-		return Path(super().parent)
-	
-	@property
-	def parents(self):
-		return tuple(Path(path) for path in super().parents)
-	
-	def joinpath(self, *pathsegments):
-		return Path(super().joinpath(*pathsegments))
-	
-	def relative_to(self, other, /, *_deprecated, walk_up=False):
-		return Path(super().relative_to(other, *_deprecated, walk_up=walk_up))
-	
-	def with_name(self, name):
-		return Path(super().with_name(name))
-	
-	def with_suffix(self, suffix):
-		return Path(super().with_suffix(suffix))
-
-
-class Path(pathlib.Path, PurePath):
+class Path(pathlib.Path, pathlib.PurePosixPath):
 	__slots__ = pathlib.Path.__slots__
 	
 	@classmethod
@@ -267,60 +244,88 @@ class Path(pathlib.Path, PurePath):
 	def home(cls):
 		return cls(GLib.get_home_dir())
 	
-	async def absolute(self):
+	def absolute(self):
+		if self.is_absolute():
+			return self
+		else:
+			return self.cwd() / self
+	
+	async def expanduser(self):
+		path = await to_thread(os.path.expanduser, self)
+		return self.__class__(path)
+	
+	async def glob(self, pattern, *, case_sensitive=None):
 		raise NotImplementedError
-		path = await get_running_loop().run_in_executor(None, pathlib.Path.absolute, self)
-		return Path(path)
+	
+	async def rglob(self, pattern, *, case_sensitive=None):
+		raise NotImplementedError
+	
+	__query_info = _AsyncIOCall((lambda gfile, attrs, flags, cancellable, on_result: gfile.query_info_async(attrs, flags, GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda gfile, task: gfile.query_info_finish(task)))
+	
+	async def __info(self, *attrs, follow_symlinks=True):
+		gfile = Gio.File.new_for_path(str(self))
+		return await self.__query_info(gfile, ','.join(attrs), Gio.FileQueryInfoFlags.NONE if follow_symlinks else Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS)
 	
 	async def chmod(self, mode, *, follow_symlinks=True):
 		raise NotImplementedError
 	
 	async def exists(self, *, follow_symlinks=True):
-		raise NotImplementedError
+		try:
+			await self.__info('id::file', follow_symlinks=follow_symlinks)
+		except FileNotFoundError:
+			return False
+		else:
+			return True
 	
-	async def expanduser(self):
-		path = await get_running_loop().run_in_executor(None, pathlib.Path.expanduser, self)
-		return Path(path)
-	
-	async def glob(self, pattern, *, case_sensitive=None):
-		raise NotImplementedError
-		for path in await get_running_loop().run_in_executor(None, pathlib.Path.glob, self, pattern, case_sensitive=case_sensitive):
-			yield Path(path)
-	
-	async def rglob(self, pattern, *, case_sensitive=None):
-		raise NotImplementedError
-		for path in await get_running_loop().run_in_executor(None, pathlib.Path.rglob, self, pattern, case_sensitive=case_sensitive):
-			yield Path(path)
+	async def owner(self):
+		return (await self.__info('owner::user')).get_attribute_string('owner::user')
 	
 	async def group(self):
-		raise NotImplementedError
-	
-	async def hardlink_to(self, target):
-		raise NotImplementedError
+		return (await self.__info('owner::group')).get_attribute_string('owner::group')
 	
 	async def is_block_device(self) -> bool:
 		raise NotImplementedError
+		info = await self.__info('standard::type')
+		return info.get_attribute_uint32('standard::type') == 999
 	
 	async def is_char_device(self) -> bool:
 		raise NotImplementedError
+		info = await self.__info('standard::type')
+		return info.get_attribute_uint32('standard::type') == 999
 	
 	async def is_dir(self) -> bool:
-		raise NotImplementedError
+		try:
+			info = await self.__info('standard::type')
+		except FileNotFoundError:
+			return False
+		else:
+			return info.get_attribute_uint32('standard::type') == 2
 	
 	async def is_fifo(self) -> bool:
 		raise NotImplementedError
+		info = await self.__info('standard::type')
+		return info.get_attribute_uint32('standard::type') == 999
 	
 	async def is_file(self) -> bool:
-		raise NotImplementedError
+		try:
+			info = await self.__info('standard::type')
+		except FileNotFoundError:
+			return False
+		else:
+			return info.get_attribute_uint32('standard::type') == 1
 	
 	async def is_mount(self) -> bool:
 		raise NotImplementedError
+		info = await self.__info('standard::type')
+		return info.get_attribute_uint32('standard::type') == 999
 	
 	async def is_socket(self) -> bool:
 		raise NotImplementedError
+		info = await self.__info('standard::type')
+		return info.get_attribute_uint32('standard::type') == 999
 	
 	async def is_symlink(self) -> bool:
-		raise NotImplementedError
+		return (await self.__info('standard::is-symlink', follow_symlinks=False)).get_is_symlink()
 	
 	__enumerate_children = _AsyncIOCall((lambda gfile, x, y, cancellable, on_result: gfile.enumerate_children_async(x, y, GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda obj, task: obj.enumerate_children_finish(task)))
 	__next_files = _AsyncIOCall((lambda enumerator, n, cancellable, on_result: enumerator.next_files_async(n, GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda enumerator, task: enumerator.next_files_finish(task)))
@@ -344,8 +349,34 @@ class Path(pathlib.Path, PurePath):
 	async def match(self, path_pattern, *, case_sensitive=None) -> bool:
 		raise NotImplementedError
 	
+	__make_directory = _AsyncIOCall((lambda gfile, cancellable, on_result: gfile.make_directory_async(GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda gfile, task: gfile.make_directory_finish(task)))
+	
 	async def mkdir(self, mode=0o777, parents=False, exist_ok=False):
-		raise NotImplementedError
+		exists = await self.exists()
+		if exists:
+			if not exist_ok:
+				raise FileExistsError(f"File at the specified destination `{str(self)}` already exists.")
+			if not await self.is_dir():
+				raise FileExistsError(f"File at the specified destination `{str(self)}` exists and is not a directory.")
+			return
+		
+		if not parents:
+			if not await self.parent.exists():
+				raise FileNotFoundError(f"Parent directory of `{str(self)}` does not exist.")
+			if not await self.parent.is_dir():
+				raise FileExistsError(f"Parent of the specified destination `{str(self)}` exists and is not a directory.")
+		else:
+			path = self.parent
+			elements = []
+			while not await path.exists():
+				elements.append(path)
+				path = path.parent
+			if not await path.is_dir():
+				raise FileExistsError(f"Ancestor `{str(patg)}` of the specified destination `{str(self)}` is not a directory.")
+			for path in reversed(elements):
+				await path.__make_directory(Gio.File.new_for_path(str(path)))
+		
+		await self.__make_directory(Gio.File.new_for_path(str(self))) # TODO: mode
 	
 	def open(self, mode='r', buffering=-1, encoding=None, errors=None, newline=b"\n"):
 		if 't' in mode and 'b' in mode:
@@ -362,18 +393,15 @@ class Path(pathlib.Path, PurePath):
 		
 		return File(self, mode, buffering, encoding, errors, newline)
 	
-	async def owner(self):
-		raise NotImplementedError
-	
 	__load_contents = _AsyncIOCall((lambda gfile, *args, cancellable, on_result: gfile.load_contents_async(*args, cancellable, on_result)), (lambda stream, task: stream.load_contents_finish(task)))
 	
 	async def read_bytes(self):		
 		return (await self.__load_contents(Gio.File.new_for_path(str(self)))).contents
 	
-	__replace_contents = _AsyncIOCall((lambda gfile, *args, cancellable, on_result: gfile.replace_contents_async(*args, cancellable, on_result)), (lambda stream, task: stream.replace_contents_finish(task)))
+	__replace_contents = _AsyncIOCall((lambda gfile, data, etag, backup, flags, cancellable, on_result: gfile.replace_contents_async(data, etag, backup, flags, cancellable, on_result)), (lambda stream, task: stream.replace_contents_finish(task)))
 	
 	async def write_bytes(self, data):
-		success = await self.__replace_contents(Gio.File.new_for_path(str(self)), data, len(data), None, False, 0)
+		success = await self.__replace_contents(Gio.File.new_for_path(str(self)), data, None, False, 0)
 		if success:
 			return len(data)
 		else:
@@ -386,38 +414,67 @@ class Path(pathlib.Path, PurePath):
 		await self.write_bytes(data.encode(encoding))
 	
 	async def readlink(self):
-		raise NotImplementedError
-		return Path(path)
+		return self.__class__((await self.__info('standard::symlink-target', follow_symlinks=False)).get_symlink_target())
+	
+	__move = _AsyncIOCall((lambda this, that, flags, cancellable, on_result: this.move_async(that, flags, GLib.PRIORITY_DEFAULT, cancellable, None, None, on_result, None)), (lambda this, task: this.move_finish(task)))
 	
 	async def rename(self, target):
-		raise NotImplementedError
-		return Path(path)
+		"Move file."
+		if await self.is_dir():
+			return ValueError("Target is a directory.")
+		this_gfile = Gio.File.new_for_path(str(self))
+		that_gfile = Gio.File.new_for_path(str(target))
+		await self.__move(this_gfile, that_gfile)
+		return self.__class__(target)
+	
+	__copy = _AsyncIOCall((lambda this, that, flags, cancellable, on_result: this.copy_async(that, flags, GLib.PRIORITY_DEFAULT, cancellable, None, None, on_result, None)), (lambda this, task: this.copy_finish(task)))
 	
 	async def replace(self, target):
-		raise NotImplementedError
-		return Path(path)
+		"Copy file."
+		if await self.is_dir():
+			return ValueError("Target is a directory.")
+		this_gfile = Gio.File.new_for_path(str(self))
+		that_gfile = Gio.File.new_for_path(str(target))
+		await self.__copy(this_gfile, that_gfile)
+		return self.__class__(target)
 	
-	async def resolve(self, strict=False):
-		raise NotImplementedError
-		return Path(path)
+	__delete = _AsyncIOCall((lambda gfile, cancellable, on_result: gfile.delete_async(GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda gfile, task: gfile.delete_finish(task)))
 	
 	async def rmdir(self):
-		raise NotImplementedError
+		"Remove empty directory."
+		if not await self.is_dir():
+			return ValueError("Target is not a directory.")
+		await self.__delete(Gio.File.new_for_path(str(self)))
+	
+	async def unlink(self, missing_ok=False):
+		"Remove file (non-directory)."
+		if await self.is_dir():
+			return ValueError("Target is a directory.")
+		await self.__delete(Gio.File.new_for_path(str(self)))
+	
+	async def resolve(self, strict=False):
+		path = await to_thread(pathlib.Path.resolve, pathlib.Path(self), strict=strict)
+		return self.__class__(path)
 	
 	async def samefile(self, other_path):
-		raise NotImplementedError
+		ia, ib = await gather(self.__info('id::file'), other_path.__info('id::file'))
+		return ia.get_attribute_string('id::file') == ib.get_attribute_string('id::file')
 	
 	async def stat(self, *, follow_symlinks=True):
 		raise NotImplementedError
 	
+	__make_symbolic_link = _AsyncIOCall((lambda gfile, target, cancellable, on_result: gfile.make_symbolic_link_async(target, GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda gfile, task: gfile.make_symbolic_link_finish(task)))
+	
 	async def symlink_to(self, target, target_is_directory=False):
+		await self.__make_symbolic_link(Gio.File.new_for_path(str(self)), str(target))
+	
+	async def hardlink_to(self, target):
 		raise NotImplementedError
 	
 	async def touch(self, mode=0o666, exist_ok=True):
-		raise NotImplementedError
-	
-	async def unlink(self, missing_ok=False):
-		raise NotImplementedError
+		f = self.open('a' if exist_ok else 'x') # TODO: mode
+		await f.open()
+		await f.close()
 
 
 if __name__ == '__main__':
@@ -427,8 +484,17 @@ if __name__ == '__main__':
 	set_event_loop_policy(GtkAioEventLoopPolicy())
 	
 	async def test():
-		cwd = await Path.cwd()
+		cwd = Path.cwd()
 		print(repr(cwd))
+		
+		fst = cwd / '../fstabbing/guixmpp'
+		assert await fst.is_symlink()
+		assert await (await (fst.parent / (await fst.readlink())).resolve()).samefile(cwd / 'guixmpp')
+		assert await (cwd / '../fstabbing/guixmpp').samefile(cwd / 'guixmpp')
+		assert not await (cwd / '../fstabbing/guixmpp').samefile(cwd / 'examples')
+		
+		print(await (cwd / 'ttt1.txt').owner(), await (cwd / 'ttt1.txt').group())
+		print(await Path('/').owner(), await Path('/').group())
 		
 		async with (cwd / 'ttt1.txt').open('wb') as fd:
 			await fd.write(b"teeest me")

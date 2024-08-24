@@ -13,7 +13,7 @@ else:
 from urllib.parse import unquote
 import magic
 import mimetypes
-from asyncio import get_running_loop
+from asyncio import to_thread
 
 
 class FileDownload:
@@ -54,8 +54,8 @@ class FileDownload:
 				raise ValueError("Only localhost files are supported.")
 		
 		path = Path(unquote(path_name))
-		mime_type, encoding = mimetypes.guess_type(str(path)) # TODO: Run in executor? Possible blocking io.
-		#mime_type = await get_running_loop().run_in_executor(None, (lambda _filename: magic.from_file(_filename, mime=True)), str(path))
+		mime_type, encoding = await to_thread(mimetypes.guess_type, str(path))
+		#mime_type = await to_thread(magic.from_file, str(path), mime=True)
 		if not mime_type:
 			mime_type = 'application/octet-stream'
 		

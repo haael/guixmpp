@@ -6,7 +6,7 @@ __all__ = 'DocumentModel',
 
 
 from collections import defaultdict
-from asyncio import gather, Lock, Event, TaskGroup, CancelledError, get_running_loop
+from asyncio import gather, Lock, Event, TaskGroup, CancelledError, to_thread
 from inspect import isawaitable
 
 if __name__ == '__main__':
@@ -312,7 +312,7 @@ class Model:
 						self.emit_warning(view, "Expected (data:bytes, mime:str) tuple or data:bytes blob.", result)
 			
 			try:
-				self.documents[url] = await get_running_loop().run_in_executor(None, self.create_document, data, mime_type)
+				self.documents[url] = await to_thread(self.create_document, data, mime_type)
 			except (RuntimeError, NameError, KeyError, IndexError, AttributeError, ArithmeticError, CancelledError, KeyboardInterrupt):
 				raise
 			except Exception as error:
@@ -496,7 +496,7 @@ class Model:
 if __name__ == '__main__':
 	from collections import deque
 	
-	from asyncio import run, Event
+	from asyncio import run, Event, get_running_loop
 	from aiopath import Path
 	
 	from guixmpp.format.plain import PlainFormat

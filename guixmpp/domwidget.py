@@ -87,6 +87,7 @@ try: # avoid defining DOMWidget twice
 	else:
 		DOMWidget
 
+
 except NameError:
 
 	class DOMWidget(Gtk.DrawingArea):
@@ -236,6 +237,7 @@ except NameError:
 			"Open document identified by the provided url."
 			
 			async with self.lock:
+				#print('DOMWidget.open', hex(id(self))[2:], url)
 				if self.main_url is not None:
 					await self.model.close_document(self)
 				self.main_url = url
@@ -243,25 +245,32 @@ except NameError:
 				if self.auto_show:
 					self.set_image(image)
 					# TODO: synthesize initial pointer and keyboard events
+				#print('} open')
 		
 		async def close(self):
 			"Close current document, reverting to default state."
 			
+			#print('DOMWidget.close', hex(id(self))[2:])
 			async with self.lock:
+				#print(" close: enter")
 				if self.main_url is not None:
 					self.main_url = None
+					#print(" close: enter close_document")
 					await self.model.close_document(self)
+					#print(" close: exit close_document")
 					if self.auto_show:
 						self.set_image(None)
+				#print(" close: exit")
 		
 		def set_image(self, image):
 			"Directly set image to display (document returned by `model.create_document`). None to unset."
-			
 			self.model.set_image(self, image)
+	
+		def dispose_surface(self, surface, model):
+			surface.finish()
 		
 		def draw_image(self, model):
 			"Draw the currently opened image to a Cairo surface. Returns the rendered surface. `model` argument is to allow multi-model widgets."
-			
 			viewport_width = model.get_viewport_width(self)
 			viewport_height = model.get_viewport_height(self)
 			
@@ -397,6 +406,7 @@ if __name__ == '__main__':
 		global images, image_index, model
 		DOMEvent._time = get_running_loop().time
 		async for dir_ in (Path.cwd() / 'examples').iterdir():
+			if not await dir_.is_dir(): continue
 			async for doc in dir_.iterdir():
 				if doc.suffix not in ('.css', '.svg_'):
 					images.append(doc.as_uri())
