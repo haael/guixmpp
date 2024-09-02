@@ -80,8 +80,9 @@ class WEBPRender:
 		
 		surface = cairo.ImageSurface.create_for_data(document.arr.data, cairo.Format.ARGB32, document.arr.shape[1], document.arr.shape[0], document.arr.shape[1] * document.arr.shape[2])
 		ctx.set_source_surface(surface)
-		ctx.rectangle(0.1, 0.1, w - 0.2, h - 0.2) # FIXME: workaround; for some reason the surface is not drawn when origin is 0, 0 (incl. translation)
-		ctx.fill()
+		#ctx.rectangle(0.1, 0.1, w - 0.2, h - 0.2) # FIXME: workaround; for some reason the surface is not drawn when origin is 0, 0 (incl. translation)
+		#ctx.fill()
+		ctx.paint()
 		if x != 0 or y != 0 or ww != w or hh != h:
 			ctx.restore()
 	

@@ -16,9 +16,9 @@ _library = environ.get('GUIXMPP_MAINLOOP', '') # empty or 'gbulb'
 
 if _library == '':
 	if __name__ == '__main__':
-		from guixmpp.gtkaio import GtkAioEventLoopPolicy
+		from guixmpp.gtkaio import GtkAioEventLoopPolicy, GtkAioAppEventLoopPolicy
 	else:
-		from .gtkaio import GtkAioEventLoopPolicy
+		from .gtkaio import GtkAioEventLoopPolicy, GtkAioAppEventLoopPolicy
 
 elif _library == 'gbulb':
 	import gbulb
@@ -28,14 +28,20 @@ else:
 
 
 if _library == '':
-	def loop_init():
-		set_event_loop_policy(GtkAioEventLoopPolicy())
+	def loop_init(app=None, argv=()):
+		global _app
+		if app is None:
+			set_event_loop_policy(GtkAioEventLoopPolicy())
+		else:
+			_app = app
+			set_event_loop_policy(GtkAioAppEventLoopPolicy(app, argv))
 
 elif _library == 'gbulb':
 	def loop_init():
 		gbulb.install(gtk=True)
 
 
+_app = None
 _loop_tasks = set()
 _task_added = Event()
 _loop_finished = Event()
@@ -43,16 +49,23 @@ _loop_result = None
 _loop_error = None
 
 
+def _task_done(task):
+	_loop_tasks.discard(task)
+	_app.release()
+
+
 def asynchandler(coro):
 	"Takes a coroutine and changes it into normal method that schedules the coroutine and adds the task to the main app task list. Returns the task object that can be awaited."
 	
 	def method(self, *args, **kwargs):
+		_app.hold()
 		try:
 			task = create_task(coro(self, *args, **kwargs), name=coro.__name__)
 		except Exception as error:
 			raise RuntimeError(f"Error creating task {coro.__name__}") from error
 		_loop_tasks.add(task)
-		task.add_done_callback(_loop_tasks.discard)
+		task.add_done_callback(_task_done)
+		#task.add_done_callback(_loop_tasks.discard)
 		_task_added.set()
 		return task
 	

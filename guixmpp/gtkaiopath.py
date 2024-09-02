@@ -46,10 +46,12 @@ class _AsyncIOCall:
 			try:
 				result = self.finish(obj, task)
 			except GLib.Error as error:
-				if error.code == 1:
+				if error.code == 1: # file not found
 					future.set_exception(FileNotFoundError(str(error)))
-					# TODO: raise proper exception classes instead of GLib.Error
+				elif error.code == 19: # cancelled
+					pass
 				else:
+					# TODO: raise proper exception classes instead of GLib.Error
 					future.set_exception(error)
 			except BaseException as error:
 				future.set_exception(error)
@@ -519,6 +521,8 @@ if __name__ == '__main__':
 				async with f.open() as fd:
 					async for l in fd:
 						print(l)
+		
+		await gather((cwd / 'ttt1.txt').unlink(), (cwd / 'ttt2.txt').unlink())
 	
 	run(test())
 

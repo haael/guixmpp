@@ -71,8 +71,9 @@ class PNGRender:
 			if ww != w or hh != h:
 				ctx.scale(ww / w, hh / h)
 		ctx.set_source_surface(document.surface)
-		ctx.rectangle(0.1, 0.1, w - 0.2, h - 0.2) # FIXME: workaround; for some reason the surface is not drawn when origin is 0, 0 (incl. translation)
-		ctx.fill()
+		#ctx.rectangle(0.1, 0.1, w - 0.2, h - 0.2) # FIXME: workaround; for some reason the surface is not drawn when origin is 0, 0 (incl. translation)
+		#ctx.fill()
+		ctx.paint()
 		if x != 0 or y != 0 or ww != w or hh != h:
 			ctx.restore()
 	

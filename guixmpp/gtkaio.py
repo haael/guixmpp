@@ -21,6 +21,7 @@ from asyncio.tasks import current_task
 from asyncio.events import _set_running_loop, Handle, TimerHandle
 from asyncio.subprocess import PIPE, STDOUT, DEVNULL
 from asyncio.streams import FlowControlMixin, StreamReaderProtocol, _DEFAULT_LIMIT as DEFAULT_READER_LIMIT
+from asyncio.exceptions import InvalidStateError
 
 import socket
 import ssl
@@ -729,6 +730,7 @@ class SubprocessTransport(BaseTransport, asyncio.transports.SubprocessTransport)
 			loop = get_running_loop()
 		
 		self.__returncode = None
+		self.__finished = Event()
 		self.__pipe = {}
 		
 		flags = Gio.SubprocessFlags.NONE
@@ -807,6 +809,7 @@ class SubprocessTransport(BaseTransport, asyncio.transports.SubprocessTransport)
 		
 		_debug_transports(' process_exited', protocol)
 		protocol.process_exited()
+		self.__finished.set()
 	
 	def __writer_drain_helper(self, protocol, orig_drain_helper):
 		"Original drain() waits only for flow control commands. Wait also for stdin write buffer to empty."
@@ -870,14 +873,18 @@ class SubprocessTransport(BaseTransport, asyncio.transports.SubprocessTransport)
 		if self.__returncode is not None:
 			return
 		self.__child.force_exit()
+	
+	async def _wait(self):
+		await self.__finished.wait()
+		return self.__returncode
 
 
-async def _file_exists(path):
+async def _program_exists(path):
 	raise NotImplementedError
 
 
 class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
-	def __init__(self):
+	def __init__(self, app=None, argv=()):
 		self.__closed = False
 		self.__task_factory = None
 		self.__debug_flag = False
@@ -886,84 +893,97 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		self.__signals = {}
 		self.__resolver = AsyncResolver() # DNS resolver from `guixmpp/protocol/dns/client.py`
 		self.__executor = concurrent.futures.ThreadPoolExecutor() # TODO
+		self.__app = app
+		self.__argv = argv
+		self.__use_app = False
 	
-	def run_forever(self):
-		"""Run the event loop until stop() is called."""
-		
+	def __run_future(self, future, use_app):
 		if self.is_running() or self.is_closed():
 			raise RuntimeError
 		
 		_set_running_loop(self)
 		
-		self.__completing = self.create_task(self.__begin_loop())
-		GLib.idle_add(self._check_completing_state)
-		Gtk.main()
-		result = self.__completing.result()
-		self.__completing = None
+		self.__use_app = use_app
+		self.__completing = future
 		
-		Gtk.main()
-		
-		self.__completing = self.create_task(self.__end_loop())
 		GLib.idle_add(self._check_completing_state)
-		Gtk.main()
-		result = self.__completing.result()
+		
+		if not use_app:
+			Gtk.main()
+		else:
+			self.__app.app_result = self.__app.run(self.__argv)
+		
+		exception = None
+		result = None
+		if self.__completing is not None:
+			try:
+				result = self.__completing.result()
+			except BaseException as error:
+				exception = error
+		
 		self.__completing = None
+		self.__use_app = False
 		
 		_set_running_loop(None)
+		
+		if exception is not None:
+			raise exception
+		else:
+			return result
 	
-	async def __begin_loop(self):
-		await self.__open_resolver()
-	
-	async def __end_loop(self):
-		await self.__close_resolver()
-	
-	def _check_completing_state(self):
-		if self.__completing is not None and self.__completing.done():
-			Gtk.main_quit()
-		return False
+	def run_forever(self):
+		"""Run the event loop until stop() is called."""
+		
+		return self.run_until_complete(None)
 	
 	def run_until_complete(self, future):
 		"""Run the event loop until a Future is done.
 		Return the Future's result, or raise its exception.
 		"""
 		
-		exc = False
-		
-		if self.is_running() or self.is_closed():
-			raise RuntimeError
-		
 		if iscoroutine(future):
+			try:
+				special_method = eval(future.__qualname__).special_method
+			except AttributeError:
+				special_method = False
 			future = self.create_task(future)
+		else:
+			special_method = False
 		
-		_set_running_loop(self)
+		if not special_method:
+			self.__run_future(self.create_task(self.__begin_loop()), False)
 		
-		self.__completing = self.create_task(self.__begin_loop())
-		GLib.idle_add(self._check_completing_state)
-		Gtk.main()
-		self.__completing.result()
-		self.__completing = None
-		
-		self.__completing = future
-		GLib.idle_add(self._check_completing_state)
-		Gtk.main()
+		exception = None
 		try:
-			result = self.__completing.result()
+			result = self.__run_future(future, (self.__app is not None and not special_method))
 		except BaseException as error:
-			result = error
-			exc = True
-		self.__completing = None
+			exception = error
 		
-		self.__completing = self.create_task(self.__end_loop())
-		GLib.idle_add(self._check_completing_state)
-		Gtk.main()
-		self.__completing.result()
-		self.__completing = None
+		if not special_method:
+			self.__run_future(self.create_task(self.__end_loop()), False)
 		
-		_set_running_loop(None)
-		if exc:
-			raise result
+		if exception is not None:
+			raise exception
 		else:
 			return result
+	
+	async def __begin_loop(self):
+		await self.__resolver.open(self)
+	
+	async def __end_loop(self):
+		await self.__resolver.close()
+	
+	def _check_completing_state(self):
+		if self.__completing is None:
+			return False
+		
+		if not self.__completing.done():
+			return False
+		
+		if not self.__use_app:
+			Gtk.main_quit()
+		
+		return False
 	
 	def stop(self):
 		"""Stop the event loop as soon as reasonable.
@@ -974,11 +994,14 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		if not self.is_running() or self.is_closed():
 			raise RuntimeError
 		
-		Gtk.main_quit()
+		if self.__app is None:
+			Gtk.main_quit()
+		else:
+			self.__app.quit()
 	
 	def is_running(self):
 		"""Return whether the event loop is currently running."""
-		return Gtk.main_level() > 0
+		return Gtk.main_level() > 0 # TODO
 	
 	def is_closed(self):
 		"""Returns True if the event loop was closed."""
@@ -998,9 +1021,13 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		"""Shutdown all active asynchronous generators."""
 		pass # TODO
 	
+	shutdown_asyncgens.special_method = True
+	
 	async def shutdown_default_executor(self):
 		if self.__executor:
 			self.__executor.shutdown()
+	
+	shutdown_default_executor.special_method = True
 	
 	# Methods scheduling callbacks.  All these return Handles.
 	
@@ -1116,12 +1143,6 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 	
 	def getnameinfo(self, sockaddr, flags=0):
 		raise NotImplementedError("getnameinfo")
-	
-	async def __open_resolver(self):
-		await self.__resolver.open(self)
-	
-	async def __close_resolver(self):
-		await self.__resolver.close()
 	
 	async def __try_addrs(self, host, port, family, proto):
 		try:
@@ -1403,8 +1424,8 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 	
 	async def subprocess_exec(self, protocol_factory, *args, stdin=PIPE, stdout=PIPE, stderr=PIPE, use_path=None, executable=None, **kwargs):
 		if executable is None and not args[0].startswith('/') and not args[0].startswith('.'):
-			for path_part in (use_path if use_path is not None else environ.get('PATH', '.:/bin:/usr/bin').split(':')):
-				if await _file_exists(str(path_part) + '/' + args[0]):
+			for path_part in (use_path if use_path is not None else environ.get('PATH', '.:/usr/bin:/bin').split(':')):
+				if await _program_exists(str(path_part) + '/' + args[0]):
 					executable = str(path_part) + '/' + args[0]
 					break
 			else:
@@ -1453,11 +1474,9 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 	# Signal handling.
 	
 	def add_signal_handler(self, sig, callback, *args):
-		#raise NotImplementedError
 		self.__signals[sig] = GLib.unix_signal_add(GLib.PRIORITY_HIGH, sig, callback, args)
 	
 	def remove_signal_handler(self, sig):
-		#raise NotImplementedError
 		GLib.Source.remove(self.__signals[sig])
 		self.__signals[sig] = None
 	
@@ -1535,6 +1554,16 @@ class GtkAioEventLoopPolicy(asyncio.events.AbstractEventLoopPolicy):
 	#	raise NotImplementedError("set_child_watcher")
 
 
+class GtkAioAppEventLoopPolicy(GtkAioEventLoopPolicy):
+	def __init__(self, app, argv):
+		super().__init__()
+		self.__app = app
+		self.__argv = argv
+	
+	def new_event_loop(self):
+		return GtkAioEventLoop(self.__app, self.__argv)
+
+
 if __name__ == '__main__':
 	from asyncio import sleep, set_event_loop_policy, run, gather, create_task, create_subprocess_exec
 	from protocol.http.client import Connection1
@@ -1555,6 +1584,8 @@ if __name__ == '__main__':
 		
 		async for ln in child.stdout:
 			print(ln.decode('utf-8')[:-1])
+		
+		await child.wait()
 	
 	def some_work_1():
 		z = 0
