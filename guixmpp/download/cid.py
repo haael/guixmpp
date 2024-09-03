@@ -34,15 +34,16 @@ if __debug__ and __name__ == '__main__':
 	from asyncio import run
 	
 	print("CID download")
+	# TODO
 	
-	model = CIDDownload()
-	client = XMPPClient('haael@dw.live/discovery')
+	#model = CIDDownload()
+	#client = XMPPClient('haael@dw.live/discovery')
 	
-	async def main():
-			client.set_resource('cid:test@bob.xmpp.org', b"hello void", 'text/plain')
-			model.set_xmpp_client(client)
-			print(await model.get_resource('cid:test@bob.xmpp.org'))
+	#async def main():
+	#	client.set_resource('cid:test@bob.xmpp.org', b"hello void", 'text/plain')
+	#	model.set_xmpp_client(client)
+	#	print(await model.get_resource('cid:test@bob.xmpp.org'))
 	
-	run(main())
+	#run(main())
 
 

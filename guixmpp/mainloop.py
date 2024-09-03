@@ -51,14 +51,16 @@ _loop_error = None
 
 def _task_done(task):
 	_loop_tasks.discard(task)
-	_app.release()
+	if _app is not None:
+		_app.release()
 
 
 def asynchandler(coro):
 	"Takes a coroutine and changes it into normal method that schedules the coroutine and adds the task to the main app task list. Returns the task object that can be awaited."
 	
 	def method(self, *args, **kwargs):
-		_app.hold()
+		if _app is not None:
+			_app.hold()
 		try:
 			task = create_task(coro(self, *args, **kwargs), name=coro.__name__)
 		except Exception as error:

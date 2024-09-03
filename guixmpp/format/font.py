@@ -202,6 +202,9 @@ AAA='''
 				return data
 			else:
 				raise NotImplementedError
+		
+		def get_document_url(self, doc):
+			return str(hash(doc))
 	
 	async def main():
 		model = Model()

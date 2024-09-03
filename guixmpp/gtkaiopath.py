@@ -11,6 +11,7 @@ __all__ = 'Path', 'SEEK_SET', 'SEEK_CUR', 'SEEK_END'
 
 import gi
 gi.require_version('GLib', '2.0')
+gi.require_version('Gio', '2.0')
 from gi.repository import Gio, GLib
 
 from asyncio import Future, gather, to_thread, get_running_loop
@@ -19,48 +20,13 @@ from collections import deque
 import pathlib
 from os import SEEK_SET, SEEK_CUR, SEEK_END
 import os.path
+import pwd, grp
 
 
-class _AsyncIOCall:
-	def __init__(self, init=None, finish=None):
-		self._init = init
-		self._finish = finish
-	
-	def init(self, *args, cancellable, on_result):
-		self._init(*args, cancellable=cancellable, on_result=on_result)
-	
-	def finish(self, obj, task):
-		return self._finish(obj, task)
-	
-	def __call__(self, *args):
-		future = get_running_loop().create_future()
-		cancellable = Gio.Cancellable()
-		
-		def on_done(future):
-			if future.cancelled():
-				cancellable.cancel() # cancel Gio operation
-		
-		future.add_done_callback(on_done)
-		
-		def on_result(obj, task):
-			try:
-				result = self.finish(obj, task)
-			except GLib.Error as error:
-				if error.code == 1: # file not found
-					future.set_exception(FileNotFoundError(str(error)))
-				elif error.code == 19: # cancelled
-					pass
-				else:
-					# TODO: raise proper exception classes instead of GLib.Error
-					future.set_exception(error)
-			except BaseException as error:
-				future.set_exception(error)
-			else:
-				future.set_result(result)
-		
-		self.init(*args, cancellable=cancellable, on_result=on_result)
-		
-		return future
+if __name__ == '__main__':
+	from guixmpp.async_helper import AsyncGLibCallHelper as _AsyncIOCall
+else:
+	from .async_helper import AsyncGLibCallHelper as _AsyncIOCall
 
 
 class File:
@@ -267,6 +233,30 @@ class Path(pathlib.Path, pathlib.PurePosixPath):
 	async def __info(self, *attrs, follow_symlinks=True):
 		gfile = Gio.File.new_for_path(str(self))
 		return await self.__query_info(gfile, ','.join(attrs), Gio.FileQueryInfoFlags.NONE if follow_symlinks else Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS)
+	
+	async def getmode(self):
+		info = await self.__info('unix::mode', 'owner::user', 'owner::group')
+		mode = oct(info.get_attribute_uint32('unix::mode'))
+		
+		u = info.get_attribute_string('owner::user') == await to_thread(lambda: pwd.getpwuid(os.getuid())[0])
+		g = info.get_attribute_string('owner::group') in (await to_thread(lambda: [grp.getgrgid(_gid)[0] for _gid in os.getgroups()]))
+		
+		if u:
+			m = int(mode[-3])
+		elif g:
+			m = int(mode[-2])
+		else:
+			m = int(mode[-1])
+		
+		t = []
+		if (m >> 2) & 1:
+			t.append('r')
+		if (m >> 1) & 1:
+			t.append('w')
+		if (m >> 0) & 1:
+			t.append('x')
+		
+		return ''.join(t)
 	
 	async def chmod(self, mode, *, follow_symlinks=True):
 		raise NotImplementedError
@@ -495,11 +485,12 @@ if __name__ == '__main__':
 		assert await (cwd / '../fstabbing/guixmpp').samefile(cwd / 'guixmpp')
 		assert not await (cwd / '../fstabbing/guixmpp').samefile(cwd / 'examples')
 		
-		print(await (cwd / 'ttt1.txt').owner(), await (cwd / 'ttt1.txt').group())
 		print(await Path('/').owner(), await Path('/').group())
 		
 		async with (cwd / 'ttt1.txt').open('wb') as fd:
 			await fd.write(b"teeest me")
+		
+		print("modes:", await (cwd / 'ttt1.txt').owner(), await (cwd / 'ttt1.txt').group(), await (cwd / 'ttt1.txt').getmode())
 		
 		async with (cwd / 'ttt2.txt').open('w') as fd:
 			await fd.write("teeest me tooo")

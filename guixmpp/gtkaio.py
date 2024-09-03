@@ -10,6 +10,7 @@ behave as it had await inside.)
 import gi
 gi.require_version('Gtk', '3.0')
 gi.require_version('GLib', '2.0')
+gi.require_version('Gio', '2.0')
 from gi.repository import Gtk, GLib, Gio
 
 import asyncio
@@ -34,12 +35,19 @@ from signal import SIGTERM, SIGKILL
 
 if __name__ == '__main__':
 	from guixmpp.protocol.dns import AsyncResolver
+	from guixmpp.gtkaiopath import Path
 else:
 	from .protocol.dns import AsyncResolver
+	from .gtkaiopath import Path
 
 
 def _debug_transports(*args):
 	#print('_debug_transports', *args)
+	pass
+
+
+def _debug_tasks(*args):
+	#print('_debug_tasks', *args)
 	pass
 
 
@@ -723,7 +731,7 @@ class SubprocessTransport(BaseTransport, asyncio.transports.SubprocessTransport)
 			_debug_transports(' pipe_connection_lost', hex(id(self))[2:], self.pipe_fd, reason, protocol)
 			protocol.pipe_connection_lost(self.pipe_fd, reason)
 	
-	def __init__(self, cmd, stdin=PIPE, stdout=PIPE, stderr=PIPE, pass_fds=(), loop=None, **kwargs):
+	def __init__(self, cmd, stdin, stdout, stderr, pass_fds=(), loop=None, **kwargs):
 		_debug_transports('SubprocessTransport.__init__', hex(id(self))[2:], cmd)
 		
 		if loop is None:
@@ -880,7 +888,10 @@ class SubprocessTransport(BaseTransport, asyncio.transports.SubprocessTransport)
 
 
 async def _program_exists(path):
-	raise NotImplementedError
+	try:
+		return 'x' in await Path(path).getmode()
+	except FileNotFoundError:
+		return False
 
 
 class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
@@ -890,28 +901,61 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		self.__debug_flag = False
 		self.__exception_handler = None
 		self.__completing = None
+		self.__completing_done = False
 		self.__signals = {}
 		self.__resolver = AsyncResolver() # DNS resolver from `guixmpp/protocol/dns/client.py`
 		self.__executor = concurrent.futures.ThreadPoolExecutor() # TODO
 		self.__app = app
 		self.__argv = argv
 		self.__use_app = False
+		self.__loop_initialized = False
+		self.__handle_queue = deque()
 	
-	def __run_future(self, future, use_app):
+	def __is_special_method(self, future):
+		try:
+			qualname = future.__qualname__.split('.')
+			if len(qualname) == 2 and qualname[1].startswith('__'):
+				qualname[1] = '_' + qualname[0] + qualname[1]
+			qualname = '.'.join(qualname)
+			special_method = eval(qualname).special_method
+			_debug_tasks('__is_special_method', future, qualname, special_method)
+		except AttributeError:
+			special_method = False
+		
+		return special_method
+	
+	def __run_future(self, future):
+		assert self.__completing is None
+		
 		if self.is_running() or self.is_closed():
 			raise RuntimeError
 		
 		_set_running_loop(self)
 		
-		self.__use_app = use_app
+		special_method = self.__is_special_method(future)
+		
+		_debug_tasks('__run_future', future, special_method)
+		
+		self.__use_app = (self.__app is not None) and (not special_method)
+		if iscoroutine(future):
+			_debug_tasks('create_task', future)
+			future = self.create_task(future)
 		self.__completing = future
+		self.__completing_done = False
 		
 		GLib.idle_add(self._check_completing_state)
 		
-		if not use_app:
+		if not self.__use_app:
+			_debug_tasks("Gtk.main begin")
 			Gtk.main()
+			_debug_tasks("Gtk.main end")
 		else:
+			_debug_tasks("__app.hold")
+			self.__app.hold()
+			_debug_tasks("__app.run begin")
 			self.__app.app_result = self.__app.run(self.__argv)
+			_debug_tasks("__app.run end")
+			self.__app = None
 		
 		exception = None
 		result = None
@@ -941,26 +985,30 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		Return the Future's result, or raise its exception.
 		"""
 		
-		if iscoroutine(future):
-			try:
-				special_method = eval(future.__qualname__).special_method
-			except AttributeError:
-				special_method = False
-			future = self.create_task(future)
-		else:
-			special_method = False
+		special_method = self.__is_special_method(future)
 		
+		_debug_tasks("run_until_complete", future, special_method)
+		
+		self.__loop_initialized = True
 		if not special_method:
-			self.__run_future(self.create_task(self.__begin_loop()), False)
+			_debug_tasks("spawn __begin_loop")
+			self.__run_future(self.__begin_loop())
+		
+		while self.__handle_queue:
+			_debug_tasks("executing queued handle")
+			handle = self.__handle_queue.pop()
+			GLib.idle_add(self.__run_handle, handle)
 		
 		exception = None
 		try:
-			result = self.__run_future(future, (self.__app is not None and not special_method))
+			result = self.__run_future(future)
 		except BaseException as error:
 			exception = error
 		
 		if not special_method:
-			self.__run_future(self.create_task(self.__end_loop()), False)
+			_debug_tasks("spawn __end_loop")
+			self.__run_future(self.__end_loop())
+		self.__loop_initialized = False
 		
 		if exception is not None:
 			raise exception
@@ -968,10 +1016,16 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 			return result
 	
 	async def __begin_loop(self):
+		_debug_tasks("__begin_loop")
 		await self.__resolver.open(self)
 	
+	__begin_loop.special_method = True
+	
 	async def __end_loop(self):
+		_debug_tasks("__end_loop")
 		await self.__resolver.close()
+	
+	__end_loop.special_method = True
 	
 	def _check_completing_state(self):
 		if self.__completing is None:
@@ -980,8 +1034,16 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		if not self.__completing.done():
 			return False
 		
+		if self.__completing_done:
+			return False
+		else:
+			self.__completing_done = True
+		
 		if not self.__use_app:
 			Gtk.main_quit()
+		elif self.__app is not None:
+			_debug_tasks("__app.release", self.__completing)
+			self.__app.release()
 		
 		return False
 	
@@ -1047,13 +1109,19 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 	
 	def call_soon(self, callback, *args, context=None):
 		handle = Handle(callback, args, self, context=context)
-		GLib.idle_add(self.__run_handle, handle)
+		if self.__loop_initialized:
+			GLib.idle_add(self.__run_handle, handle)
+		else:
+			_debug_tasks("handle ququed")
+			self.__handle_queue.append(handle)
 		return handle
 	
-	def call_soon_threadsafe(self, callback, *args, context=None):
-		handle = Handle(callback, args, self, context=context)
-		GLib.idle_add(self.__run_handle, handle)
-		return handle
+	call_soon_threadsafe = call_soon
+	
+	#def call_soon_threadsafe(self, callback, *args, context=None):
+	#	handle = Handle(callback, args, self, context=context)
+	#	GLib.idle_add(self.__run_handle, handle)
+	#	return handle
 	
 	def call_later(self, delay, callback, *args, context=None):
 		current_time = self.time()
@@ -1412,7 +1480,10 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		
 		return transport, protocol
 	
-	async def subprocess_shell(self, protocol_factory, cmd, *, stdin=PIPE, stdout=PIPE, stderr=PIPE, use_shell=None, **kwargs):
+	async def subprocess_shell(self, protocol_factory, cmd, *, stdin=None, stdout=None, stderr=None, use_shell=None, capture_output=False, **kwargs):
+		if capture_output:
+			stdout = stderr = PIPE
+		
 		transport = SubprocessTransport([use_shell or environ.get('SHELL', '/bin/sh'), '-c', cmd], stdin=stdin, stdout=stdout, stderr=stderr, **kwargs)
 		
 		protocol = protocol_factory()
@@ -1422,7 +1493,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		
 		return transport, protocol
 	
-	async def subprocess_exec(self, protocol_factory, *args, stdin=PIPE, stdout=PIPE, stderr=PIPE, use_path=None, executable=None, **kwargs):
+	async def subprocess_exec(self, protocol_factory, *args, stdin=None, stdout=None, stderr=None, use_path=None, executable=None, capture_output=False, **kwargs):
 		if executable is None and not args[0].startswith('/') and not args[0].startswith('.'):
 			for path_part in (use_path if use_path is not None else environ.get('PATH', '.:/usr/bin:/bin').split(':')):
 				if await _program_exists(str(path_part) + '/' + args[0]):
@@ -1430,6 +1501,9 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 					break
 			else:
 				raise IOError("Program not found in path.")
+		
+		if capture_output:
+			stdout = stderr = PIPE
 		
 		transport = SubprocessTransport(args, stdin=stdin, stdout=stdout, stderr=stderr, executable=executable, **kwargs)
 		
@@ -1570,9 +1644,15 @@ if __name__ == '__main__':
 	
 	set_event_loop_policy(GtkAioEventLoopPolicy())
 	
+	async def test_basic():
+		print("test_basic")
+	
+	run(test_basic())	
+	
 	async def test_process():
 		child = await create_subprocess_exec('./examples/sample_child.py', stdin=PIPE, stdout=PIPE)
 		
+		#print(dir(child))
 		child.stdin.writelines([b"!abcdefghkk\n", b"!12345678\n"])
 		child.stdin.write(b"wjhwejkh\n")
 		await child.stdin.drain()
