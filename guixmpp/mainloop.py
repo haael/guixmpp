@@ -48,7 +48,6 @@ _loop_finished = Event()
 _loop_result = None
 _loop_error = None
 
-
 def _task_done(task):
 	_loop_tasks.discard(task)
 	if _app is not None:
@@ -85,23 +84,32 @@ async def _loop_running():
 		return _loop_result
 
 
+def _debug_mainloop(*args):
+	print("_debug_mainloop", *args)
+
+
 async def loop_run():
 	"Run the loop that schedules tasks created by `asynchandler`."
 	
-	global _loop_tasks, _task_added
+	global _task_added
 	
+	_debug_mainloop("adding signal handlers")
 	get_running_loop().add_signal_handler(signal.SIGTERM, lambda signum: loop_interrupt(SystemExit("SIGTERM")))
 	get_running_loop().add_signal_handler(signal.SIGINT, lambda signum: loop_interrupt(KeyboardInterrupt("SIGINT")))
 	
-	_loop_tasks = set()
+	_debug_mainloop("tasks before loop:", len(_loop_tasks))
+	_loop_tasks.clear()
 	
 	try:
+		_debug_mainloop("setting up")
 		loop_running_task = create_task(_loop_running(), name='__loop_running')
 		task_added_task = None
 		while not loop_running_task.done():
+			_debug_mainloop("inside loop")
 			if task_added_task is None:
 				task_added_task = create_task(_task_added.wait(), name='__task_added')
 			done, pending = await wait(_loop_tasks | frozenset({loop_running_task, task_added_task}), return_when=FIRST_COMPLETED)
+			_debug_mainloop("done, pending", done, pending)
 			
 			if task_added_task.done():
 				await task_added_task
@@ -110,7 +118,6 @@ async def loop_run():
 			
 			for task in done:
 				if task != loop_running_task and task != task_added_task:
-					#print(task)
 					await task
 		
 		if task_added_task is not None and not task_added_task.done():

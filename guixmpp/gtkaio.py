@@ -29,8 +29,9 @@ import ssl
 from math import floor
 from collections import deque
 import concurrent.futures
-from os import strerror, environ, set_blocking
+from os import strerror, environ, set_blocking, _exit
 from signal import SIGTERM, SIGKILL
+import sys
 
 
 if __name__ == '__main__':
@@ -125,9 +126,10 @@ class BaseTransport(asyncio.transports.BaseTransport):
 			result = False
 		
 		if condition & GLib.IO_ERR:
-			if self.__protocol:
+			if self.__protocol is not None:
 				_debug_transports(' error_received', self.__protocol)
-				GLib.idle_add(_ret_false(self.__protocol.error_received), None)
+				if hasattr(self.__protocol, 'error_received'):
+					GLib.idle_add(_ret_false(self.__protocol.error_received), None)
 		
 		if result is True: # keep receiving events
 			return True
@@ -172,7 +174,10 @@ class BaseTransport(asyncio.transports.BaseTransport):
 		self.__closing = True
 		
 		if self.__channel is not None:
-			self.__channel.shutdown(True)
+			try:
+				self.__channel.shutdown(True)
+			except (OSError, GLib.GError): # may fail if this is emergency shutown after error
+				pass
 			self.__channel = None
 		
 		if self.__endpoint is not None:
@@ -310,7 +315,10 @@ class NetworkTransport(BaseTransport):
 		
 		if hasattr(self, '_NetworkTransport__established'):
 			sock = self.get_extra_info('socket')
-			self.__errno = sock.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+			try:
+				self.__errno = sock.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+			except OSError as error:
+				self.__errno = error.errno
 			self.__established.set()
 			#if not errno:
 			#	self.__established.set_result(None)
@@ -364,7 +372,7 @@ class UDPTransport(NetworkTransport, asyncio.transports.DatagramTransport):
 			except BlockingIOError:
 				break
 			except Exception as error:
-				if protocol is not None:
+				if protocol is not None and hasattr(protocol, 'error_received'):
 					GLib.idle_add(_ret_false(protocol.error_received), error)
 			else:
 				if protocol is not None:
@@ -373,7 +381,7 @@ class UDPTransport(NetworkTransport, asyncio.transports.DatagramTransport):
 		return True
 	
 	def sendto(self, data, addr=None):
-		_debug_transports('UDPTransport.sendto', hex(id(self))[2:], repr(data), addr)
+		_debug_transports('UDPTransport.sendto', hex(id(self))[2:], len(data), addr)
 		
 		sock = self.get_extra_info('write_endpoint')
 		
@@ -386,7 +394,7 @@ class UDPTransport(NetworkTransport, asyncio.transports.DatagramTransport):
 			raise RuntimeError("Implement proper blocking support")
 		except Exception as error:
 			protocol = self.get_protocol()
-			if protocol is not None:
+			if protocol is not None and hasattr(protocol, 'error_received'):
 				GLib.idle_add(_ret_false(protocol.error_received), error)
 
 
@@ -412,7 +420,7 @@ class ReadTransport(BaseTransport, asyncio.transports.ReadTransport):
 				return True
 			else:
 				if data:
-					_debug_transports(' data_received', repr(data))
+					_debug_transports(' data_received', len(data))
 					GLib.idle_add(_ret_false(protocol.data_received), data)
 				else:
 					_debug_transports(' eof_received')
@@ -527,7 +535,7 @@ class WriteTransport(BaseTransport, asyncio.transports.WriteTransport):
 		to be sent out asynchronously.
 		"""
 		
-		_debug_transports('WriteTransport.write', hex(id(self))[2:], repr(data))
+		_debug_transports('WriteTransport.write', hex(id(self))[2:], len(data))
 		
 		if data: self.write_buffer_empty.clear()
 		self.__write_buffer.append(data)
@@ -630,7 +638,14 @@ class SSLTransport(TCPTransport):
 			self.__hands_shaken_out.set() #.set_result(None)
 			return None
 		else:
-			return super()._data_out(channel)
+			try:
+				return super()._data_out(channel)
+			except ssl.SSLEOFError as error:
+				if (protocol := self.get_protocol()) is not None:
+					_debug_transports(' SSL EOF', protocol)
+					if hasattr(protocol, 'eof_received'):
+						GLib.idle_add(_ret_false(protocol.eof_received))
+				return None
 	
 	def _data_in(self, channel):
 		_debug_transports('SSLTransport._data_in', hex(id(self))[2:], channel)
@@ -639,7 +654,14 @@ class SSLTransport(TCPTransport):
 			self.__hands_shaken_in.set() #.set_result(None)
 			return None
 		else:
-			return super()._data_in(channel)
+			try:
+				return super()._data_in(channel)
+			except ssl.SSLError as error:
+				if (protocol := self.get_protocol()) is not None:
+					_debug_transports(' SSL exception', protocol)
+					if hasattr(protocol, 'error_received'):
+						GLib.idle_add(_ret_false(protocol.error_received), error)
+				return None
 
 
 class GioStreamTransport:
@@ -704,12 +726,12 @@ class SubprocessTransport(BaseTransport, asyncio.transports.SubprocessTransport)
 			protocol.pipe_connection_lost(self.pipe_fd, reason)
 		
 		def data_received(self, data):
-			_debug_transports('SubprocessTransport.ReaderProtocol.data_received', hex(id(self))[2:], repr(data))
+			_debug_transports('SubprocessTransport.ReaderProtocol.data_received', hex(id(self))[2:], len(data))
 			protocol = self.subprocess_transport.get_protocol()
 			if protocol is None:
 				return
 			
-			_debug_transports(' pipe_data_received', hex(id(self))[2:], self.pipe_fd, repr(data), protocol)
+			_debug_transports(' pipe_data_received', hex(id(self))[2:], self.pipe_fd, len(data), protocol)
 			protocol.pipe_data_received(self.pipe_fd, data)
 	
 	class WriterProtocol:
@@ -954,7 +976,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 			self.__app.hold()
 			_debug_tasks("__app.run begin")
 			self.__app.app_result = self.__app.run(self.__argv)
-			_debug_tasks("__app.run end")
+			_debug_tasks("__app.run end", self.__app.app_result)
 			self.__app = None
 		
 		exception = None
@@ -1112,7 +1134,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		if self.__loop_initialized:
 			GLib.idle_add(self.__run_handle, handle)
 		else:
-			_debug_tasks("handle ququed")
+			_debug_tasks("handle queued")
 			self.__handle_queue.append(handle)
 		return handle
 	
@@ -1575,7 +1597,15 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 			print(context['message'])
 		
 		if 'exception' in context:
-			raise context['exception']
+			if self.__completing is not None:
+				self.__completing.cancel()
+			self.__completing = self.create_future()
+			self.__completing.set_exception(context['exception'])
+			#print(context['exception'])
+			if self.__app is not None:
+				self.__app.quit()
+			else:
+				Gtk.main_quit()
 	
 	def call_exception_handler(self, context):
 		if self.__exception_handler is not None:
@@ -1647,7 +1677,7 @@ if __name__ == '__main__':
 	async def test_basic():
 		print("test_basic")
 	
-	run(test_basic())	
+	run(test_basic())
 	
 	async def test_process():
 		child = await create_subprocess_exec('./examples/sample_child.py', stdin=PIPE, stdout=PIPE)

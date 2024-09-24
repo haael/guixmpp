@@ -29,6 +29,39 @@ else:
 	from .async_helper import AsyncGLibCallHelper as _AsyncIOCall
 
 
+class StatResult:
+	def __init__(self):
+		self.st_uid = 0
+		self.st_gid = 0
+		
+		self.st_atime = 0
+		self.st_atime_ns = 0
+		self.st_mtime = 0
+		self.st_mtime_ns = 0
+		self.st_ctime = 0
+		self.st_ctime_ns = 0
+		self.st_birthtime = 0
+		self.st_birthtime_ns = 0
+		
+		self.st_dev = 0
+		self.st_rdev = 0
+		self.st_mode = 0
+		self.st_ino = 0
+		self.st_blocks = 0
+		self.st_blksize = 0
+		
+		self.st_size = 0
+		self.st_nlink = 0
+		self.st_flags = 0
+		self.st_gen = 0
+		self.st_fstype = 0
+		self.st_rsize = 0
+		self.st_creator = 0
+		self.st_type = 0
+		self.st_file_attributes = 0
+		self.st_reparse_tag = 0
+
+
 class File:
 	"Object returned by Path.open() method. Supports interface similar to file-like object, but async."
 	
@@ -223,7 +256,7 @@ class Path(pathlib.Path, pathlib.PurePosixPath):
 		return self.__class__(path)
 	
 	async def glob(self, pattern, *, case_sensitive=None):
-		raise NotImplementedError
+		return [self.__class__(_path) for _path in await to_thread(pathlib.Path.glob, pathlib.Path(str(self)), pattern)] # TODO add case_sensitive on Python 3.12
 	
 	async def rglob(self, pattern, *, case_sensitive=None):
 		raise NotImplementedError
@@ -335,9 +368,6 @@ class Path(pathlib.Path, pathlib.PurePosixPath):
 	async def lchmod(self, mode):
 		raise NotImplementedError
 	
-	async def lstat(self):
-		raise NotImplementedError
-	
 	async def match(self, path_pattern, *, case_sensitive=None) -> bool:
 		raise NotImplementedError
 	
@@ -387,17 +417,34 @@ class Path(pathlib.Path, pathlib.PurePosixPath):
 	
 	__load_contents = _AsyncIOCall((lambda gfile, *args, cancellable, on_result: gfile.load_contents_async(*args, cancellable, on_result)), (lambda stream, task: stream.load_contents_finish(task)))
 	
-	async def read_bytes(self):		
-		return (await self.__load_contents(Gio.File.new_for_path(str(self)))).contents
+	async def read_bytes(self):
+		while True:
+			try:
+				return (await self.__load_contents(Gio.File.new_for_path(str(self)))).contents
+			except GLib.Error as error:
+				if error.code == 0:
+					print("ebadf while reading") # FIXME
+					continue
+				elif error.code == 45:
+					print("endpoint protocol not connected") # FIXME
+					continue
+				raise
 	
 	__replace_contents = _AsyncIOCall((lambda gfile, data, etag, backup, flags, cancellable, on_result: gfile.replace_contents_async(data, etag, backup, flags, cancellable, on_result)), (lambda stream, task: stream.replace_contents_finish(task)))
 	
 	async def write_bytes(self, data):
-		success = await self.__replace_contents(Gio.File.new_for_path(str(self)), data, None, False, 0)
-		if success:
-			return len(data)
-		else:
-			return 0
+		while True:
+			try:
+				success = await self.__replace_contents(Gio.File.new_for_path(str(self)), data, None, False, 0)
+				if success:
+					return len(data)
+				else:
+					return 0
+			except GLib.Error as error:
+				if error.code == 0:
+					print("ebadf while writing") # FIXME
+					continue
+				raise
 	
 	async def read_text(self, encoding='utf-8', errors=None):
 		return (await self.read_bytes()).decode(encoding)
@@ -453,6 +500,48 @@ class Path(pathlib.Path, pathlib.PurePosixPath):
 		return ia.get_attribute_string('id::file') == ib.get_attribute_string('id::file')
 	
 	async def stat(self, *, follow_symlinks=True):
+		info = await self.__info('time::*', 'unix::*')
+		#for attr in info.list_attributes():
+		#	print(attr, info.get_attribute_data(attr))
+		
+		#result = os.stat_result([0] * 10) #object.__new__(os.stat_result)
+		result = StatResult()
+		
+		result.st_uid = info.get_attribute_uint32('unix::uid')
+		result.st_gid = info.get_attribute_uint32('unix::gid')
+		
+		result.st_atime = info.get_attribute_uint64('time::access')
+		result.st_atime_ns = info.get_attribute_uint64('time::access') * 1000000 + info.get_attribute_uint32('time::access-nsec')
+		result.st_mtime = info.get_attribute_uint64('time::modified')
+		result.st_mtime_ns = info.get_attribute_uint64('time::modified') * 1000000 + info.get_attribute_uint32('time::modified-nsec')
+		result.st_ctime = info.get_attribute_uint64('time::changed')
+		result.st_ctime_ns = info.get_attribute_uint64('time::changed') * 1000000 + info.get_attribute_uint32('time::changed-nsec')
+		result.st_birthtime = info.get_attribute_uint64('time::created')
+		result.st_birthtime_ns = info.get_attribute_uint64('time::created') * 1000000 + info.get_attribute_uint32('time::created-nsec')
+		
+		result.st_dev = info.get_attribute_uint32('unix::device')
+		result.st_rdev = info.get_attribute_uint32('unix::rdev')
+		result.st_mode = info.get_attribute_uint32('unix::mode')
+		result.st_ino = info.get_attribute_uint64('unix::inode')
+		result.st_blocks = info.get_attribute_uint64('unix::blocks')
+		result.st_blksize = info.get_attribute_uint32('unix::block-size')
+		
+		'''
+		result.st_size
+		st_nlink
+		st_flags
+		st_gen
+		st_fstype
+		st_rsize
+		st_creator
+		st_type
+		st_file_attributes
+		st_reparse_tag
+		'''
+		
+		return result
+	
+	async def lstat(self):
 		raise NotImplementedError
 	
 	__make_symbolic_link = _AsyncIOCall((lambda gfile, target, cancellable, on_result: gfile.make_symbolic_link_async(target, GLib.PRIORITY_DEFAULT, cancellable, on_result)), (lambda gfile, task: gfile.make_symbolic_link_finish(task)))

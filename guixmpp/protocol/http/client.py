@@ -312,13 +312,17 @@ class Connection2(Connection):
 				await self.wait_for_data()
 	
 	async def send_request(self, stream, method, path, headers):
-		headers = [
+		rheaders = [
 			(':method', method),
 			(':path', path),
 			(':authority', self.host),
 			(':scheme', self.protocol[:-1])
 		]
-		self.__http.send_headers(stream, headers, end_stream=True)
+		
+		for key, value in headers.items():
+			rheaders.append((key.lower(), value))
+		
+		self.__http.send_headers(stream, rheaders, end_stream=True)
 		await self.send_data(self.__http.data_to_send())
 	
 	async def write(self, stream, data):

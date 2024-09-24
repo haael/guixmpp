@@ -289,7 +289,7 @@ class Model:
 						data, mime_type = None, 'application/x-null'
 				else:
 					data, mime_type = None, 'application/x-null'
-			except (RuntimeError, NameError, KeyError, IndexError, AttributeError, ArithmeticError, CancelledError, KeyboardInterrupt, AssertionError):
+			except (RuntimeError, NameError, KeyError, IndexError, AttributeError, ArithmeticError, CancelledError, KeyboardInterrupt, AssertionError, TypeError):
 				raise
 			except Exception as error: # Ignore all other errors, issue a warning.
 				self.emit_warning(view, f"Error downloading document: {type(error).__name__}: {str(error)}", url)
@@ -313,7 +313,7 @@ class Model:
 			
 			try:
 				self.documents[url] = await to_thread(self.create_document, data, mime_type)
-			except (RuntimeError, NameError, KeyError, IndexError, AttributeError, ArithmeticError, CancelledError, KeyboardInterrupt):
+			except (RuntimeError, NameError, KeyError, IndexError, AttributeError, ArithmeticError, CancelledError, KeyboardInterrupt, AssertionError, TypeError):
 				raise
 			except Exception as error:
 				self.emit_warning(view, f"Error creating document: {type(error).__name__}: {str(error)}", url)

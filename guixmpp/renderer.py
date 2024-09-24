@@ -89,7 +89,7 @@ class Rect:
 
 
 class Renderer:		
-	def __init__(self, file_download=False, http_download=False, cid_download=False, chrome=None):
+	def __init__(self, file_download=False, http_download=False, cid_download=False, chrome=None, http_cache=None, http_semaphore=None):
 		self.lock = Lock()
 		self.main_url = None
 		
@@ -97,6 +97,8 @@ class Renderer:
 		self.http_download = http_download
 		self.cid_download = cid_download
 		self.chrome = chrome
+		self.http_cache = http_cache
+		self.http_semaphore = http_semaphore
 		
 		self.configure_model()
 	
@@ -124,7 +126,11 @@ class Renderer:
 			cc.append('_X')
 		
 		RenderModel = Model.features('<local>.RenderModel' + ''.join(cc), DisplayView, SVGRender, PNGRender, WEBPRender, PixbufRender, HTMLRender, FontFormat, *features, ChromeDownload, ResourceDownload, XMLFormat, CSSFormat, PlainFormat, NullFormat, DataDownload)
-		self.model = RenderModel(chrome_dir=self.chrome)
+		if self.http_cache:
+			cache_dir, cache_fresh_time, cache_max_time = self.http_cache
+			self.model = RenderModel(chrome_dir=self.chrome, http_cache_dir=cache_dir, http_cache_fresh_time=cache_fresh_time, http_cache_max_time=cache_max_time, http_semaphore=self.http_semaphore)
+		else:
+			self.model = RenderModel(chrome_dir=self.chrome, http_semaphore=self.http_semaphore)
 	
 	async def open(self, w, h, url):
 		self.allocation = Rect(0, 0, w, h)
@@ -187,14 +193,15 @@ class Renderer:
 		return surface
 	
 	def emit(self, type_, event, view):
-		print(type_, event)
+		#print(type_, event)
+		pass
 	
 	def get_allocation(self):
 		return self.allocation
 
 
-async def render_to_surface(w, h, url, file_download=False, http_download=False, cid_download=False, chrome=None):
-	r = Renderer(file_download=file_download, http_download=http_download, cid_download=cid_download, chrome=chrome)
+async def render_to_surface(w, h, url, file_download=False, http_download=False, cid_download=False, chrome=None, http_cache=None, http_semaphore=None):
+	r = Renderer(file_download=file_download, http_download=http_download, cid_download=cid_download, chrome=chrome, http_cache=http_cache, http_semaphore=http_semaphore)
 	await r.open(w, h, url)
 	try:
 		s = r.render()
