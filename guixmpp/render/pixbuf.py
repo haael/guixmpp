@@ -6,8 +6,10 @@ __all__ = 'PixbufRender',
 
 
 import gi
-gi.require_version('Gdk', '3.0')
-gi.require_version('GdkPixbuf', '2.0')
+if __name__ == '__main__':
+	gi.require_version('GLib', '2.0')
+	gi.require_version('Gdk', '3.0')
+	gi.require_version('GdkPixbuf', '2.0')
 
 from gi.repository import GdkPixbuf, GLib, Gdk
 from collections import defaultdict

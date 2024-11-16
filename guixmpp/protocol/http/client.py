@@ -1,7 +1,8 @@
 #!/usr/bin/python3
 
 
-from asyncio import get_running_loop, Event, Lock
+from asyncio import get_running_loop, Event, Lock, wait_for
+from asyncio.exceptions import TimeoutError
 from collections import deque
 
 import h11
@@ -19,6 +20,9 @@ class HTTPError(Exception):
 
 class Connection:
 	"Abstract HTTP connection class."
+	
+	data_arrival_timeout = 4
+	socket_open_timeout = 1.5
 	
 	def __init__(self, baseurl):
 		self.baseurl = baseurl
@@ -45,6 +49,7 @@ class Connection:
 		self.headers = {}
 		self.headers['user-agent'] = 'guixmpp' # TODO: config
 		self.headers['connection'] = 'keep-alive'
+		self.headers['accept'] = 'application/xhtml+xml,text/html,application/xml,image/png,image/jpeg,*/*'
 	
 	def create_ssl_context(self):
 		raise NotImplementedError
@@ -64,11 +69,21 @@ class Connection:
 			pass # TODO: warning: data received on closed connection
 	
 	async def send_data(self, data):
+		try:
+			if not self.__transport:
+				return
+		except AttributeError:
+			return
+		
 		await self.__writing.wait()
 		self.__transport.write(data)
+		#print("data sent", data)
 	
 	async def wait_for_data(self):
-		await self.__arrived.wait()
+		try:
+			await wait_for(self.__arrived.wait(), self.data_arrival_timeout)
+		except TimeoutError as error:
+			raise TimeoutError(f"Timeout waiting for data from {self.baseurl}") from error
 		self.__arrived.clear()
 	
 	def start_body_reception(self):
@@ -107,7 +122,7 @@ class Connection:
 			host = addr_port[0]
 			port = addr_port[1]
 			try:
-				await self.loop.create_connection((lambda: self), host, port, family=family, proto=proto, server_hostname=self.host if self.ssl_context else None, ssl=self.ssl_context)
+				await wait_for(self.loop.create_connection((lambda: self), host, port, family=family, proto=proto, server_hostname=self.host if self.ssl_context else None, ssl=self.ssl_context), self.socket_open_timeout)
 				self.__writing.set()
 			except Exception as error:
 				errors.append(error)
@@ -320,6 +335,7 @@ class Connection2(Connection):
 		]
 		
 		for key, value in headers.items():
+			if key in ['host', 'connection']: continue
 			rheaders.append((key.lower(), value))
 		
 		self.__http.send_headers(stream, rheaders, end_stream=True)
@@ -619,33 +635,39 @@ if __debug__ and __name__ == '__main__':
 	
 	async def main():
 		async with Connection1('https://www.w3.org') as w3org:
-			print(await w3org.Url('/Consortium/Offices/Presentations/SVG/0.svg').get())
-			print(await w3org.Url('/Consortium/Offices/Presentations/SVG/../xsltSlidemaker/AlternativeStyles/W3CSVG.css').get())
+			print(await w3org.Url('/Consortium/Offices/Presentations/SVG/0.svg').get(), "0.svg")
+			print(await w3org.Url('/Consortium/Offices/Presentations/SVG/../xsltSlidemaker/AlternativeStyles/W3CSVG.css').get(), "W3CSVG.css")
 			print()
 		
 		async with Connection2('https://cdn.svgator.com/images/2023/03/vr-girl.png') as vrgirl:
-			print(await vrgirl.Url().get())
+			print(await vrgirl.Url().get(), "vr-girl.png")
 			print()
 		
 		async with Connection2('https://www.google.com/') as google:
 			r1 = google.Url().get()
+			
+			d1 = await r1
+			
+			print(d1, "d1")
+			print()
+			
 			r2 = google.Url('sitemap.xml').get()
 			r3 = google.Url('robotz.txt').head()
 			r4 = google.Url('robots.txt').head()
 			
-			d1, d2, d3, d4 = await gather(r1, r2, r3, r4)
+			d2, d3, d4 = await gather(r2, r3, r4)
 			
-			print(d1)
+			print(d2, "d2")
 			print()
 			
-			print(d2)
+			print(d3, "d3")
 			print()
 			
-			print(d3)
+			print(d4, "d4")
 			print()
-			
-			print(d4)
-			print()
+
+		async with Connection2('http://purl.org/dc/elements/1.1/') as purl:
+			print(await purl.get(), "purl.org")
 	
 	run(main())
 

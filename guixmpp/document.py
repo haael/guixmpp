@@ -6,7 +6,7 @@ __all__ = 'DocumentModel',
 
 
 from collections import defaultdict
-from asyncio import gather, Lock, Event, TaskGroup, CancelledError, to_thread
+from asyncio import gather, Lock, Event, TaskGroup, CancelledError, to_thread, wait_for
 from inspect import isawaitable
 
 if __name__ == '__main__':
@@ -19,6 +19,28 @@ else:
 
 class DocumentNotFound(Exception):
 	pass
+
+
+active = set()
+
+
+def print_call(amethod_old):
+	async def amethod_new(*args):
+		myid = tuple([amethod_old.__name__] + [_arg for _arg in args if isinstance(_arg, str)])
+		active.add(myid)
+		print("enter", amethod_old.__name__, *[_arg for _arg in args if isinstance(_arg, str)], active)
+		try:
+			r = await amethod_old(*args)
+		except Exception as error:
+			active.remove(myid)
+			print("exit by exception", amethod_old.__name__, *[_arg for _arg in args if isinstance(_arg, str)], active)
+			raise
+		else:
+			active.remove(myid)
+			print("exit by return", amethod_old.__name__, *[_arg for _arg in args if isinstance(_arg, str)], active)
+			return  r
+
+	return amethod_new
 
 
 class Model:
@@ -313,7 +335,7 @@ class Model:
 			
 			try:
 				self.documents[url] = await to_thread(self.create_document, data, mime_type)
-			except (RuntimeError, NameError, KeyError, IndexError, AttributeError, ArithmeticError, CancelledError, KeyboardInterrupt, AssertionError, TypeError):
+			except (RuntimeError, NameError, KeyError, IndexError, AttributeError, ArithmeticError, CancelledError, KeyboardInterrupt, AssertionError, TypeError) as error:
 				raise
 			except Exception as error:
 				self.emit_warning(view, f"Error creating document: {type(error).__name__}: {str(error)}", url)
@@ -454,6 +476,7 @@ class Model:
 		self.__chain_impl('set_location', (widget, url))
 	
 	async def download_document(self, url) -> (bytes, str):
+		#print("download_document", url)
 		return await self.__find_impl_async('download_document', (url,))
 	
 	def create_document(self, data:bytes, mime_type:str):
@@ -494,6 +517,10 @@ class Model:
 
 
 if __name__ == '__main__':
+	print("document main")
+	from os import environ
+	environ['GUIXMPP_USE_PANGO'] = '0'
+	
 	from collections import deque
 	
 	from asyncio import run, Event, get_running_loop
@@ -509,6 +536,7 @@ if __name__ == '__main__':
 	from guixmpp.render.html import HTMLRender
 	from guixmpp.render.png import PNGRender
 	from guixmpp.render.pixbuf import PixbufRender
+	from guixmpp.render.webp import WEBPRender
 	
 	from guixmpp.download.data import DataDownload
 	from guixmpp.download.file import FileDownload
@@ -519,7 +547,11 @@ if __name__ == '__main__':
 	
 	from guixmpp.domevents import Event as DOMEvent
 	
+	from guixmpp.mainloop import loop_init
+	
 	print("document")
+	
+	loop_init()
 	
 	class Rectangle:
 		def __init__(self, x, y, width, height):
@@ -564,10 +596,11 @@ if __name__ == '__main__':
 	async def test_main():
 		DOMEvent._time = get_running_loop().time
 		view = PseudoView()
-		TestModel = Model.features('TestModel', DisplayView, SVGRender, HTMLRender, CSSFormat, PNGRender, PixbufRender, FontFormat, DataDownload, FileDownload, ChromeDownload, UnknownDownload, XMLFormat, PlainFormat, NullFormat)
+		TestModel = Model.features('TestModel', DisplayView, SVGRender, HTMLRender, CSSFormat, PNGRender, PixbufRender, WEBPRender, FontFormat, DataDownload, FileDownload, ChromeDownload, UnknownDownload, XMLFormat, PlainFormat, NullFormat)
 		model = TestModel()
 		model.set_image(view, None)
 		async for dirpath in (Path.cwd() / 'examples').iterdir():
+			if not await dirpath.is_dir(): continue
 			async for filepath in dirpath.iterdir():
 				#if filepath.name != 'litehtml.css': continue
 				print()

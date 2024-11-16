@@ -9,7 +9,6 @@ if __name__ == '__main__':
 	import sys
 	del sys.path[0]
 
-
 import re
 import math
 from enum import Enum
@@ -20,13 +19,20 @@ from itertools import chain, starmap
 from urllib.parse import quote as url_quote
 from colorsys import hls_to_rgb
 from asyncio import gather
+from os import environ
 
 import PIL.Image, PIL.ImageFilter
 
+_use_pango = environ.get('GUIXMPP_USE_PANGO', '1')
+
+
 import gi
-gi.require_version('Pango', '1.0')
-gi.require_version('PangoCairo', '1.0')
-from gi.repository import Pango, PangoCairo
+if _use_pango == '1':
+	if __name__ == '__main__':
+		gi.require_version('Pango', '1.0')
+		gi.require_version('PangoCairo', '1.0')
+	from gi.repository import Pango, PangoCairo
+
 
 if __name__ == '__main__':
 	from guixmpp.format.xml import XMLFormat
@@ -73,7 +79,7 @@ class SVGRender:
 	supported_svg_features = frozenset({'http://www.w3.org/TR/SVG11/feature#Shape'})
 	supported_svg_extensions = frozenset()
 	
-	use_pango = True # required for non-Latin scripts, may be False if using only left-to-right horizontal Latin scripts
+	use_pango = (_use_pango == '1') # required for non-Latin scripts, may be False if using only left-to-right horizontal Latin scripts
 	
 	def __init__(self, *args, **kwargs):
 		self.__css_matcher = WeakKeyDictionary()
@@ -141,13 +147,15 @@ class SVGRender:
 				loads.append(load_font(font_family, font_spec))
 		await gather(*loads)
 		
-		self.__default_pango_fontmap = PangoCairo.FontMap.get_default() # FIXME: this will cause a bug if an app uses many `DOMWidget`s because `get_default` will pick the map set in the next line here
-		PangoCairo.FontMap.set_default(PangoCairo.FontMap.new())
+		if self.use_pango:
+			self.__default_pango_fontmap = PangoCairo.FontMap.get_default() # FIXME: this will cause a bug if an app uses many `DOMWidget`s because `get_default` will pick the map set in the next line here
+			PangoCairo.FontMap.set_default(PangoCairo.FontMap.new())
 	
 	async def on_close_document(self, view, document):
 		try:
-			PangoCairo.FontMap.set_default(self.__default_pango_fontmap)
-			del self.__default_pango_fontmap
+			if self.use_pango:
+				PangoCairo.FontMap.set_default(self.__default_pango_fontmap)
+				del self.__default_pango_fontmap
 		except AttributeError:
 			pass # TODO: warning
 		await self.uninstall_fonts()
@@ -219,8 +227,11 @@ class SVGRender:
 	def __data_internal_links(self, urls):
 		for url in urls:
 			yield url
-			if url.startswith('data:'):		
-				yield from self.__data_internal_links(self.scan_document_links(self.get_document(url)))
+			if url.startswith('data:'):
+				try:
+					yield from self.__data_internal_links(self.scan_document_links(self.get_document(url)))
+				except DocumentNotFound:
+					pass
 	
 	def element_tabindex(self, document, element):
 		if self.is_svg_document(document):

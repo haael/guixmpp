@@ -5,10 +5,12 @@
 __all__ = 'Renderer', 'render_to_surface'
 
 
-#import gi
-#gi.require_version('Gtk', '3.0')
-#gi.require_version('Gio', '2.0')
-#from gi.repository import Gtk, Gdk, GObject, GLib, Gio
+import gi
+if __name__ == '__main__':
+	gi.require_version('Pango', '1.0')
+	gi.require_version('PangoCairo', '1.0')
+	gi.require_version('GdkPixbuf', '2.0')
+	gi.require_version('Gdk', '4.0')
 
 import cairo
 
@@ -16,7 +18,7 @@ from enum import Enum
 from math import hypot
 from itertools import zip_longest, chain
 from collections import namedtuple, defaultdict
-from asyncio import Lock, get_event_loop, get_running_loop, run
+from asyncio import Lock, get_event_loop, get_running_loop, run, wait_for
 
 
 if __name__ == '__main__':
@@ -89,7 +91,7 @@ class Rect:
 
 
 class Renderer:		
-	def __init__(self, file_download=False, http_download=False, cid_download=False, chrome=None, http_cache=None, http_semaphore=None):
+	def __init__(self, file_download=False, http_download=False, cid_download=False, chrome=None, http_cache=None, http_semaphore=None, widget=None, log=None):
 		self.lock = Lock()
 		self.main_url = None
 		
@@ -99,6 +101,8 @@ class Renderer:
 		self.chrome = chrome
 		self.http_cache = http_cache
 		self.http_semaphore = http_semaphore
+		self.widget = widget
+		self.log = log
 		
 		self.configure_model()
 	
@@ -139,7 +143,7 @@ class Renderer:
 			if self.main_url is not None:
 				await self.model.close_document(self)
 			self.main_url = url
-			image = await self.model.open_document(self, url)
+			image = await wait_for(self.model.open_document(self, url), 5)
 			self.set_image(image)
 	
 	async def close(self):
@@ -193,15 +197,25 @@ class Renderer:
 		return surface
 	
 	def emit(self, type_, event, view):
-		#print(type_, event)
-		pass
+		if self.log:
+			if type_ == 'dom_event':
+				if event.target == 'error':
+					self.log.error(f"{type_}: {event.detail}")
+				elif event.target == 'warning':
+					self.log.warning(f"{type_}: {event.detail}")
+				else:
+					self.log.info(f"{type_}: {event.detail}")
+			self.log.debug("Event: " + str(event))
+		
+		if self.widget:
+			self.widget.emit(type_, event, view)
 	
 	def get_allocation(self):
 		return self.allocation
 
 
-async def render_to_surface(w, h, url, file_download=False, http_download=False, cid_download=False, chrome=None, http_cache=None, http_semaphore=None):
-	r = Renderer(file_download=file_download, http_download=http_download, cid_download=cid_download, chrome=chrome, http_cache=http_cache, http_semaphore=http_semaphore)
+async def render_to_surface(w, h, url, file_download=False, http_download=False, cid_download=False, chrome=None, http_cache=None, http_semaphore=None, widget=None, log=None):
+	r = Renderer(file_download=file_download, http_download=http_download, cid_download=cid_download, chrome=chrome, http_cache=http_cache, http_semaphore=http_semaphore, widget=widget, log=log)
 	await r.open(w, h, url)
 	try:
 		s = r.render()
@@ -212,10 +226,13 @@ async def render_to_surface(w, h, url, file_download=False, http_download=False,
 
 if __name__ == '__main__':
 	from asyncio import run
+	from guixmpp.mainloop import loop_init
+	
+	loop_init()
 	
 	async def main():
 		DOMEvent._time = get_running_loop().time
-		s = await render(32, 32, 'file:///home/haael/Projekty/guixmpp/examples/gfx/gradient_radial.svg', file_download=True)
+		s = await render_to_surface(32, 32, 'file:///home/haael/Projekty/_desktop/guixmpp/examples/gfx/gradient_radial.svg', file_download=True)
 		print(s)
 	
 	run(main())

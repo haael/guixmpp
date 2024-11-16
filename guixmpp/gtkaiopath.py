@@ -10,8 +10,9 @@ __all__ = 'Path', 'SEEK_SET', 'SEEK_CUR', 'SEEK_END'
 
 
 import gi
-gi.require_version('GLib', '2.0')
-gi.require_version('Gio', '2.0')
+if __name__ == '__main__':
+	gi.require_version('GLib', '2.0')
+	gi.require_version('Gio', '2.0')
 from gi.repository import Gio, GLib
 
 from asyncio import Future, gather, to_thread, get_running_loop
@@ -425,6 +426,9 @@ class Path(pathlib.Path, pathlib.PurePosixPath):
 				if error.code == 0:
 					print("ebadf while reading") # FIXME
 					continue
+				elif error.code == 27:
+					print("resource temporarily unavailable") # FIXME
+					continue
 				elif error.code == 45:
 					print("endpoint protocol not connected") # FIXME
 					continue
@@ -443,6 +447,9 @@ class Path(pathlib.Path, pathlib.PurePosixPath):
 			except GLib.Error as error:
 				if error.code == 0:
 					print("ebadf while writing") # FIXME
+					continue
+				elif error.code == 44:
+					print("broken pipe") # FIXME
 					continue
 				raise
 	
@@ -509,6 +516,12 @@ class Path(pathlib.Path, pathlib.PurePosixPath):
 		
 		result.st_uid = info.get_attribute_uint32('unix::uid')
 		result.st_gid = info.get_attribute_uint32('unix::gid')
+		result.st_dev = info.get_attribute_uint32('unix::device')
+		result.st_rdev = info.get_attribute_uint32('unix::rdev')
+		result.st_mode = info.get_attribute_uint32('unix::mode')
+		result.st_ino = info.get_attribute_uint64('unix::inode')
+		result.st_blocks = info.get_attribute_uint64('unix::blocks')
+		result.st_blksize = info.get_attribute_uint32('unix::block-size')
 		
 		result.st_atime = info.get_attribute_uint64('time::access')
 		result.st_atime_ns = info.get_attribute_uint64('time::access') * 1000000 + info.get_attribute_uint32('time::access-nsec')
@@ -518,13 +531,6 @@ class Path(pathlib.Path, pathlib.PurePosixPath):
 		result.st_ctime_ns = info.get_attribute_uint64('time::changed') * 1000000 + info.get_attribute_uint32('time::changed-nsec')
 		result.st_birthtime = info.get_attribute_uint64('time::created')
 		result.st_birthtime_ns = info.get_attribute_uint64('time::created') * 1000000 + info.get_attribute_uint32('time::created-nsec')
-		
-		result.st_dev = info.get_attribute_uint32('unix::device')
-		result.st_rdev = info.get_attribute_uint32('unix::rdev')
-		result.st_mode = info.get_attribute_uint32('unix::mode')
-		result.st_ino = info.get_attribute_uint64('unix::inode')
-		result.st_blocks = info.get_attribute_uint64('unix::blocks')
-		result.st_blksize = info.get_attribute_uint32('unix::block-size')
 		
 		'''
 		result.st_size

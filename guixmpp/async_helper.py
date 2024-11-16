@@ -50,7 +50,8 @@ class AsyncGLibCallHelper:
 			except BaseException as error:
 				future.set_exception(error)
 			else:
-				future.set_result(result)
+				if not future.done():
+					future.set_result(result)
 		
 		self.init(*args, cancellable=cancellable, on_result=on_result)
 		

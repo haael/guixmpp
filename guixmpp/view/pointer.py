@@ -6,7 +6,7 @@ __all__ = 'PointerView',
 
 
 import gi
-gi.require_version('Gdk', '3.0')
+#gi.require_version('Gdk', '3.0')
 from gi.repository import Gdk
 
 if __name__ == '__main__':

@@ -1,17 +1,17 @@
 #!/usr/bin/python3
 
 """
-Asyncio loop implementation based on GLib/Gtk. Uses GLib.idle_add() for scheduling tasks.
+Asyncio loop implementation based on GLib. Uses GLib.idle_add() for scheduling tasks.
 Seamlessly integrates with asynchronous GLib function. (Each asynchronous GLib function will
 behave as it had await inside.)
 """
 
-
 import gi
-gi.require_version('Gtk', '3.0')
-gi.require_version('GLib', '2.0')
-gi.require_version('Gio', '2.0')
-from gi.repository import Gtk, GLib, Gio
+if __name__ == '__main__':
+	#gi.require_version('Gtk', '4.0')
+	gi.require_version('GLib', '2.0')
+	gi.require_version('Gio', '2.0')
+from gi.repository import GLib, Gio
 
 import asyncio
 import asyncio.events
@@ -928,6 +928,8 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		self.__resolver = AsyncResolver() # DNS resolver from `guixmpp/protocol/dns/client.py`
 		self.__executor = concurrent.futures.ThreadPoolExecutor() # TODO
 		self.__app = app
+		self.__main_level = 0
+		self.__main_quit = False
 		self.__argv = argv
 		self.__use_app = False
 		self.__loop_initialized = False
@@ -947,10 +949,10 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		return special_method
 	
 	def __run_future(self, future):
-		assert self.__completing is None
+		assert self.__completing is None # FIXME: will fail if one task raised exception and another task started before the loop shutdown
 		
 		if self.is_running() or self.is_closed():
-			raise RuntimeError
+			raise RuntimeError(f"Invalid loop state: running={self.is_running()} closed={self.is_closed()}.")
 		
 		_set_running_loop(self)
 		
@@ -968,12 +970,22 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		GLib.idle_add(self._check_completing_state)
 		
 		if not self.__use_app:
-			_debug_tasks("Gtk.main begin")
-			Gtk.main()
-			_debug_tasks("Gtk.main end")
+			_debug_tasks("Main begin")
+			#try:
+			#	main = Gtk.main
+			#except AttributeError:
+			self.__main_level += 1
+			context = GLib.MainContext.default()
+			self.__main_quit = False
+			while not self.__main_quit:
+				context.iteration()
+			self.__main_level -= 1
+			#else:
+			#	main()
+			_debug_tasks("Main end")
 		else:
-			_debug_tasks("__app.hold")
-			self.__app.hold()
+			#_debug_tasks("__app.hold")
+			#self.__app.hold()
 			_debug_tasks("__app.run begin")
 			self.__app.app_result = self.__app.run(self.__argv)
 			_debug_tasks("__app.run end", self.__app.app_result)
@@ -984,6 +996,8 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		if self.__completing is not None:
 			try:
 				result = self.__completing.result()
+			except InvalidStateError:
+				result = None
 			except BaseException as error:
 				exception = error
 		
@@ -1062,10 +1076,14 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 			self.__completing_done = True
 		
 		if not self.__use_app:
-			Gtk.main_quit()
-		elif self.__app is not None:
-			_debug_tasks("__app.release", self.__completing)
-			self.__app.release()
+			#try:
+			#	Gtk.main_quit()
+			#except AttributeError:
+			if self.__main_level > 0:
+				self.__main_quit = True
+		#elif self.__app is not None:
+		#	_debug_tasks("__app.release", self.__completing)
+		#	self.__app.release()
 		
 		return False
 	
@@ -1079,13 +1097,20 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 			raise RuntimeError
 		
 		if self.__app is None:
-			Gtk.main_quit()
+			#try:
+			#	Gtk.main_quit()
+			#except AttributeError:
+			if self.__main_level > 0 and GLib.MainContext.default().pending():
+				self.__main_quit = True
 		else:
 			self.__app.quit()
 	
 	def is_running(self):
 		"""Return whether the event loop is currently running."""
-		return Gtk.main_level() > 0 # TODO
+		#try:
+		#	return Gtk.main_level() > 0
+		#except AttributeError:
+		return self.__main_level > 0
 	
 	def is_closed(self):
 		"""Returns True if the event loop was closed."""
@@ -1098,7 +1123,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		No other methods should be called after this one.
 		"""
 		if self.is_running():
-			raise RuntimeError
+			raise RuntimeError("Running loop can not be closed.")
 		self.__closed = True
 	
 	async def shutdown_asyncgens(self):
@@ -1593,7 +1618,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		self.__exception_handler = handler
 	
 	def default_exception_handler(self, context):
-		if 'message' in context:
+		if 'message' in context and 'exception' not in context:
 			print(context['message'])
 		
 		if 'exception' in context:
@@ -1601,11 +1626,14 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 				self.__completing.cancel()
 			self.__completing = self.create_future()
 			self.__completing.set_exception(context['exception'])
-			#print(context['exception'])
 			if self.__app is not None:
 				self.__app.quit()
 			else:
-				Gtk.main_quit()
+				#try:
+				#	Gtk.main_quit()
+				#except AttributeError:
+				if self.__main_level > 0 and GLib.MainContext.default().pending():
+					self.__main_quit = True
 	
 	def call_exception_handler(self, context):
 		if self.__exception_handler is not None:
@@ -1680,21 +1708,26 @@ if __name__ == '__main__':
 	run(test_basic())
 	
 	async def test_process():
+		print("test_process")
 		child = await create_subprocess_exec('./examples/sample_child.py', stdin=PIPE, stdout=PIPE)
 		
 		#print(dir(child))
 		child.stdin.writelines([b"!abcdefghkk\n", b"!12345678\n"])
 		child.stdin.write(b"wjhwejkh\n")
+		print("drain")
 		await child.stdin.drain()
 		child.stdin.write(b"eljelsd\n")
+		print("drain")
 		await child.stdin.drain()
 		
 		child.stdin.close()
-		await child.stdin.wait_closed()
+		#print("wait_closed")
+		#await child.stdin.wait_closed()
 		
 		async for ln in child.stdout:
 			print(ln.decode('utf-8')[:-1])
 		
+		print("wait")
 		await child.wait()
 	
 	def some_work_1():
@@ -1746,10 +1779,12 @@ if __name__ == '__main__':
 	
 	async def testB():
 		async with Connection1('http://www.google.com/') as google:
-			assert (await google.Url().get())[:32] == b'<!doctype html><html itemscope="'
+			first_line = (await google.Url().get())[:32]
+			assert first_line == b'<!doctype html><html itemscope="', first_line
 		
 		async with Connection1('https://github.com/') as github:
-			assert (await github.Url().get())[:32] == b'\n\n\n\n\n\n<!DOCTYPE html>\n<html\n  la'
+			first_line = (await github.Url().get())[:32]
+			assert first_line == b'\n\n\n\n\n\n\n<!DOCTYPE html>\n<html\n  l', first_line
 		
 		print("testB", 0)
 		await sleep(1)
@@ -1782,6 +1817,6 @@ if __name__ == '__main__':
 		return 'a'
 	
 	a = run(test())
-	assert a == 'a'
+	assert a == 'a', a
 
 

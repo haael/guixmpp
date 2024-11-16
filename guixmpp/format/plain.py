@@ -144,8 +144,11 @@ class PlainFormat:
 			left, top, width, height = box
 			
 			data = bytes().join(bytes([0, 0, 0, 0]) if _b & (1 << _c) else bytes([255, 255, 255, 0]) for _c in range(8) for _b in document)
-			h = int(ceil(len(document) / width))
-			pixels = PIL.Image.frombytes('RGBa', (int(width), h), data).tobytes()
+			h = int(ceil(len(document) / width)) if width > 0 else 0
+			try:
+				pixels = PIL.Image.frombytes('RGBa', (int(width), h), data).tobytes()
+			except ValueError:
+				return
 			pixels += bytes(0 for _n in range(int(4 * width * h - len(pixels))))
 			image = cairo.ImageSurface.create_for_data(bytearray(pixels), cairo.FORMAT_RGB24, int(width), h)
 			
@@ -175,7 +178,7 @@ class PlainFormat:
 		elif self.is_binary_document(document):
 			s = len(document) * 8
 			w = ceil(sqrt(s))
-			h = ceil(s / w)
+			h = ceil(s / w) if w > 0 else 0
 			return w, h
 		else:
 			return NotImplemented
@@ -212,7 +215,7 @@ class PlainFormat:
 		
 		elif self.is_binary_document(document):
 			s = len(document) * 8
-			h = ceil(s / width)
+			h = ceil(s / width) if width > 0 else 0
 			return h
 		
 		else:
@@ -224,7 +227,7 @@ class PlainFormat:
 		
 		elif self.is_binary_document(document):
 			s = len(document) * 8
-			w = ceil(s / height)
+			w = ceil(s / height) if height > 0 else 0
 			return w
 		
 		else:

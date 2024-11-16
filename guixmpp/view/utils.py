@@ -6,7 +6,7 @@ __all__ = 'modifier_keys', 'pressed_mouse_buttons_mask', 'pressed_mouse_button',
 
 
 import gi
-gi.require_version('Gdk', '3.0')
+#gi.require_version('Gdk', '3.0')
 from gi.repository import Gdk
 
 

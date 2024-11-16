@@ -5,7 +5,7 @@ __all__ = 'BuilderExtension',
 
 
 import gi
-gi.require_version('Gtk', '3.0')
+#gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk
 
 from asyncio import gather
@@ -25,7 +25,7 @@ class BuilderExtension:
 	
 	@property
 	def main_widget(self):
-		#print("retrieve main widget", self.__main_widget_name)
+		print("retrieve main widget", self.__main_widget_name)
 		return getattr(self, self.__main_widget_name)
 	
 	@property

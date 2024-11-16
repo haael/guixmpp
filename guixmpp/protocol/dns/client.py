@@ -67,7 +67,7 @@ class AsyncResolver(asyncio.protocols.DatagramProtocol):
 		while reply:
 			serial = get_serial(reply)
 			
-			if serial not in self.waiting:
+			if (serial not in self.waiting) or self.waiting[serial].done():
 				return # warning
 			
 			try:

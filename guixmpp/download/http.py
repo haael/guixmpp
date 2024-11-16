@@ -16,7 +16,7 @@ _library = environ.get('GUIXMPP_HTTP', '2') # 1, 2, aiohttp, httpx
 from hashlib import sha3_256
 from mimetypes import inited as mimetypes_initialized, guess_type, guess_extension
 from asyncio import gather, get_running_loop, to_thread
-from time import strftime, gmtime
+from time import strftime, gmtime, time as current_time
 
 
 class HTTPDownloadCommon:
@@ -30,11 +30,11 @@ class HTTPDownloadCommon:
 		if not (url.startswith('http:') or url.startswith('https:')):
 			return NotImplemented
 		
+		print("download HTTP document", url)
 		if_modified_since = None
+		cached_file = None
 		
 		if self.http_cache_dir is not None:
-			cached_file = None
-			
 			code = sha3_256(url.encode('utf-8')).hexdigest()[2:16+2]
 			cached_files = await self.http_cache_dir.glob(code + '.*')
 			if len(cached_files) == 0:
@@ -42,13 +42,16 @@ class HTTPDownloadCommon:
 			elif len(cached_files) == 1 and await cached_files[0].is_file():
 				cached_file = cached_files[0]
 				s = await cached_file.stat()
-				t = get_running_loop().time()
+				mtime = s.st_mtime
+				btime = s.st_birthtime
+				t = current_time()
 				
+				print("btime:", strftime('%Y-%m-%d %H:%M:%S', gmtime(btime)), "mtime:", strftime('%Y-%m-%d %H:%M:%S', gmtime(mtime)), "fresh:", strftime('%Y-%m-%d %H:%M:%S', gmtime(t - self.http_cache_fresh_time)), "stale:", strftime('%Y-%m-%d %H:%M:%S', gmtime(t - self.http_cache_max_time)))
 				do_request = True
-				if s.st_mtime > t - self.http_cache_fresh_time:
+				if mtime > t - self.http_cache_fresh_time:
 					do_request = False
-				elif s.st_mtime > t - self.http_cache_max_time:
-					if_modified_since = t - s.st_atime
+				elif mtime > t - self.http_cache_max_time:
+					if_modified_since = btime
 				else:
 					await cached_file.unlink()
 				
@@ -64,12 +67,25 @@ class HTTPDownloadCommon:
 		if if_modified_since is not None:
 			request_headers['if-modified-since'] = strftime("%a, %d %b %Y %H:%M:%S +0000", gmtime(if_modified_since))
 		
-		if self.http_semaphore:
-			async with self.http_semaphore:
-				data, response_headers = await self.http_download_url(url, request_headers)
-		else:
-			data, response_headers = await self.http_download_url(url, request_headers)
-		#print(len(data), response_headers)
+		try:
+			if self.http_semaphore:
+				async with self.http_semaphore:
+					data, response_headers, status = await self.http_download_url(url, request_headers)
+			else:
+				data, response_headers, status = await self.http_download_url(url, request_headers)
+		except:
+			if cached_file is not None and await cached_file.exists():
+				data = await cached_file.read_bytes()
+				content_type = (await to_thread(guess_type, cached_file))[0]
+				return data, content_type
+			else:
+				raise
+		
+		if cached_file is not None and await cached_file.exists():
+			if status == 304: # not modified
+				data = await cached_file.read_bytes()
+			await cached_file.unlink()
+		print(len(data), response_headers)
 		
 		try:
 			content_type = response_headers['content-type'].split(';')[0].strip()
@@ -77,7 +93,7 @@ class HTTPDownloadCommon:
 			content_type = 'application/octet-stream'
 		
 		if self.http_cache_dir is not None:
-			if cached_file and ((await to_thread(guess_type, cached_file))[0] != content_type):
+			if cached_file and (await cached_file.exists()) and ((await to_thread(guess_type, cached_file))[0] != content_type):
 				await cached_file.unlink()
 			
 			try:
@@ -85,18 +101,18 @@ class HTTPDownloadCommon:
 			except KeyError:
 				cache_control = frozenset()
 			
-			if 'no-store' in cache_control:
+			try:
+				max_age = int([_s for _s in cache_control if _s.startswith('max-age=')][0].split('=')[1]) - int(response_headers.get('age', 0))
+			except IndexError:
+				max_age = None # maximum
+			
+			if 'no-store' in cache_control or (max_age is not None and max_age <= 0):
 				return data, content_type
 			
 			cached_file = self.http_cache_dir / (code + guess_extension(content_type))
 			await cached_file.write_bytes(data)
 			
-			try:
-				max_age = int([_s for _s in cache_control if _s.startswith('max-age=')][0].split('=')[1])
-			except IndexError:
-				max_age = None
-			
-			t = get_running_loop().time()
+			t = current_time()
 			if 'must-revalidate' in cache_control or 'no-cache' in cache_control:
 				if max_age is None:
 					mtime = t - self.http_cache_fresh_time
@@ -109,7 +125,8 @@ class HTTPDownloadCommon:
 					mtime = min(t - self.http_cache_fresh_time + max_age, t)
 			
 			if mtime is not None:
-				await to_thread(utime, cached_file, (mtime, t))
+				print("max time:", max_age, "updating timestamp to:", strftime('%Y-%m-%d %H:%M:%S', gmtime(mtime)))
+				await to_thread(utime, cached_file, times=(t, mtime))
 		
 		return data, content_type
 
@@ -164,7 +181,7 @@ if _library in ['1', '2']:
 			async with connection.Url(path).get(headers=headers) as request:
 				status, headers = await request.response()
 				request.raise_for_status(status)
-				return (await request.read()), headers
+				return (await request.read()), headers, status
 
 
 elif _library == 'aiohttp':
@@ -192,7 +209,7 @@ elif _library == 'aiohttp':
 				#	ct = response.headers['content-type'].split(';')[0].strip()
 				#except KeyError:
 				#	ct = 'application/octet-stream'
-				return (await response.read()), response.headers
+				return (await response.read()), response.headers, response.status
 
 
 elif _library == 'httpx':
@@ -219,14 +236,14 @@ elif _library == 'httpx':
 			#	ct = result.headers['content-type'].split(';')[0].strip()
 			#except KeyError:
 			#	ct = 'application/octet-stream'
-			return result.content, result.headers
+			return result.content, result.headers, result.status
 
 
 if __debug__ and __name__ == '__main__':
-	from asyncio import run, set_event_loop_policy
-	from guixmpp.mainloop import loop_init
+	from asyncio import run #, set_event_loop_policy
+	#from guixmpp.mainloop import loop_init
 	
-	loop_init()
+	#loop_init()
 	
 	print("http download")
 	

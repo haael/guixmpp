@@ -4,8 +4,8 @@
 __all__ = 'asynchandler', 'loop_init', 'loop_run', 'loop_quit', 'loop_main'
 
 
-import gi
-from gi.repository import Gtk
+#import gi
+#from gi.repository import Gtk
 
 from asyncio import set_event_loop_policy, get_running_loop, create_task, sleep, wait, FIRST_EXCEPTION, FIRST_COMPLETED, ALL_COMPLETED, CancelledError, Event
 import signal
@@ -85,7 +85,8 @@ async def _loop_running():
 
 
 def _debug_mainloop(*args):
-	print("_debug_mainloop", *args)
+	pass
+	#print("_debug_mainloop", *args)
 
 
 async def loop_run():

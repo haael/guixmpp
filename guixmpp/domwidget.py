@@ -6,8 +6,10 @@ __all__ = 'DOMWidget',
 
 
 import gi
-gi.require_version('Gtk', '3.0')
-gi.require_version('Gio', '2.0')
+if __name__ == '__main__':
+	gi.require_version('Gtk', '3.0')
+	gi.require_version('Gio', '2.0')
+	gi.require_version('PangoCairo', '1.0')
 from gi.repository import Gtk, Gdk, GObject, GLib, Gio
 
 import cairo
@@ -17,6 +19,7 @@ from math import hypot
 from itertools import zip_longest, chain
 from collections import namedtuple, defaultdict
 from asyncio import Lock, get_event_loop, get_running_loop, run
+from asyncio.exceptions import CancelledError
 
 
 if __name__ == '__main__':
@@ -241,26 +244,30 @@ except NameError:
 				if self.main_url is not None:
 					await self.model.close_document(self)
 				self.main_url = url
-				image = await self.model.open_document(self, url)
+				try:
+					image = await self.model.open_document(self, url)
+				except CancelledError:
+					print("open task cancelled")
+					try:
+						await self.model.close_document(self)
+					except* DocumentNotFound:
+						pass
+					self.main_url = None
+					raise
 				if self.auto_show:
 					self.set_image(image)
 					# TODO: synthesize initial pointer and keyboard events
-				#print('} open')
 		
 		async def close(self):
 			"Close current document, reverting to default state."
 			
 			#print('DOMWidget.close', hex(id(self))[2:])
 			async with self.lock:
-				#print(" close: enter")
 				if self.main_url is not None:
-					self.main_url = None
-					#print(" close: enter close_document")
 					await self.model.close_document(self)
-					#print(" close: exit close_document")
+					self.main_url = None
 					if self.auto_show:
 						self.set_image(None)
-				#print(" close: exit")
 		
 		def set_image(self, image):
 			"Directly set image to display (document returned by `model.create_document`). None to unset."
@@ -346,7 +353,7 @@ if __name__ == '__main__':
 	
 	loop_init()
 	
-	window = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
+	window = Gtk.Window()
 	window.set_title("SVG test widget")
 	widget = DOMWidget(keyboard_input=True, pointer_input=True, file_download=True, http_download=True, auto_show=False, chrome='chrome')
 	window.add(widget)
@@ -354,10 +361,11 @@ if __name__ == '__main__':
 	window.connect('destroy', lambda window: loop_quit())
 	
 	event_lock = Lock()
+	opening_task = None
 	
 	@asynchandler
 	async def dom_event(widget, event, target):
-		global images, image_index
+		global images, image_index, opening_task
 		
 		if event.type_ == 'warning':
 			print(event.type_, event.detail)
@@ -382,13 +390,25 @@ if __name__ == '__main__':
 				async with event_lock:
 					image_index -= 1
 					image_index %= len(images)
-					await widget.open(images[image_index])
+					if opening_task and not opening_task.done():
+						opening_task.cancel()
+						try:
+							await opening_task
+						except CancelledError:
+							pass
+					opening_task = create_task(widget.open(images[image_index]))
 				return None
 			elif (event.code == 'Right') and images:
 				async with event_lock:
 					image_index += 1
 					image_index %= len(images)
-					await widget.open(images[image_index])
+					if opening_task and not opening_task.done():
+						opening_task.cancel()
+						try:
+							await opening_task
+						except CancelledError:
+							pass
+					opening_task = create_task(widget.open(images[image_index]))
 				return None
 		
 		#await target.dispatchEvent(event)
