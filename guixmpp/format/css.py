@@ -388,6 +388,8 @@ class CSSFormat:
 				#print("Implement keyframes.")
 				return lambda _xml_node: False
 			elif css_node.name == 'selector-single':
+				if isinstance(args[-1], StyleNode) and args[-1].name == 'selector-attr-present':
+					del args[-1]
 				assert all(callable(_check) if not isinstance(_check, tuple) else callable(_check[0]) for _check in args), str(args)
 				
 				tag = None

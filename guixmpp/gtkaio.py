@@ -1132,7 +1132,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 	
 	shutdown_asyncgens.special_method = True
 	
-	async def shutdown_default_executor(self):
+	async def shutdown_default_executor(self, timeout=None):
 		if self.__executor:
 			self.__executor.shutdown()
 	

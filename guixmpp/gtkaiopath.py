@@ -312,12 +312,12 @@ class Path(pathlib.Path, pathlib.PurePosixPath):
 	async def is_block_device(self) -> bool:
 		raise NotImplementedError
 		info = await self.__info('standard::type')
-		return info.get_attribute_uint32('standard::type') == 999
+		return info.get_attribute_uint32('standard::type') == 999 # TODO
 	
 	async def is_char_device(self) -> bool:
 		raise NotImplementedError
 		info = await self.__info('standard::type')
-		return info.get_attribute_uint32('standard::type') == 999
+		return info.get_attribute_uint32('standard::type') == 999 # TODO
 	
 	async def is_dir(self) -> bool:
 		try:
@@ -330,7 +330,7 @@ class Path(pathlib.Path, pathlib.PurePosixPath):
 	async def is_fifo(self) -> bool:
 		raise NotImplementedError
 		info = await self.__info('standard::type')
-		return info.get_attribute_uint32('standard::type') == 999
+		return info.get_attribute_uint32('standard::type') == 999 # TODO
 	
 	async def is_file(self) -> bool:
 		try:
@@ -343,12 +343,12 @@ class Path(pathlib.Path, pathlib.PurePosixPath):
 	async def is_mount(self) -> bool:
 		raise NotImplementedError
 		info = await self.__info('standard::type')
-		return info.get_attribute_uint32('standard::type') == 999
+		return info.get_attribute_uint32('standard::type') == 999 # TODO
 	
 	async def is_socket(self) -> bool:
 		raise NotImplementedError
 		info = await self.__info('standard::type')
-		return info.get_attribute_uint32('standard::type') == 999
+		return info.get_attribute_uint32('standard::type') == 999 # TODO
 	
 	async def is_symlink(self) -> bool:
 		return (await self.__info('standard::is-symlink', follow_symlinks=False)).get_is_symlink()
@@ -399,7 +399,13 @@ class Path(pathlib.Path, pathlib.PurePosixPath):
 			for path in reversed(elements):
 				await path.__make_directory(Gio.File.new_for_path(str(path)))
 		
-		await self.__make_directory(Gio.File.new_for_path(str(self))) # TODO: mode
+		try:
+			await self.__make_directory(Gio.File.new_for_path(str(self))) # TODO: mode
+		except GLib.GError as error:
+			if error.code == 2 and exist_ok: # may throw "file exists" because of race condition
+				pass
+			else:
+				raise
 	
 	def open(self, mode='r', buffering=-1, encoding=None, errors=None, newline=b"\n"):
 		if 't' in mode and 'b' in mode:

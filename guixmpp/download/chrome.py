@@ -42,7 +42,7 @@ class ChromeDownload:
 
 if __debug__ and __name__ == '__main__':
 	from asyncio import run
-	from aiopath import Path
+	#from aiopath import Path
 	
 	print("chrome download")
 		

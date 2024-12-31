@@ -46,7 +46,8 @@ pre, tt, code,
 kbd, samp       { font-family: monospace }
 pre             { white-space: pre }
 button, textarea,
-input, select   { display: inline-block }
+input, select,
+img             { display: inline-block }
 big             { font-size: 1.17em }
 small, sub, sup { font-size: .83em }
 sub             { vertical-align: sub }

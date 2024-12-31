@@ -35,34 +35,332 @@ else:
 	from ..format.css import CSSFormat
 
 
-class BoxTree:
-	def __init__(self, node, pseudoelement, style=None, content=None):
-		self.node = node
-		self.pseudoelement = pseudoelement
-		self.style = {}
-		if style:
-			self.style.update(style)
-		self.content = content
+def once(old_method):
+	def new_method(self, *args):
+		if getattr(self, '__once_' + old_method.__name__, True):
+			setattr(self, '__once_' + old_method.__name__, False)
+			return old_method(self, *args)
+	new_method.__name__ = old_method.__name__
+	return new_method
+
+
+class Word:
+	"A single word of HTML text."
 	
-	def debug_print(self, level=0):
-		if isinstance(self.node, str):
-			print(level * " ", repr(self.node), self.style)
+	def __init__(self, text, style):
+		self.text = text
+		self.style = style
+	
+	def copy(self):
+		return self.__class__(self.text)
+	
+	@once
+	def calculate_dimensions(self, ctx):
+		ctx.select_font_face(self.style['font-family'], self.style['font-variant'], self.style['font-weight'])
+		ctx.set_font_size(self.style['font-size'])
+		
+		text_extents = ctx.text_extents(self.text)
+		font_extents = ctx.font_extents()
+		
+		self.content_width = text_extents.width
+		self.content_height = text_extents.height
+		
+		self.width_request = text_extents.x_advance
+		self.height_request = font_extents[0] + font_extents[1]
+		
+		self.baseline_request = font_extents[0]
+	
+	def calculate_positions(self, ctx):
+		self.baseline = self.height - self.height_request + self.baseline_request
+	
+	def print_tree(self, level=0):
+		print((" " * level) + repr(self.text))
+	
+	def render(self, ctx):
+		color = self.style['color']
+		if color is None:
+			return
+		elif len(color) == 3:
+			ctx.set_source_rgb(*color)
+		elif len(color) == 4:
+			ctx.set_source_rgba(*color)
 		else:
-			print(level * " ", (self.node.tag if hasattr(self.node, 'tag') else '-') + ('::' + self.pseudoelement if self.pseudoelement else ''), self.style)
-		
-		if self.content is not None:
-			for child in self.content:
-				child.debug_print(level + 1)
+			raise ValueError
+		ctx.move_to(self.x, self.y + self.baseline)
+		ctx.select_font_face(self.style['font-family'], self.style['font-variant'], self.style['font-weight'])
+		ctx.set_font_size(self.style['font-size'])
+		ctx.text_path(self.text)
+		ctx.fill()
+
+
+class InlineBlockElement:
+	"Inline block element, like <img/>."
 	
-	def ensure_xywh(self):
-		assert 'x' in self.style
-		assert 'y' in self.style
-		assert 'width' in self.style, f"{self.node}::{self.pseudoelement}"
-		assert 'height' in self.style
+	def __init__(self, tag, elements, style):
+		self.tag = tag
+		self.elements = elements
+		self.style = style
+	
+	@once
+	def calculate_dimensions(self, ctx):
+		self.width_request = self.content_width = 200
+		self.height_request = self.content_height = 103 # FIXME
+	
+	def calculate_positions(self, ctx):
+		pass
+	
+	def print_tree(self, level=0):
+		print((" " * level) + "INLINE-BLOCK: " + self.tag)
+		for element in self.elements:
+			element.print_tree(level=level+1)
+	
+	def render(self, ctx):
+		ctx.save()
+		ctx.translate(self.x, self.y)
+		ctx.rectangle(0, 0, self.width, self.height)
+		ctx.set_source_rgb(0, 0, 0)
+		ctx.stroke()
+		ctx.move_to(self.width / 4, self.height / 2)
+		ctx.text_path(self.tag)
+		ctx.fill()
+		ctx.restore()
+
+
+class InlineElement:
+	"Inline element, like <span/>. May contain `Word`s, `InlineBlockElement`s and other `InlineElement`s."
+	
+	def __init__(self, tag, elements, style):
+		for attr in ['word-spacing']:
+			if attr not in style:
+				raise ValueError(f"Required style attribute missing: {attr}.")
+		if any(_element is None for _element in elements):
+			raise ValueError("All elements must be non-null.")
+		self.tag = tag
+		self.elements = elements
+		self.style = style
+	
+	@once
+	def calculate_dimensions(self, ctx):
+		for element in self.elements:
+			element.calculate_dimensions(ctx)
 		
-		if self.content is not None:
-			for child in self.content:
-				child.ensure_xywh()
+		self.content_width = sum(_element.width_request for _element in self.elements) if self.elements else 0
+		self.content_height = max(_element.height_request for _element in self.elements) if self.elements else 0
+		
+		self.width_request = self.content_width + max(len(self.elements) - 1, 0) * self.style['word-spacing']
+		self.baseline_request = max(_element.baseline_request for _element in self.elements if hasattr(_element, 'baseline_request')) if any(hasattr(_element, 'baseline_request') for _element in self.elements) else 0
+		
+		height_request_word = (max(_element.height_request - _element.baseline_request for _element in self.elements if hasattr(_element, 'baseline_request')) if any(hasattr(_element, 'baseline_request') for _element in self.elements) else 0) + self.baseline_request
+		height_request_block_inline = max(_element.height_request for _element in self.elements if not hasattr(_element, 'baseline_request')) if any(not hasattr(_element, 'baseline_request') for _element in self.elements) else 0
+		self.height_request = max(height_request_word, height_request_block_inline)
+	
+	def calculate_positions(self, ctx):
+		self.baseline = self.height - self.height_request + self.baseline_request
+		
+		offset = 0
+		element = None
+		for element in self.elements:
+			element.width = element.width_request
+			element.height = element.height_request
+			element.x = offset
+			if hasattr(element, 'baseline'):
+				element.y = self.baseline - element.baseline
+			else:
+				element.y = 0
+			element.space_after = self.style['word-spacing']
+			element.calculate_positions(ctx)
+			offset += element.width + element.space_after
+		if element is not None:
+			del element.space_after
+	
+	def block_elements(self):
+		for element in self.elements:
+			if hasattr(element, 'block_elements'):
+				for subelement in element.block_elements():
+					if not hasattr(subelement, 'space_after') and hasattr(element, 'space_after'):
+						subelement.space_after = element.space_after
+					yield subelement
+			else:
+				yield element
+	
+	def print_tree(self, level=0):
+		print((" " * level) + "INLINE: " + self.tag)
+		for element in self.elements:
+			element.print_tree(level=level+1)
+
+
+class Line:
+	"A single line of text. Contains `Word`s and `InlineBlockElement`s extracted from `InlineElement`s."
+	
+	def __init__(self, elements, style):
+		self.elements = elements
+		self.style = style
+	
+	def copy(self):
+		return self.__class__([_element.copy() for _element in self.elements])
+	
+	@once
+	def calculate_dimensions(self, ctx):
+		self.content_width = sum(_element.width_request for _element in self.elements)
+		self.content_height = max(_element.height_request for _element in self.elements)
+		
+		self.width_request = sum(_element.width_request + (_element.space_after if hasattr(_element, 'space_after') else 0) for _element in self.elements) - (self.elements[-1].space_after if self.elements and hasattr(self.elements[-1], 'space_after') else 0)
+		self.baseline_request = max(_element.baseline_request for _element in self.elements if hasattr(_element, 'baseline_request')) if any(hasattr(_element, 'baseline_request') for _element in self.elements) else 0
+		
+		height_request_word = (max(_element.height_request - _element.baseline_request for _element in self.elements if hasattr(_element, 'baseline_request')) if any(hasattr(_element, 'baseline_request') for _element in self.elements) else 0) + self.baseline_request
+		height_request_block_inline = max(_element.height_request for _element in self.elements if not hasattr(_element, 'baseline_request')) if any(not hasattr(_element, 'baseline_request') for _element in self.elements) else 0
+		self.height_request = max(height_request_word, height_request_block_inline)
+	
+	def calculate_positions(self, ctx):
+		self.baseline = self.height - self.height_request + self.baseline_request
+		
+		if self.style['text-align'] == 'left':
+			word_spacing = self.style['word-spacing']
+			offset = 0
+		elif self.style['text-align'] == 'right':
+			word_spacing = self.style['word-spacing']
+			offset = self.width - self.content_width
+		elif self.style['text-align'] == 'center':
+			word_spacing = self.style['word-spacing']
+			offset = (self.width - self.content_width) / 2
+		elif self.style['text-align'] == 'justify':
+			word_spacing = (self.width - self.content_width) / max(len(self.elements) - 1, 1)
+			offset = 0
+		else:
+			raise NotImplementedError
+		
+		for element in self.elements:
+			element.width = element.width_request
+			element.height = element.height_request
+			element.x = offset
+			if hasattr(element, 'baseline'):
+				element.y = self.baseline - element.baseline
+			else:
+				element.y = 0
+			element.calculate_positions(ctx)
+			offset += element.width + word_spacing
+	
+	def print_tree(self, level=0):
+		print((" " * level) + "LINE")
+		for element in self.elements:
+			element.print_tree(level=level+1)
+	
+	def render(self, ctx):
+		ctx.save()
+		ctx.translate(self.x, self.y)
+		for element in self.elements:
+			element.render(ctx)
+		#ctx.rectangle(0, 0, self.width, self.height)
+		#ctx.set_source_rgb(0, 0, 1)
+		#ctx.stroke()
+		ctx.restore()
+
+
+class BlockLinesElement:
+	"A block element that contains only `Line`s of text (or inline block elements)."
+	
+	def __init__(self, tag, elements, style):
+		for attr in ['line-height']:
+			if attr not in style:
+				raise ValueError(f"Required style attribute missing: {attr}.")
+		
+		self.tag = tag
+		self.elements = elements
+		self.style = style
+	
+	@once
+	def calculate_dimensions(self, ctx):
+		self.inline = InlineElement(self.tag, self.elements, self.style)
+		self.inline.calculate_dimensions(ctx)
+		self.width_request = self.inline.width_request
+		self.height_request = self.inline.height_request
+	
+	def calculate_positions(self, ctx):
+		self.inline.width = self.inline.width_request
+		self.inline.height = self.inline.height_request
+		self.inline.x = 0
+		self.inline.y = 0
+		self.inline.calculate_positions(ctx)
+		
+		self.lines = []
+		elements = []
+		offset = None
+		for element in self.inline.block_elements():
+			if offset is None: offset = self.inline.elements[0].x
+			if elements and element.x + element.width - offset > self.width:
+				line = Line(elements, self.style)
+				line.calculate_dimensions(ctx)
+				self.lines.append(line)
+				elements = []
+				offset = element.x
+			elements.append(element)
+		if elements:
+			line = Line(elements, self.style)
+			line.calculate_dimensions(ctx)
+			self.lines.append(line)
+		
+		offset = 0
+		for line in self.lines:
+			line.width = self.width
+			line.height = line.height_request
+			line.x = 0
+			line.y = offset
+			line.calculate_positions(ctx)
+			offset += max(line.height, self.style['line-height'])
+		
+		self.height = offset
+	
+	def print_tree(self, level=0):
+		print((" " * level) + "BLOCK-LINES: " + self.tag)
+		for element in self.elements:
+			element.print_tree(level=level+1)
+	
+	def render(self, ctx):
+		ctx.save()
+		ctx.translate(self.x, self.y)
+		for line in self.lines:
+			line.render(ctx)
+		ctx.restore()
+
+
+class BlockElement:
+	"A block element that may contain `BlockLineElement`s and other `BlockElement`s."
+	
+	def __init__(self, tag, elements, style):
+		self.tag = tag
+		self.elements = elements
+		self.style = style
+	
+	@once
+	def calculate_dimensions(self, ctx):
+		for element in self.elements:
+			element.calculate_dimensions(ctx)
+		
+		self.width_request = self.content_width = max(_element.width_request for _element in self.elements) if self.elements else 0
+		self.height_request = self.content_height = sum(_element.height_request for _element in self.elements) if self.elements else 0
+	
+	def calculate_positions(self, ctx):
+		offset = 0
+		for element in self.elements:
+			element.width = self.width
+			element.x = 0
+			element.y = offset
+			element.calculate_positions(ctx)
+			offset += element.height
+		
+		self.height = offset
+	
+	def print_tree(self, level=0):
+		print((" " * level) + "BLOCK: " + self.tag)
+		for element in self.elements:
+			element.print_tree(level=level+1)
+	
+	def render(self, ctx):
+		ctx.save()
+		ctx.translate(self.x, self.y)
+		for element in self.elements:
+			element.render(ctx)
+		ctx.restore()
 
 
 class HTMLRender:
@@ -87,12 +385,19 @@ class HTMLRender:
 				document = self.create_document(data, 'application/xml')
 			
 			if document.getroot().tag == 'html': # document without namespace
-				del document.getroot().attrib['xmlns'] # workaround: lxml sets xmlns twice
+				try:
+					del document.getroot().attrib['xmlns'] # workaround: lxml sets xmlns twice
+				except KeyError:
+					pass
 				document = self.create_document(document.to_bytes(), 'application/xml')
 			
 			if document.getroot().tag == 'html': # still without namespace
 				document.getroot().attrib['xmlns'] = self.xmlns_html
 				document = self.create_document(document.to_bytes(), 'application/xml')
+			
+			assert document.getroot().tag.startswith('{') # the document has namespace
+			
+			#print("potential HTML document:", document.getroot().tag)
 			
 			if self.is_html_document(document):
 				return document
@@ -212,20 +517,18 @@ class HTMLRender:
 		xmlns_html = self.__xmlns(document)
 		
 		if hasattr(document, 'getroot'): # render whole HTML document
-			node = document.findall(f'.//{{{xmlns_html}}}body')[0] # FIXME
+			node = document.getroot()
 		else: # render one HTML tag
 			node = document
 			document = document.getroottree()
 		
-		tree = self.__create_box(view, document, ctx, node, None, xmlns_html, 16)
-		tree.style['display'] = 'block'
-		self.__position_horizontal(view, ctx, document, tree, None, box[2])
-		self.__position_lines(tree, None)
-		self.__position_vertical(view, ctx, document, tree, None, box[3])
-		tree.style['width'] = tree.style['max-width']
-		#tree.debug_print()
-		if __debug__: tree.ensure_xywh()
-		self.__render_box(view, ctx, document, tree, None, box[0], box[1])
+		tree = self.__create_box(view, document, node, None, 15)
+		if isinstance(tree, Word) or isinstance(tree, InlineElement) or isinstance(tree, InlineBlockElement):
+			tree = BlockLinesElement('--lines', [tree], tree.style)
+		tree.calculate_dimensions(ctx)
+		tree.x, tree.y, tree.width, tree.height = box
+		tree.calculate_positions(ctx)
+		tree.render(ctx)
 	
 	def poke_image(self, view, document, ctx, box, px, py):
 		if not self.is_html_document(document):
@@ -234,452 +537,239 @@ class HTMLRender:
 		xmlns_html = self.__xmlns(document)
 		
 		if hasattr(document, 'getroot'):
-			node = document.findall(f'.//{{{xmlns_html}}}body')[0]
+			node = document.getroot()
 		else:
-			document = document.getroottree().getroot().create_document()
-			node = document.findall(f'.//{{{xmlns_html}}}body')[0]
+			node = document
+			document = document.getroottree()
 		
 		#return self.__render_tag(view, document, ctx, box, node, em_size, (px, py))
 		return []
 	
-	def __split_words(self, text):
-		word = []
-		for ch in text:
-			if ch in self.__whitespace_chars:
-				if word:
-					yield "".join(word)
-					word.clear()
-				
-				if ch != " ":
-					yield ch
-			else:
-				word.append(ch)
+	def __create_box(self, view, document, element, pseudoelement, em_size):
+		if not isinstance(element.tag, str):
+			return None
+		namespace, tag = element.tag.split('}')
+		namespace = namespace[1:]
 		
-		if word:
-			yield "".join(word)
-	
-	def __create_box(self, view, document, ctx, node, pseudoelement, xmlns, em_size):
-		display = self.__get_attribute(view, document, node, None, 'display', 'inline')
-		if display == 'none':
+		if namespace not in [self.xmlns_html, self.xmlns_html2]:
+			#print("wrong namespace", namespace)
+			return None
+		if tag in ['script', 'head']:
 			return None
 		
-		visibility = self.__get_attribute(view, document, node, None, 'visibility', 'visible')
-		if visibility == 'collapse':
-			return None
+		#font = self.__get_attribute(view, document, element, pseudoelement, 'font', None)
+		
+		style = {}
+		
+		font_size_attr = self.__get_attribute(view, document, element, pseudoelement, 'font-size', '15px')
+		style['font-size'] = self.units(view, font_size_attr, em_size=em_size, percentage=em_size)
+		line_height_attr = self.__get_attribute(view, document, element, pseudoelement, 'line-height', font_size_attr)
+		style['line-height'] = self.units(view, line_height_attr, em_size=em_size, percentage=em_size)
+		em_size = style['font-size']
+		
+		style['font-style'] = self.__get_attribute(view, document, element, pseudoelement, 'font-style', 'normal')
+		
+		font_variant_attr = self.__get_attribute(view, document, element, pseudoelement, 'font-variant', 'normal')
+		if font_variant_attr == 'normal':
+			font_variant = cairo.FONT_SLANT_NORMAL
+		elif font_variant_attr == 'italic':
+			font_variant = cairo.FONT_SLANT_ITALIC
+		elif font_variant_attr == 'oblique':
+			font_variant = cairo.FONT_SLANT_OBLIQUE
+		else:
+			print("unsupported font variant", font_variant_attr)
+			font_variant = cairo.FONT_SLANT_NORMAL
+		style['font-variant'] = font_variant
+		
+		font_weight_attr = self.__get_attribute(view, document, element, pseudoelement, 'font-weight', 'normal')
+		if font_weight_attr == 'normal':
+			font_weight = cairo.FONT_WEIGHT_NORMAL
+		elif font_weight_attr in ['bold', 'bolder']:
+			font_weight = cairo.FONT_WEIGHT_BOLD
+		else:
+			print("unsupported font weight", font_weight_attr)
+			font_weight = cairo.FONT_WEIGHT_NORMAL
+		style['font-weight'] = font_weight
+		
+		style['font-family'] = self.__get_attribute(view, document, element, pseudoelement, 'font-family', 'serif')
+		
+		word_spacing_attr = self.__get_attribute(view, document, element, pseudoelement, 'word-spacing', '0.25em')
+		style['word-spacing'] = self.units(view, word_spacing_attr, em_size=em_size)
+		style['text-align'] = self.__get_attribute(view, document, element, pseudoelement, 'text-align', 'left')
+		
+		style['color'] = self.__apply_color(view, document, element, pseudoelement, 'color', None, 'black')
+		
+		#style['text-align'] = self.__get_attribute(view, document, element, pseudoelement, 'text-align', 'left')
 		
 		children = []
 		
-		font_size_attr = self.__get_attribute(view, document, node, pseudoelement, 'font-size', None)
-		if font_size_attr:
-			try:
-				float(font_size_attr)
-			except ValueError:
-				em_size = self.units(view, font_size_attr, em_size=em_size)
-			else:
-				raise ValueError("Font size can't be a unit-less number.")
-			
-		word_spacing_attr = self.__get_attribute(view, document, node, pseudoelement, 'word-spacing', '0.25em')
-		word_spacing = self.units(view, word_spacing_attr, em_size=em_size)
+		if element.text is not None:
+			for word in element.text.split(" "):
+				word = word.strip()
+				if word:
+					children.append(Word(word, style))
 		
-		if pseudoelement is None:
-			before = self.__get_attribute(view, document, node, 'before', 'content', None)
-			if before is not None:
-				box = self.__create_box(view, document, ctx, node, 'before', xmlns, em_size)
-				if box is not None:
-					children.append(box)
+		for child in element:
+			subelement = self.__create_box(view, document, child, None, em_size)
+			if subelement is not None:
+				children.append(subelement)
 			
-			for child in chain([None], node):
-				if child is None:
-					text = node.text
+			if child.tail is not None:
+				for word in child.tail.split(" "):
+					word = word.strip()
+					if word:
+						children.append(Word(word, style))
+		
+		block_present = any(isinstance(_subelement, BlockElement) or isinstance(_subelement, BlockLinesElement) for _subelement in children)
+		inline_present = any(isinstance(_subelement, Word) or isinstance(_subelement, InlineElement) or isinstance(_subelement, InlineBlockElement) for _subelement in children)
+		
+		display = self.__get_attribute(view, document, element, pseudoelement, 'display', 'inline')
+		
+		if display == 'inline-block':
+			return InlineBlockElement(tag, children, style)
+		
+		elif display in ['block', 'inline']:
+			if not block_present and inline_present:
+				if display == 'block':
+					return BlockLinesElement(tag, children, style)
+				elif display == 'inline':
+					return InlineElement(tag, children, style)
 				else:
-					if isinstance(child.tag, str): # ignore processing instructions
-						box = self.__create_box(view, document, ctx, child, None, xmlns, em_size)
-						if box is not None:
-							children.append(box)
-					text = child.tail
-				
-				if text:
-					children.extend(BoxTree(_word, None) for _word in self.__split_words(text))
+					raise ValueError
 			
-			after = self.__get_attribute(view, document, node, 'after', 'content', None)
-			if after is not None:
-				box = self.__create_box(view, document, ctx, node, 'after', xmlns, em_size)
-				if box is not None:
-					children.append(box)
-		
-		else:
-			text = self.__get_attribute(view, document, node, pseudoelement, 'content', None)
-			if text[0] == text[-1] == '\"':
-				words = [BoxTree(_word, None) for _word in self.__split_words(text)]
-				box = BoxTree(node, pseudoelement, {'word-spacing':word_spacing}, words)
-				children.append(box)
-			else:
-				raise NotImplementedError
-		
-		if (display == 'inline' and any(_child.style['display'] == 'block' for _child in children if 'display' in _child.style)) or \
-		 (display == 'block' and any(_child.style['display'] == 'block' for _child in children if 'display' in _child.style) and any('display' not in _child.style or _child.style['display'] != 'block' for _child in children)):
-			# inline element with block elements or block element with mixed inline/block content
-			bchildren = []
-			ichildren = []
-			for child in children:
-				if 'display' in child.style and child.style['display'] == 'block':
-					if ichildren:
-						vchild = BoxTree(None, '-guixmpp-vblock', {'em-size':em_size, 'display':'block', 'word-spacing':word_spacing}, ichildren) # virtual block element
-						bchildren.append(vchild)
-						ichildren = []
-					bchildren.append(child)
-				else:
-					ichildren.append(child)
-			if ichildren:
-				vchild = BoxTree(None, '-guixmpp-vblock', {'em-size':em_size, 'display':'block', 'word-spacing':word_spacing}, ichildren) # virtual block element
-				bchildren.append(vchild)
-				ichildren = []
-			box = BoxTree(node, pseudoelement, {'em-size':em_size, 'display':'block', 'visibility':visibility, 'word-spacing':word_spacing}, bchildren)
-		
-		else:
-			box = BoxTree(node, pseudoelement, {'em-size':em_size, 'display':display, 'visibility':visibility, 'word-spacing':word_spacing}, children)
-		
-		font_family = self.__get_attribute(view, document, node, pseudoelement, 'font-family', None)
-		if font_family:
-			families = []
-			for family in reversed(font_family.split(',')):
-				family = family.strip()
-				if family[0] in '\'\"':
-					family = family[1:]
-				if family[-1] in '\'\"':
-					family = family[:-1]
-				family = family.replace(':', '_')
-				families.append(family)
-			
-			box.style['font-family'] = families
-		
-		return box
-	
-	def __walk_tree(self, box):
-		yield True, box
-		if box.content:
-			for child in box.content:
-				yield from self.__walk_tree(child)
-		yield False, box
-	
-	def __produce_lines(self, in_box):
-		#print("produce lines")
-		out_box = BoxTree(in_box.node, in_box.pseudoelement, in_box.style, [])
-		
-		#src_branch = [in_box]
-		dst_branch = [BoxTree(None, '-guixmpp-line', {'x':0, 'content-width':0, 'word-spacing':in_box.style['word-spacing'], 'em-size':in_box.style['em-size']}, [])]
-		#out_box.content.append(dst_branch[0])
-		
-		progress = 0
-		line_width = in_box.style['max-width']
-		
-		for descend, src_el in self.__walk_tree(in_box):
-			if src_el is in_box or src_el.node in self.__whitespace_chars:
-				continue
-			
-			#if descend:
-			#	print(progress, src_el.node)
-			
-			#assert len(src_branch) == len(dst_branch)
-			
-			if descend:
-				#src_branch.append(src_el)
-				dst_el = BoxTree(src_el.node, src_el.pseudoelement, src_el.style, [] if src_el.content is not None else None)
-				dst_el.style.update({'x':0, 'content-width':0})
-				dst_branch.append(dst_el)
+			elif block_present and inline_present:
+				blockelements = []
+				inlineelements = []
 				
-				if src_el.content:
-					word_spacing = dst_branch[-1].style['word-spacing']
-					nonempty = bool(dst_branch[-1].content)
-					progress += (word_spacing if nonempty else 0)
-				
-				if 'width' not in dst_el.style:
-					dst_el.style['width'] = dst_el.style['content-width']
-			
-			else:
-				#del src_branch[-1]
-				dst_el = dst_branch[-1]
-				del dst_branch[-1]
-				
-				if not src_el.content:
-					dst_el.style['content-width'] = src_el.style['content-width']				
-				
-				word_spacing = dst_branch[-1].style['word-spacing']
-				nonempty = bool(dst_branch[-1].content)
-				d_progress = dst_el.style['content-width'] + (word_spacing if nonempty else 0)
-				
-				if not src_el.content:
-					if progress + d_progress <= line_width:
-						dst_el.style['x'] = dst_branch[-1].style['content-width'] + (word_spacing if nonempty else 0)
-						progress += d_progress
-					
+				for subelement in children:
+					if isinstance(subelement, Word) or isinstance(subelement, InlineElement) or isinstance(subelement, InlineBlockElement):
+						inlineelements.append(subelement)
 					else:
-						#print("line", src_el.node, progress, d_progress, progress + d_progress, line_width)
-						progress = d_progress = dst_el.style['content-width']
-						dst_el.style['x'] = 0
-						
-						out_box.content.append(dst_branch[0])
-						old_branch = dst_branch
-						dst_branch = [BoxTree(None, '-guixmpp-line', {'x':0, 'content-width':0, 'word-spacing':in_box.style['word-spacing'], 'em-size':in_box.style['em-size']}, [])]
-						
-						for old_el in old_branch[1:]:
-							new_el = BoxTree(old_el.node, old_el.pseudoelement, old_el.style, [])
-							new_el.style.update({'x':0, 'content-width':0})
-							dst_branch.append(new_el)
-						
-						for parent_el, old_el in reversed(list(zip(old_branch[:-1], old_branch[1:]))):
-							parent_el.style['content-width'] += old_el.style['content-width'] + (parent_el.style['word-spacing'] if parent_el.content else 0)
-							parent_el.style['width'] = parent_el.style['content-width']
-							parent_el.content.append(old_el)
+						blockelements.append(BlockLinesElement('--lines', inlineelements, style))
+						inlineelements = []
 				
-				else:
-					dst_el.style['x'] = dst_branch[-1].style['content-width'] + (word_spacing if nonempty else 0)
+				if inlineelements:
+					blockelements.append(BlockLinesElement('--lines', inlineelements, style))
 				
-				#print("ascend", dst_el.node, bool(dst_el.content), 'width' not in dst_el.style)
-				if not dst_el.content:
-					if 'width' not in dst_el.style:
-						dst_el.style['width'] = dst_el.style['content-width']
-				
-				dst_branch[-1].content.append(dst_el)
-				dst_branch[-1].style['content-width'] += d_progress
-				dst_branch[-1].style['width'] = dst_branch[-1].style['content-width']
+				return BlockElement(tag, blockelements, style)
+			
+			else:
+				return BlockElement(tag, children, style)
+			
+			return InlineElement(tag, children, style)
 		
-		#out_box.debug_print()
-		#print()
+		elif display == 'list-item':
+			return None
 		
-		if dst_branch[0].content:
-			out_box.content.append(dst_branch[0])
+		elif display == 'table':
+			return None
 		
-		if len(out_box.content) == 0:
-			out_box.style['width'] = 0
-		elif len(out_box.content) == 1:
-			out_box.style['width'] = out_box.content[0].style['width']
+		elif display == 'table-cell':
+			return None
+		
+		elif display == 'table-row':
+			return None
+		
+		elif display == 'table-row-group':
+			return None
+		
+		elif display == 'table-column':
+			return None
+		
+		elif display == 'table-column-group':
+			return None
+		
 		else:
-			out_box.style['width'] = out_box.style['max-width']
-		
-		return out_box
+			raise NotImplementedError(f"Display: {display}")
 	
-	def __position_lines(self, box, parent):
-		node = box.node
-		pseudoelement = box.pseudoelement
+	def __apply_color(self, view, document, element, pseudoelement, color_attr, opacity_attr, default_color):
+		"Set painting source to the color identified by provided parameters."
 		
-		if node is None:
-			node = parent.node
+		color = self.__get_attribute(view, document, element, pseudoelement, color_attr, default_color).strip()
+		target = element.getparent()
+		while color in ('currentColor', 'inherit') and (target is not None):			
+			if color == 'currentColor':
+				color = self.__get_attribute(view, document, element, pseudoelement, 'color', default_color).strip()
+			elif color == 'inherit':
+				color = self.__get_attribute(view, document, element, pseudoelement, color_attr, default_color).strip()
+			target = target.getparent()
 		
-		if not ((box.content) and ('display' in box.style) and (box.style['display'] == 'block')):
-			#print("not block", node, pseudoelement)
-			pass
-		
-		elif any((('display' not in _child.style) or (_child.style['display'] != 'block')) and _child.node not in self.__whitespace_chars for _child in box.content):
-			#print("block of inline", node, pseudoelement)
-			
-			lbox = self.__produce_lines(box)
-			box.content = lbox.content
-			box.style.update(lbox.style)
-		
-		elif box.content is not None:
-			#print("block of block", node, pseudoelement)
-			
-			box.content = [_child for _child in box.content if _child.node not in self.__whitespace_chars]
-			
-			w = 0
-			for child in box.content:
-				self.__position_lines(child, box)
-				w = max(w, child.style.get('width', 0))
-			
-			if 'width' not in box.style:
-				box.style['width'] = w
-	
-	def __position_horizontal(self, view, ctx, document, box, parent, viewport_width):
-		node = box.node
-		pseudoelement = box.pseudoelement
-		
-		if node is None:
-			node = parent.node
+		assert color != 'currentColor' and color != 'inherit'
 		
 		try:
-			font_family = box.style['font-family']
+			color = self.web_colors[color.lower()]
 		except KeyError:
 			pass
-		else:
-			for family in font_family:
-				ctx.select_font_face(family)
-		
-		if isinstance(node, str):
-			if node in self.__whitespace_chars:
-				box.style['content-width'] = 0
-				box.style['content-height'] = 0
-				#box.style['break-before'] = 'always'
-			else:
-				em_size = parent.style['em-size']
-				ctx.set_font_size(em_size)
-				extents = ctx.text_extents(node)
-				#box.style['extents'] = extents
-				box.style['content-width'] = box.style['width'] = extents.width
-				box.style['content-height'] = 1.25 * em_size # TODO: line height
-		
-		elif box.style['display'] in ('inline', 'inline-block'):
-			# TODO: support various element types
-			#print("inline element initial content width", node, len(box.content) if box.content is not None else None)
-			if hasattr(node, 'tag') and not box.content:
-				box.style['content-width'] = 0
-				box.style['content-height'] = 0
-				#if node.tag == f'{{{self.__xmlns(document)}}}br':
-				#	box.style['content-width'] = 0
-				#elif node.tag.startswith(f'{{{self.__xmlns(document)}}}'):
-				#	box.style['content-width'] = 80
-		
-		elif box.style['display'] == 'block':
-			em_size = box.style['em-size']
-			
-			width = self.__get_attribute(view, document, node, None, 'width', 'auto')
-			width = self.units(view, width, percentage=viewport_width, em_size=em_size) if width != 'auto' else None
-			
-			margin = self.__get_attribute(view, document, node, None, 'margin', '')
-			margins = re.split(r'[, ]+', margin) # TODO: better regex
-			if len(margins) == 0:
-				margin_left = margin_right = margin_top = margin_bottom = 'auto'
-			elif len(margins) == 1:
-				margin_left = margin_right = margin_top = margin_bottom = margins[0]
-			elif 2 <= len(margins) <= 3:
-				margin_left = margin_right = margins[0]
-				margin_top = margin_bottom = margins[1]
-			elif len(margins) >= 4:
-				margin_left, margin_top, margin_right, margin_bottom, *_ = margins
-			
-			margin_left = self.__get_attribute(view, document, node, None, 'margin-left', margin_left)
-			margin_right = self.__get_attribute(view, document, node, None, 'margin-right', margin_right)
-			
-			margin_left = self.units(view, margin_left, percentage=viewport_width, em_size=em_size) if margin_left != 'auto' else None
-			margin_right = self.units(view, margin_right, percentage=viewport_width, em_size=em_size) if margin_right != 'auto' else None
-			
-			if parent is not None:
-				parent_width = parent.style['max-width']
-			else:
-				parent_width = viewport_width
-			
-			if width is not None:
-				box.style['width'] = width
-				if margin_left is not None:
-					x = margin_left
-				elif margin_right is not None:
-					x = parent_width - width - margin_right
-				else:
-					x = 0
-			else:
-				width = parent_width - margin_left - margin_right
-				x = margin_left
-			
-			box.style['x'] = x
-			box.style['max-width'] = width
-		
-		if box.content is not None:
-			for child in box.content:
-				self.__position_horizontal(view, ctx, document, child, box, viewport_width)
-	
-	def __position_vertical(self, view, ctx, document, box, parent, viewport_height):
-		node = box.node
-		pseudoelement = box.pseudoelement
-		
-		if node is None:
-			node = parent.node
-		
-		if box.style.get('display', None) != 'block':
-			if box.content is not None:
-				h = 0
-				for child in box.content:
-					self.__position_vertical(view, ctx, document, child, box, viewport_height)
-					child.style['y'] = 0
-					h = max(h, child.style['height'])
-				box.style['height'] = h
-			
-			else:
-				box.style['height'] = box.style['content-height']
-		
-		else:
-			em_size = box.style['em-size']
-			
-			height_attr = self.__get_attribute(view, document, node, None, 'height', 'auto')
-			height = self.units(view, height_attr, percentage=viewport_height, em_size=em_size) if height_attr != 'auto' else None
-			
-			margin = self.__get_attribute(view, document, node, None, 'margin', '')
-			margins = re.split(r'[, ]+', margin) # TODO: better regex
-			if len(margins) == 0:
-				margin_left = margin_right = margin_top = margin_bottom = 'auto'
-			elif len(margins) == 1:
-				margin_left = margin_right = margin_top = margin_bottom = margins[0]
-			elif 2 <= len(margins) <= 3:
-				margin_left = margin_right = margins[0]
-				margin_top = margin_bottom = margins[1]
-			elif len(margins) >= 4:
-				margin_left, margin_top, margin_right, margin_bottom, *_ = margins
-			
-			margin_top = self.__get_attribute(view, document, node, None, 'margin-top', margin_top)
-			margin_bottom = self.__get_attribute(view, document, node, None, 'margin-bottom', margin_bottom)
-			
-			margin_top = self.units(view, margin_top, percentage=viewport_height, em_size=em_size) if margin_top != 'auto' else 0
-			margin_bottom = self.units(view, margin_bottom, percentage=viewport_height, em_size=em_size) if margin_bottom != 'auto' else 0
-			
-			y = 0 # padding_top
-			if box.content is not None:
-				for child in box.content:
-					self.__position_vertical(view, ctx, document, child, box, viewport_height)
-					#if child.style.get('display', None) == 'block' or child.pseudoelement == '-guixmpp-line':
-					child.style['y'] = y + child.style.get('y', 0) + + child.style.get('margin-top', 0)
-					y += child.style.get('margin-top', 0) + child.style['height'] + child.style.get('margin-bottom', 0)
-					#else:
-					#	if 'y' not in child.style: child.style['y'] = y
-			
-			box.style['margin-top'] = margin_top
-			box.style['height'] = y
-			box.style['margin-bottom'] = margin_bottom
-			if 'y' not in box.style: box.style['y'] = 0
-	
-	def __render_box(self, view, ctx, document, box, parent, x, y):
-		node = box.node
-		pseudoelement = box.pseudoelement
-		
-		if node is None:
-			node = parent.node
 		
 		try:
-			font_family = box.style['font-family']
-		except KeyError:
+			if not color or color.lower() in ('none', 'transparent'):
+				return False
+		except AttributeError:
 			pass
-		else:
-			for family in font_family:
-				ctx.select_font_face(family)
 		
-		if isinstance(box.node, str):
-			x += box.style['x']
-			y += box.style['y']
-			
-			ctx.move_to(x, y)
-			
-			em_size = parent.style['em-size']
-			ctx.set_font_size(em_size)
-			
-			ctx.set_source_rgb(0, 0, 0)
-			ctx.rel_move_to(0, em_size) # TODO: baseline
-			ctx.show_text(node)
-		else:
-			ctx.set_line_width(1)
-			if 'display' not in box.style:
-				ctx.set_source_rgb(1, 1, 0)
-			elif box.style['display'] == 'block':
-				ctx.set_source_rgb(1, 0, 0)
-			elif box.style['display'] == 'inline':
-				ctx.set_source_rgb(0, 0, 1)
+		if opacity_attr is not None:
+			opacity = self.__get_attribute(view, document, element, pseudoelement, opacity_attr, None)
+			if opacity == 'null':
+				a = None # None means 1 (full opacity), not 0 (full transparency)
 			else:
-				ctx.set_source_rgb(0, 1, 0)
-			#ctx.rectangle(x + box.style['x'], y + box.style['y'], box.style['width'], box.style['height'])
-			#ctx.stroke()
+				a = parse_float(opacity)
 			
-			for child in box.content:
-				ctx.save()
-				self.__render_box(view, ctx, document, child, box, x + box.style['x'], y + box.style['y'])
-				ctx.restore()
+			if a == 0:
+				return None
+		else:
+			a = None
+		
+		#if color[:4] == 'url(' and color[-1] == ')':
+		#	href = color.strip()[4:-1]
+		#	if href[0] == '"' and href[-1] == '"': href = href[1:-1]
+		#	return self.__apply_pattern(view, document, ctx, box, node, em_size, href)
+		#	# TODO: transparency
+		#else:
+		#	cc = self.__parse_color(color, view, node)
+		#	if cc == None:
+		#		return False
+		#	else:
+		#		r, g, b = cc
+		
+		cc = self.__parse_color(color, view, element)
+		if cc == None:
+			return None
+		else:
+			r, g, b = cc
+		
+		try:
+			if a == None:
+				return (r, g, b)
+			else:
+				return (r, g, b, a)
+		except UnboundLocalError:
+			pass
 	
+	def __parse_color(self, color, view, node):
+		if color[0] == '#' and len(color) == 4:
+			r, g, b = [int(_c, 16) / 15 for _c in color[1:]]
+		
+		elif color[0] == '#' and len(color) == 7:
+			r, g, b = [int(_c, 16) / 255 for _c in (color[1:3], color[3:5], color[5:7])]
+							
+		elif color[:4] == 'rgb(' and color[-1] == ')':
+			r, g, b = [max(0, min(1, (parse_float(_c) / 255 if _c.strip()[-1] != '%' else parse_float(_c.strip()[:-1]) / 100))) for _c in color[4:-1].split(',')]
+		
+		elif color[:4] == 'hsl(' and color[-1] == ')':
+			cc = color[4:-1].split(',')
+			
+			h = max(0, min(360, (parse_float(cc[0])))) / 360
+			s = max(0, min(100, (parse_float(cc[1] if cc[1][-1] != '%' else cc[1][:-1])))) / 100
+			l = max(0, min(100, (parse_float(cc[2] if cc[2][-1] != '%' else cc[2][:-1])))) / 100
+			
+			r, g, b = hls_to_rgb(h, l, s)
+		
+		else:
+			self.emit_warning(view, f"Unsupported color specification: {color}.", node)
+			return None
+		
+		return r, g, b
+		
 	__inherited_properties = frozenset({
 		'azimuth',
 		'border-collapse',
@@ -856,6 +946,8 @@ if __debug__ and __name__ == '__main__':
 	from pathlib import Path
 	from urllib.parse import unquote as url_unquote
 	
+	from lxml.etree import fromstring as xml_frombytes
+	
 	from guixmpp.format.xml import XMLFormat, XMLDocument
 	from guixmpp.format.css import CSSFormat, CSSDocument
 	from guixmpp.format.null import NullFormat
@@ -897,8 +989,12 @@ if __debug__ and __name__ == '__main__':
 		
 		def text_extents(self, txt):
 			if self.print_out: print(f'{self.__name}.text_extents("{txt}")')
-			#return cairo.Rectangle(0, 0, len(txt), 1)
 			return cairo.TextExtents(0, 0, len(txt) * self.font_size, self.font_size, len(txt) * self.font_size, 0)
+		
+		def font_extents(self):
+			if self.print_out: print(f'{self.__name}.font_extents()')
+			prop = 0.8
+			return (self.font_size * prop, self.font_size * (1 - prop), self.font_size, 0, self.font_size * 2, 0) # cairo.FontExtents
 		
 		def set_dash(self, dashes, offset):
 			if self.print_out: print(f'{self.__name}.set_dash({repr(dashes)}, {repr(offset)})')
@@ -985,6 +1081,146 @@ if __debug__ and __name__ == '__main__':
 		def __init__(self):
 			pass
 	
+	
+	html_piece = xml_frombytes(b'''
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>litehtml * Fast and lightweight HTML/CSS rendering engine</title>
+  <!-- base xhtml4 -->
+	<base href="http://www.litehtml.com/" />
+	<meta name="robots" content="index, follow" />
+	<link rel="canonical" href="http://www.litehtml.com/" />
+	<meta http-equiv="content-language" content="en" />
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+	<meta http-equiv="pragma" content="cache" />
+	<meta http-equiv="cache-control" content="cache" />
+	<meta http-equiv="Content-Style-Type" content="text/css" />
+	<meta http-equiv="Content-Script-Type" content="text/javascript" />
+<!-- meta -->
+	<meta name="keywords" content="launch bar,true launch bar,quick launch bar,windows,launcher,taskbar,toolbar, html,css,css3,render,engine,library,open source,free" />
+	
+	<meta name="abstract" content="fast and lightweight HTML/CSS open source rendering engine" />
+	<meta http-equiv="last-modified" content="Sun, 16 Sep 2018 22:15:58 MSK" />
+	<meta name="author" content="Yuri Kobets" />
+	<meta name="copyright" content="Copyright (c) 2024 by litehtml" />
+	<meta name="generator" content="MODX CMS" />
+	<!--[if IE]><meta http-equiv="imagetoolbar" content="no" /><![endif]-->
+<!-- Dublin Core -->
+	<link rel="schema.DC" href="http://purl.org/dc/elements/1.1/" />
+	<meta name="DC.contributor" content="litehtml" />
+	<meta name="DC.creator" content="Yuri Kobets" />
+	<meta name="DC.date" content="2018-09-16" />
+	<meta name="DC.format" content="text/html" />
+	<meta name="DC.identifier" content="Fast and lightweight HTML/CSS rendering engine - 1288" />
+	<meta name="DC.language" content="en" />
+	<meta name="DC.publisher" content="litehtml" />
+	<meta name="DC.rights" content="Copyright (c) 2024 by litehtml" />
+	<meta name="DC.rightsHolder" content="litehtml" />
+	<meta name="DC.title" content="Fast and lightweight HTML/CSS rendering engine" />
+<!-- icons/rss/css -->
+
+<!-- end MetaX output -->
+  <link rel="stylesheet" type="text/css" href="assets/templates/litehtml/style.css"/>
+</head>
+<body>
+<div class="header">
+	<div style="float:right;width:728px;height:90px">
+	<script type="text/javascript"><!--
+google_ad_client = "ca-pub-1229827911986752";
+/* litehtml-benner */
+google_ad_slot = "1947231680";
+google_ad_width = 728;
+google_ad_height = 90;
+//-->
+</script>
+<script type="text/javascript"
+src="http://pagead2.googlesyndication.com/pagead/show_ads.js">
+</script>
+	</div>
+	<div class="logo">lite<strong>html</strong></div>
+    <div class="slogan">fast and lightweight HTML/CSS rendering engine</div>
+</div>
+<div class="topmenu">
+	<div class="nav">
+		<ul>
+		  <li class="first"><a href="http://www.litehtml.com/">Home</a></li>
+
+<li><a href="download.html">Download</a></li>
+
+<li><a href="wiki.html">Wiki</a></li>
+
+<li><a href="get-the-code.html">Get the code</a></li>
+
+<li><a href="donate.html">Donate</a></li>
+
+		</ul>
+	</div>
+    <div class="search-outer">
+        <div class="search">
+            <div class="search-input">
+                <input type="text" name="search" />
+            </div>
+        	<div class="go">
+        		<input type="button" name="go" />
+    		</div>
+		</div>
+	</div>
+</div>
+<div class="content">
+<!-- BEGIN content -->
+<h1>What is litehtml?</h1>
+<p>litehtml is lightweight HTML/CSS rendering engine. The main goal of the litehtml library is to give the developers the easy way to show the HTML pages in theirs applications. The popular HTML engines like WebKit are too complicated for some tasks. For example, it may be too cumbersome to use WebKit to show some tooltips or pages in HTML format.</p>
+<h1>What web standards are supported by litehtml?</h1>
+<p>I tried to make the support of HTML5/CSS3 in the litehtml. It is far from perfect, but the most HTML/CSS features are supported. Actually the appearance of HTML elements are defined by master CSS. The source code contains the master.css file as example, but you are free to use your own css. The list of the main HTML/CSS features supported by litehtml: text formating, tables, floating elements, absolute positioning, anchors, embedded styles, CSS classes, most CSS selectors etc.</p>
+<h1>What litehtml uses to draw text and images?</h1>
+<p>Nothing! litehtml gives you a full freedom for using any of your favorite libraries to draw text, images and other elements. litehtml calculates the position of the HTML elements, then it calls some functions from the user implemented class to draw elements and request some imformation required for rendering. This class is very simple and the source code have some implementations of this class to show how this works.</p>
+<h1>What platforms are supported by litehtml?</h1>
+<p>Initially litehtml was developed for Windows and was tested hard on this platform. But litehtml does not depends of any library except STL. So it is possible to use litehtml on any platform. litehtml can be compiled on linux - you can find the example in the sources.</p>
+<h1>What encodings are supported by litehtml?</h1>
+<p>litehtml does not handle the encodings. litehtml works with wchar_t (Windows) or utf-8 strings. Your application have to convert the HTML page before passing it into litehtml.</p>
+<h1>Where to download litehtml?</h1>
+<p>Please visit <a href="https://github.com/litehtml">litehtml on GitHub</a> to download the litehtml source code.</p>
+<p> </p>
+<!-- END content -->
+</div>
+  <!-- Piwik -->
+<script type="text/javascript"> 
+  var _paq = _paq || [];
+  _paq.push(['trackPageView']);
+  _paq.push(['enableLinkTracking']);
+  (function() {
+    var u=(("https:" == document.location.protocol) ? "https" : "http") + "://piwik.tordex.com//";
+    _paq.push(['setTrackerUrl', u+'piwik.php']);
+    _paq.push(['setSiteId', 6]);
+    var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0]; g.type='text/javascript';
+    g.defer=true; g.async=true; g.src=u+'piwik.js'; s.parentNode.insertBefore(g,s);
+  })();
+
+</script>
+<noscript><p><img src="//piwik.tordex.com/piwik.php?idsite=1" style="border:0" alt="" /></p></noscript>
+<!-- End Piwik Code -->
+
+</body>
+</html>
+	''')
+	
+	
+	
+	#box = create_box(html_piece)
+	#ctx = PseudoContext('ctx')
+	#ctx.print_out = True
+	#box.calculate_dimensions(ctx)
+	#box.x = 0
+	#box.y = 0
+	#box.width = 1000
+	#box.height = 2000
+	#box.calculate_positions(ctx)
+	
+	#box.render(ctx)
+	
+	#quit()
+	
 	#nn = 0
 	for example in Path('examples').iterdir():
 		if not example.is_dir(): continue
@@ -1001,6 +1237,7 @@ if __debug__ and __name__ == '__main__':
 			#profiler.start()
 			
 			ctx = PseudoContext(f'Context("{str(filepath)}")')
+			ctx.print_out = True
 			rnd = HTMLRenderModel()
 			view = PseudoView()
 			

@@ -23,7 +23,7 @@ class PixbufRender:
 		
 		try:
 			loader = GdkPixbuf.PixbufLoader.new_with_mime_type(mime_type)
-		except GLib.Error:
+		except GLib.Error: # format not recognized by PixbufLoader; pass control on
 			return NotImplemented
 		else:
 			loader.write(data)
