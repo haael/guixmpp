@@ -364,6 +364,7 @@ if __name__ == '__main__':
 	
 	event_lock = Lock()
 	opening_task = None
+	root_dir = None
 	
 	@asynchandler
 	async def dom_event(widget, event, target):
@@ -382,7 +383,7 @@ if __name__ == '__main__':
 			widget.set_image(None)
 			return None
 		elif event.type_ == 'download':
-			if event.detail.startswith('file:') and not event.detail.startswith('file:///home/haael/Projekty/_desktop/guixmpp/examples/'): # do not allow file access outside the specified directory
+			if event.detail.startswith('file:') and not event.detail.startswith(root_dir.as_uri()): # do not allow file access outside the specified directory
 				return False
 			#if not event.detail.startswith('data:'):
 			#	print("download", event.detail)
@@ -439,9 +440,10 @@ if __name__ == '__main__':
 	#'''
 	async def main():
 		"Display images from local directory, switch using left-right cursor key."
-		global images, image_index, model
+		global images, image_index, model, root_dir
 		DOMEvent._time = get_running_loop().time
-		async for dir_ in (Path.cwd() / 'examples').iterdir():
+		root_dir = Path.cwd() / 'examples'
+		async for dir_ in root_dir.iterdir():
 			if not await dir_.is_dir(): continue
 			async for doc in dir_.iterdir():
 				if doc.suffix not in ('.css', '.svg_'):

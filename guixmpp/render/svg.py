@@ -129,7 +129,6 @@ class SVGRender:
 			return NotImplemented
 		
 		async def load_font(font_family, font_spec):
-			print("font spec", font_spec)
 			if not await self.is_font_installed(font_family):
 				for spec in font_spec:
 					try:
