@@ -11,7 +11,7 @@ from collections import defaultdict
 
 class NullFormat:
 	def create_document(self, data, mime_type):
-		if mime_type == 'application/x-null':
+		if mime_type in 'application/x-null':
 			return None
 		else:
 			return NotImplemented

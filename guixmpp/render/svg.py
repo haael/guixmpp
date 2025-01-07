@@ -129,14 +129,16 @@ class SVGRender:
 			return NotImplemented
 		
 		async def load_font(font_family, font_spec):
+			print("font spec", font_spec)
 			if not await self.is_font_installed(font_family):
 				for spec in font_spec:
 					try:
 						url = spec['url']
 						font = self.get_document(url)
 						await self.install_font(font, font_family)
-					except (KeyError, TTLibError) as error:
+					except (DocumentNotFound, TTLibError) as error:
 						print("Could not install font:", error) # TODO: warning
+						self.emit_warning(view, f"Could not install font: {error}.", document)
 						continue
 					else:
 						break
@@ -147,13 +149,13 @@ class SVGRender:
 				loads.append(load_font(font_family, font_spec))
 		await gather(*loads)
 		
-		if self.use_pango:
+		if self.use_pango: # TODO: move to render function, implement arbitration in FontFormat
 			self.__default_pango_fontmap = PangoCairo.FontMap.get_default() # FIXME: this will cause a bug if an app uses many `DOMWidget`s because `get_default` will pick the map set in the next line here
 			PangoCairo.FontMap.set_default(PangoCairo.FontMap.new())
 	
 	async def on_close_document(self, view, document):
 		try:
-			if self.use_pango:
+			if self.use_pango: # TODO: move to render function, implement arbitration in FontFormat
 				PangoCairo.FontMap.set_default(self.__default_pango_fontmap)
 				del self.__default_pango_fontmap
 		except AttributeError:
@@ -425,12 +427,14 @@ class SVGRender:
 				css = self.get_document('data:text/css,' + url_quote('* {' + style + '}'))
 				if self.is_css_document(css):
 					if css not in self.__css_matcher:
-						self.__css_matcher[css] = self.create_css_matcher(css, None, self.__get_id, None, None, None, node.tag.split('}')[1:] if node.tag[0] == '}' else '')
+						self.__css_matcher[css] = self.create_css_matcher(view, css, None, self.__get_id, None, None, None, node.tag.split('}')[1:] if node.tag[0] == '}' else '')
 					css_attrs = self.__css_matcher[css](node)
 					
 					if attr in css_attrs:
-						view.__attr_cache[node][attr] = css_attrs[attr][0]
-						return css_attrs[attr][0]
+						raw_value = css_attrs[attr][0]({})
+						result = view.__attr_cache[node][attr] = self.eval_css_value(raw_value) # TODO: css vars
+						assert isinstance(result, str)
+						return result
 			
 			"regular stylesheet (<style/> tag or external)"
 			try:
@@ -444,13 +448,15 @@ class SVGRender:
 			
 			for stylesheet in stylesheets:
 				if stylesheet not in self.__css_matcher:
-					self.__css_matcher[stylesheet] = self.create_css_matcher(stylesheet, (lambda _media: self.__media_test(view, _media)), self.__get_id, self.__get_classes, (lambda _node: self.__get_pseudoclasses(view, _node)), None, self.xmlns_svg)
+					self.__css_matcher[stylesheet] = self.create_css_matcher(view, stylesheet, (lambda _media: self.__media_test(view, _media)), self.__get_id, self.__get_classes, (lambda _node: self.__get_pseudoclasses(view, _node)), None, self.xmlns_svg)
 				css_attrs = self.__css_matcher[stylesheet](node)
 				
 				if attr in css_attrs:
 					value, priority = css_attrs[attr]
 					if css_priority == None or priority >= css_priority:
-						css_value = value
+						raw_value = value({})
+						css_value = self.eval_css_value(raw_value) # TODO: css vars
+						assert isinstance(css_value, str), str(css_value)
 						css_priority = priority
 			
 			if css_value is not None:
@@ -2274,6 +2280,7 @@ if __name__ == '__main__':
 			self.__name = name
 			self.print_out = False
 			self.balance = 0
+			self.__fonts_used = set()
 		
 		def save(self):
 			if self.print_out: print(self.__name + '.save()')
@@ -2311,6 +2318,11 @@ if __name__ == '__main__':
 		def device_to_user(self, x, y):
 			if self.print_out: print(f'{self.__name}.device_to_user({x}, {y})')
 			return x, y
+		
+		def select_font_face(self, face, slant, variant):
+			if (face, slant, variant) not in self.__fonts_used:
+				print("select_font_face", face, slant, variant)
+				self.__fonts_used.add((face, slant, variant))
 		
 		def __getattr__(self, attr):
 			if self.print_out: return lambda *args: print(self.__name + '.' + attr + str(args))
@@ -2408,7 +2420,7 @@ if __name__ == '__main__':
 	#nn = 0
 	for example in Path('examples').iterdir():
 		if not example.is_dir(): continue
-
+		
 		for filepath in example.iterdir():
 			if filepath.suffix != '.svg': continue
 			print()
@@ -2426,6 +2438,8 @@ if __name__ == '__main__':
 			
 			document = rnd.create_document(filepath.read_bytes(), 'image/svg')
 			for link in rnd.scan_document_links(document):
+				if not link.startswith('data:') and not link.startswith('#'):
+					print("link", link)
 				if not any(link.startswith(_prefix) for _prefix in ['#', 'data:']):
 					if link.endswith('.css'):
 						mime = 'text/css'

@@ -33,6 +33,7 @@ if __name__ == '__main__':
 	from guixmpp.format.xml import XMLFormat
 	from guixmpp.format.css import CSSFormat
 	from guixmpp.format.font import FontFormat
+	from guixmpp.format.json import JSONFormat
 	
 	from guixmpp.render.svg import SVGRender
 	from guixmpp.render.png import PNGRender
@@ -63,7 +64,8 @@ else:
 	from .format.xml import XMLFormat
 	from .format.css import CSSFormat
 	from .format.font import FontFormat
-
+	from .format.json import JSONFormat
+	
 	from .render.svg import SVGRender
 	from .render.png import PNGRender
 	from .render.webp import WEBPRender
@@ -172,7 +174,7 @@ except NameError:
 			else:
 				cc.append('_X')
 			
-			DOMWidgetModel = Model.features('<local>.DOMWidgetModel' + ''.join(cc), DisplayView, SVGRender, PNGRender, WEBPRender, PixbufRender, HTMLRender, FontFormat, *features, ChromeDownload, ResourceDownload, XMLFormat, CSSFormat, PlainFormat, NullFormat, DataDownload)
+			DOMWidgetModel = Model.features('<local>.DOMWidgetModel' + ''.join(cc), DisplayView, SVGRender, PNGRender, WEBPRender, PixbufRender, HTMLRender, FontFormat, *features, ChromeDownload, ResourceDownload, XMLFormat, CSSFormat, JSONFormat, PlainFormat, NullFormat, DataDownload)
 			self.model = DOMWidgetModel(chrome_dir=self.chrome)
 			
 			self.connections = []
@@ -369,6 +371,9 @@ if __name__ == '__main__':
 		
 		if event.type_ == 'warning':
 			print(event.type_, event.detail)
+		#elif event.type_ == 'opening':
+		#	print("opening:", event.detail)
+		#	return None
 		elif event.type_ == 'open':
 			print("open:", event.detail)
 			target.set_image(target.model.current_document(target))
@@ -377,16 +382,24 @@ if __name__ == '__main__':
 			widget.set_image(None)
 			return None
 		elif event.type_ == 'download':
+			if event.detail.startswith('file:') and not event.detail.startswith('file:///home/haael/Projekty/_desktop/guixmpp/examples/'): # do not allow file access outside the specified directory
+				return False
+			#if not event.detail.startswith('data:'):
+			#	print("download", event.detail)
+			#else:
+			#	print("download", event.detail[:32], "...")
 			#if event.detail.startswith('http:') or event.detail.startswith('https:'):
 			#	return False
 			return True
 		elif event.type_ == 'keydown':
 			if event.code == 'Escape':
 				async with event_lock:
+					print()
 					await widget.close()
 					window.close()
 				return None
 			elif (event.code == 'Left') and images:
+				print()
 				async with event_lock:
 					image_index -= 1
 					image_index %= len(images)
@@ -397,9 +410,11 @@ if __name__ == '__main__':
 						except CancelledError:
 							pass
 					opening_task = create_task(widget.open(images[image_index]))
+					loop_add(opening_task)
 				return None
 			elif (event.code == 'Right') and images:
 				async with event_lock:
+					print()
 					image_index += 1
 					image_index %= len(images)
 					if opening_task and not opening_task.done():
@@ -409,6 +424,7 @@ if __name__ == '__main__':
 						except CancelledError:
 							pass
 					opening_task = create_task(widget.open(images[image_index]))
+					loop_add(opening_task)
 				return None
 		
 		#await target.dispatchEvent(event)

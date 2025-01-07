@@ -6,8 +6,10 @@ __all__ = 'DocumentModel',
 
 
 from collections import defaultdict
-from asyncio import gather, Lock, Event, TaskGroup, CancelledError, to_thread, wait_for
+from asyncio import gather, Lock, Event, TaskGroup, CancelledError, to_thread
 from inspect import isawaitable
+from urllib.parse import urljoin, urlparse
+
 
 if __name__ == '__main__':
 	from guixmpp.domevents import UIEvent, CustomEvent
@@ -41,6 +43,14 @@ def print_call(amethod_old):
 			return  r
 
 	return amethod_new
+
+
+def unique(gen):
+	seen = set()
+	for item in gen:
+		if item not in seen:
+			yield item
+			seen.add(item)
 
 
 class Model:
@@ -143,6 +153,14 @@ class Model:
 	def resolve_url(rel_url, base_url):
 		"Provided the relative url and the base url, return an absolute url."
 		
+		#print("resolve url", base_url, rel_url)
+		
+		#if rel_url.startswith('data:'):
+		#	return rel_url
+		#else:
+		#	return urljoin(base_url, rel_url)
+		
+		#'''
 		if rel_url.startswith('data:'):
 			return rel_url
 		elif ('/' in rel_url) and (':' in rel_url) and (':' in rel_url.split('/')[0]):
@@ -157,6 +175,7 @@ class Model:
 			return '/'.join(base_url.split('/')[:-1]) + '/' + rel_url
 		else:
 			return rel_url
+		#'''
 	
 	def __find_impl(self, method_name, args, kwargs={}):
 		"Call the first method from any of subclasses, in order of their appearance."
@@ -231,7 +250,8 @@ class Model:
 			result = method(self, *args, **kwargs)
 			gens.append(result)
 		
-		await gather(*gens)
+		if gens:
+			await gather(*gens)
 	
 	@staticmethod
 	def __url_root(url):
@@ -292,8 +312,10 @@ class Model:
 			
 			try:
 				if url != '':
+					#print("-- download document", url)
 					data, mime_type = await self.download_document(url)
 				elif view.prop_file:
+					#print("-- read file", url)
 					path = Path(view.prop_file) # load document set through 'set_file'
 					match path.suffix.lower():
 						case '.svg':
@@ -369,7 +391,7 @@ class Model:
 		async with TaskGroup() as group:
 			tasks = []
 			visited = set()
-			for link in self.scan_document_links(document):
+			for link in unique(self.scan_document_links(document)):
 				absurl = self.resolve_url(link, self.__url_root(url))
 				if absurl in self.documents or absurl in visited:
 					continue
@@ -407,7 +429,7 @@ class Model:
 		
 		async with TaskGroup() as group:
 			tasks = []
-			for link in self.scan_document_links(document):
+			for link in unique(self.scan_document_links(document)):
 				if link.startswith('data:'):
 					continue
 				absurl = self.resolve_url(link, url)
@@ -438,12 +460,16 @@ class Model:
 		raise DocumentNotFound(f"No document found for the provided url: `{url}`. Perhaps you forgot to list a download link?")
 	
 	def get_document(self, url):
+		# TODO: use urllib.parse
 		if url.startswith('data:'):
 			return self.get_base_document(url)
 		
 		u = url.split('#')
 		if len(u) > 1:
-			return self.get_document_fragment(self.get_base_document('#'.join(u[:-1])), u[-1])
+			d = self.get_base_document('#'.join(u[:-1]))
+			if d is None:
+				return d
+			return self.get_document_fragment(d, u[-1])
 		else:
 			return self.get_base_document(url)
 	
@@ -457,7 +483,6 @@ class Model:
 		await self.__chain_impl_async('end_downloads', ())
 	
 	async def on_open_document(self, view, document):
-		#print("DOMDocument.on_open_document")
 		await self.__chain_impl_async('on_open_document', (view, document))
 	
 	async def on_close_document(self, view, document):

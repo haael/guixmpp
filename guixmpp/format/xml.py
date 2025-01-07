@@ -11,8 +11,8 @@ if __name__ == '__main__':
 
 
 from io import BytesIO
-from lxml.etree import _ElementTree, ElementBase, fromstring, tostring, XMLParser, ElementDefaultClassLookup, ProcessingInstruction
-from lxml.html import document_fromstring
+from lxml.etree import _ElementTree, ElementBase, fromstring as xml_frombytes, tostring as xml_tounicode, XMLParser, ElementDefaultClassLookup, ProcessingInstruction
+from lxml.html import document_fromstring as html_frombytes
 from collections import defaultdict
 
 
@@ -93,7 +93,7 @@ class XMLDocument(_ElementTree):
 		return reversed(links)
 	
 	def to_bytes(self):
-		return tostring(self)
+		return xml_tounicode(self) # FIXME
 	
 	def getpath(self, node):
 		if hasattr(node, 'path_override'):
@@ -120,16 +120,18 @@ class XMLFormat:
 		self.xml_parser = XMLParser()
 		self.xml_parser.set_element_class_lookup(ElementDefaultClassLookup(element=XMLElement))
 	
-	def xml_fromstring(self, s):
-		return fromstring(s, self.xml_parser)
+	def xml_frombytes(self, s):
+		return xml_frombytes(s, self.xml_parser)
+	
+	def html_frombytes(self, s):
+		return html_frombytes(s)
 	
 	def create_document(self, data:bytes, mime:str):
 		if mime == 'text/xml' or mime == 'application/xml' or mime.endswith('+xml'):
-			document = self.XMLDocument(self.xml_fromstring(data))
+			document = self.XMLDocument(self.xml_frombytes(data))
 			return document
 		elif mime == 'text/x-html-tag-soup':
-			document = self.XMLDocument(document_fromstring(data))
-			#print(tostring(document))
+			document = self.XMLDocument(self.html_frombytes(data))
 			return document
 		else:
 			return NotImplemented
@@ -138,7 +140,7 @@ class XMLFormat:
 		if self.is_xml_document(document):
 			if fileobj == None:
 				fileobj = BytesIO()
-			fileobj.write(tostring(document))
+			fileobj.write(xml_tounicode(document))
 			return fileobj
 		else:
 			return NotImplemented
@@ -195,7 +197,6 @@ if __name__ == '__main__':
 	
 	#d = a.getroot()[2]
 	#e = a.getroot()[3]
-	#OverlayElement()
 	
 	for example in Path('examples').iterdir():
 		if not example.is_dir(): continue

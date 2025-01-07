@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 
-__all__ = 'asynchandler', 'loop_init', 'loop_run', 'loop_quit', 'loop_main'
+__all__ = 'asynchandler', 'loop_init', 'loop_run', 'loop_quit', 'loop_main', 'loop_add'
 
 
 #import gi
@@ -48,10 +48,18 @@ _loop_finished = Event()
 _loop_result = None
 _loop_error = None
 
+
 def _task_done(task):
 	_loop_tasks.discard(task)
 	if _app is not None:
 		_app.release()
+
+
+def loop_add(task):
+	"Adds a task to the loop. The loop will stay alive until all tasks are finished. If the task raises exception, the loop will reraise it from `loop_main()`."
+	_loop_tasks.add(task)
+	task.add_done_callback(_task_done)
+	_task_added.set()
 
 
 def asynchandler(coro):
@@ -64,10 +72,7 @@ def asynchandler(coro):
 			task = create_task(coro(self, *args, **kwargs), name=coro.__name__)
 		except Exception as error:
 			raise RuntimeError(f"Error creating task {coro.__name__}") from error
-		_loop_tasks.add(task)
-		task.add_done_callback(_task_done)
-		#task.add_done_callback(_loop_tasks.discard)
-		_task_added.set()
+		loop_add(task)
 		return task
 	
 	method.__name__ = coro.__name__
@@ -119,7 +124,12 @@ async def loop_run():
 			
 			for task in done:
 				if task != loop_running_task and task != task_added_task:
-					await task
+					try:
+						await task
+					except CancelledError:
+						pass
+					except:
+						raise
 		
 		if task_added_task is not None and not task_added_task.done():
 			task_added_task.cancel()

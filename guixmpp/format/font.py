@@ -88,17 +88,17 @@ class FontDocument:
 
 class FontFormat:
 	__supported = {
-		'font/woff':'woff', 'font/woff2':'woff', 'application/font-woff':'woff', 'application/x-font-woff':'woff',
+		'font/woff':'woff', 'font/woff2':'woff', 'application/font-woff':'woff', 'application/x-font-woff':'woff', 'application/x-woff':'woff',
 		'font/ttf':'ttf', 'font/sfnt':'ttf', 'application/font-sfnt':'ttf', 'application/x-font-sfnt':'ttf', 'application/font-ttf':'ttf', 'application/x-font-ttf':'ttf',
 		'font/otf':'otf'
 	}
 	
 	def __init__(self, *args, font_dir=None, **kwargs):
 		if not font_dir:
-			font_dir = '/tmp/guixmpp-fonts'
+			font_dir = '/tmp/guixmpp-fonts' # FIXME: Remove default and make every instance use separate directory.
 		self.font_dir = font_dir
-		# This method will fetch the config created by PangoCairo.FontMap.new() in DOMWidget
-		self.__config = Config.get_current() # FIXME: find better way to obtain the config
+		# FIXME: This method will fetch the config created by PangoCairo.FontMap.new() in DOMWidget
+		self.__config = Config.get_current() # TODO: Create a new config here and make PangoCairo.FontMap use it.
 		self.__lock = Lock()
 	
 	def create_document(self, data:bytes, mime_type):
@@ -124,6 +124,22 @@ class FontFormat:
 	async def install_font(self, font_doc, font_family):
 		"Install the provided font doc to use under the specified font family."
 		
+		'''
+		Font files have a font family field stored inside and FontConfig uses that field to select faces by name.
+		In contrast, a document may use a different family name and expect the font to be available by that name.
+		For instance, CSS may request a file with font family "file-level-name" and expose it to the document
+		under a different "document-level-name".
+		```
+		@font-face {
+			font-family: "document-level-name"; /* different font name here */
+			src: url("file-level-name.woff") format("woff"); /* different font name stored inside the file */
+		}
+		```
+		We need to download the file, change the font name using FontTools, store it to a file and provide that
+		file path to FontConfig. Then Pango and other libraries that use FontConfig will see the downloaded font
+		under the right name.
+		'''
+		
 		font_family = font_family.replace(':', '_')
 		print("install_font", font_family)
 		
@@ -140,16 +156,16 @@ class FontFormat:
 		src_file_path = font_dir / (font_family + '.' + url_hash + '.' + font_doc.format_)
 		dst_file_path = font_dir / (font_family + '.' + url_hash + '.' + ext)
 		
-		async with self.__lock:
+		async with self.__lock: # Per-document lock for font_dir access.
 			if not await dst_file_path.is_file():			
 				if (src_file_path.is_file == dst_file_path.is_file) or (not await src_file_path.is_file()):
 					font_doc.font_family = font_family # font family inside the font file might be different, so change it
 					await src_file_path.write_bytes(font_doc.data)
 				if font_doc.format_ == 'woff':
 					assert src_file_path != dst_file_path
-					await to_thread(self.__open_fds, str(src_file_path), str(dst_file_path), woff2.decompress)
+					await to_thread(self.__open_fds, str(src_file_path), str(dst_file_path), woff2.decompress) # decompress WOFF font to raw TTF so ttLib can use it
 			
-			await to_thread(self.__config.app_font_add_file, str(dst_file_path))
+			await to_thread(self.__config.app_font_add_file, str(dst_file_path)) # add the newly created font file to fontconfig
 		
 		assert await self.is_font_installed(font_family), f"Failed to install font: {font_family}"
 		print(" font installed:", font_family, font_doc.format_)
@@ -219,4 +235,6 @@ AAA='''
 		assert not query(':family=slick'), "font 'slick' should be uninstalled"
 	
 	run(main())
+
+
 

@@ -15,7 +15,7 @@ _library = environ.get('GUIXMPP_HTTP', '2') # 1, 2, aiohttp, httpx
 
 from hashlib import sha3_256
 from mimetypes import inited as mimetypes_initialized, guess_type, guess_extension
-from asyncio import gather, get_running_loop, to_thread
+from asyncio import gather, get_running_loop, to_thread, Lock
 from time import strftime, gmtime, time as current_time
 
 
@@ -30,7 +30,7 @@ class HTTPDownloadCommon:
 		if not (url.startswith('http:') or url.startswith('https:')):
 			return NotImplemented
 		
-		print("download HTTP document", url)
+		#print("download HTTP document", url)
 		if_modified_since = None
 		cached_file = None
 		
@@ -46,7 +46,7 @@ class HTTPDownloadCommon:
 				btime = s.st_birthtime
 				t = current_time()
 				
-				print("btime:", strftime('%Y-%m-%d %H:%M:%S', gmtime(btime)), "mtime:", strftime('%Y-%m-%d %H:%M:%S', gmtime(mtime)), "fresh:", strftime('%Y-%m-%d %H:%M:%S', gmtime(t - self.http_cache_fresh_time)), "stale:", strftime('%Y-%m-%d %H:%M:%S', gmtime(t - self.http_cache_max_time)))
+				#print("btime:", strftime('%Y-%m-%d %H:%M:%S', gmtime(btime)), "mtime:", strftime('%Y-%m-%d %H:%M:%S', gmtime(mtime)), "fresh:", strftime('%Y-%m-%d %H:%M:%S', gmtime(t - self.http_cache_fresh_time)), "stale:", strftime('%Y-%m-%d %H:%M:%S', gmtime(t - self.http_cache_max_time)))
 				do_request = True
 				if mtime > t - self.http_cache_fresh_time:
 					do_request = False
@@ -85,7 +85,7 @@ class HTTPDownloadCommon:
 			if status == 304: # not modified
 				data = await cached_file.read_bytes()
 			await cached_file.unlink()
-		print(len(data), response_headers)
+		#print(len(data), response_headers)
 		
 		try:
 			content_type = response_headers['content-type'].split(';')[0].strip()
@@ -125,7 +125,7 @@ class HTTPDownloadCommon:
 					mtime = min(t - self.http_cache_fresh_time + max_age, t)
 			
 			if mtime is not None:
-				print("max time:", max_age, "updating timestamp to:", strftime('%Y-%m-%d %H:%M:%S', gmtime(mtime)))
+				#print("max time:", max_age, "updating timestamp to:", strftime('%Y-%m-%d %H:%M:%S', gmtime(mtime)))
 				await to_thread(utime, cached_file, times=(t, mtime))
 		
 		return data, content_type
@@ -155,11 +155,12 @@ if _library in ['1', '2']:
 			"Create client dict. Downloaded will use one connection per host, created on demand."
 			assert not hasattr(self, '_HTTPDownload__client')
 			self.__client = {}
+			self.__connection_create_lock = Lock()
 		
 		async def end_downloads(self):
 			"Close all connections to all hosts."
 			await gather(*[_connection.close() for _connection in self.__client.values()])
-			del self.__client
+			del self.__client, self.__connection_create_lock
 		
 		async def http_download_url(self, url, headers):
 			"Download document using HTTP client implementation provided in this library."
@@ -171,12 +172,14 @@ if _library in ['1', '2']:
 			path = '/'.join(path)
 			
 			if (host in self.__client) and (not self.__client[host].is_eof()):
-				connection = self.__client[host]
+				async with self.__connection_create_lock:
+					connection = self.__client[host]
 			else:
-				if host in self.__client:
-					await self.__client[host].close()
-				connection = self.__client[host] = Connection(f'https://{host}')
-				await connection.open()
+				async with self.__connection_create_lock:
+					if host in self.__client:
+						await self.__client[host].close()
+					connection = self.__client[host] = Connection(f'https://{host}')
+					await connection.open()
 			
 			async with connection.Url(path).get(headers=headers) as request:
 				status, headers = await request.response()

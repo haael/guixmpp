@@ -10,7 +10,7 @@ from math import ceil, sqrt
 import cairo
 from re import split as re_split
 from base64 import b64encode
-import PIL.Image
+#import PIL.Image
 
 
 class PlainFormat:
@@ -19,6 +19,7 @@ class PlainFormat:
 		self.__text_font = 'sans-serif'
 		self.__text_size = 16
 		self.__text_spacing = 4
+		self.__break_height = 18
 	
 	def create_document(self, data:bytes, mime_type):
 		if mime_type == 'text/plain':
@@ -110,12 +111,21 @@ class PlainFormat:
 			lines = []
 			line = []
 			offset = 0
-			for word in re_split(r'[\r\n\t ]+', document):
+			for word in re_split(r"([\r\n\t ]+)", document):
+				if "\n" in word:
+					#if line:
+					lines.append(" ".join(line))
+					line.clear()
+					offset = 0
+					continue
+				elif any(_ch in word for _ch in "\r\n\t "):
+					continue
+				
 				extents = ctx.text_extents(word)
 				offset += extents.x_advance + 4
 				if offset > width:
-					if line:
-						lines.append(" ".join(line))
+					#if line:
+					lines.append(" ".join(line))
 					line.clear()
 					line.append(word)
 					offset = extents.x_advance
@@ -125,24 +135,38 @@ class PlainFormat:
 						offset = 0
 				else:
 					line.append(word)
-			if line:
-				lines.append(" ".join(line))
+			#if line:
+			lines.append(" ".join(line))
 			
 			theight = len(lines) * (self.__text_size + self.__text_spacing)
 			
 			offset = 0
+			#if len(lines) <= 1:
+			#	offset = self.__text_size
+			
 			for line in lines:
 				extents = ctx.text_extents(line)
-				if len(lines) > 1:
-					ctx.move_to(0, offset * ((height - self.__text_size) / theight) + self.__text_size)
-				else:
-					ctx.move_to(0, self.__text_size)
+				#if len(lines) > 1:
+				#	ctx.move_to(0, offset * ((height - self.__text_size) / theight) + self.__text_size)
+				#else:
+				ctx.move_to(0, offset + self.__text_size)
 				ctx.show_text(line)
-				offset += self.__text_size + self.__text_spacing
+				if line:
+					offset += self.__text_size + self.__text_spacing
+				else:
+					offset += self.__break_height
 		
 		elif self.is_binary_document(document):
 			left, top, width, height = box
 			
+			ctx.set_source_rgb(0, 0, 0)
+			ctx.set_font_size(16)
+			ctx.move_to(left, top + height / 2)
+			ctx.text_path("sha-2-256:00000000:00000000:00000000:00000000")
+			ctx.fill()
+			
+			
+			'''
 			data = bytes().join(bytes([0, 0, 0, 0]) if _b & (1 << _c) else bytes([255, 255, 255, 0]) for _c in range(8) for _b in document)
 			h = int(ceil(len(document) / width)) if width > 0 else 0
 			try:
@@ -153,7 +177,9 @@ class PlainFormat:
 			image = cairo.ImageSurface.create_for_data(bytearray(pixels), cairo.FORMAT_RGB24, int(width), h)
 			
 			ctx.set_source_surface(image, 0, 0)
-			ctx.paint()		
+			ctx.paint()
+			'''
+		
 		else:
 			return NotImplemented
 	
@@ -169,17 +195,9 @@ class PlainFormat:
 		"Return text dimensions."
 		
 		if self.is_text_document(document):
-			surface = cairo.RecordingSurface(cairo.Content.COLOR, None)
-			ctx = cairo.Context(surface)
-			ctx.select_font_face(self.__text_font)
-			ctx.set_font_size(self.__text_size)
-			extents = ctx.text_extents(document)
-			return extents.width, self.__text_size + self.__text_spacing
+			return self.get_viewport_width(view), self.get_viewport_height(view)
 		elif self.is_binary_document(document):
-			s = len(document) * 8
-			w = ceil(sqrt(s))
-			h = ceil(s / w) if w > 0 else 0
-			return w, h
+			return 16 * 45 + 2, 16 + 2
 		else:
 			return NotImplemented
 	
@@ -214,22 +232,16 @@ class PlainFormat:
 			return lines * (self.__text_size + self.__text_spacing)
 		
 		elif self.is_binary_document(document):
-			s = len(document) * 8
-			h = ceil(s / width) if width > 0 else 0
-			return h
+			return 16 * 45 + 2
 		
 		else:
 			return NotImplemented
 	
 	def image_width_for_height(self, view, document, height):
 		if self.is_text_document(document):
-			return NotImplemented
-		
+			raise NotImplementedError
 		elif self.is_binary_document(document):
-			s = len(document) * 8
-			w = ceil(s / height) if height > 0 else 0
-			return w
-		
+			return 16 + 2
 		else:
 			return NotImplemented
 

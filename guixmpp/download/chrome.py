@@ -22,11 +22,18 @@ class ChromeDownload:
 	def __init__(self, *args, **kwargs):
 		self.chrome_dir = Path(kwargs.get('chrome_dir', 'chrome'))
 	
+	def __strip_slash(cls, s):
+		z = s.removeprefix("/")
+		if s != z:
+			return cls.__strip_slash(z)
+		else:
+			return z
+	
 	async def download_document(self, url) -> (bytes, str):
 		if not url.startswith('chrome:'):
 			return NotImplemented
 		
-		path = self.chrome_dir / url[9:]
+		path = self.chrome_dir / self.__strip_slash(url[7:])
 		if path.suffix == '.css':
 			mime = 'text/css'
 		elif path.suffix in ('.jpeg', '.jpg'):
@@ -49,10 +56,10 @@ if __debug__ and __name__ == '__main__':
 	async def main():
 		model = ChromeDownload()
 		
-		(await model.download_document('chrome://html.css'))[1] == 'text/css'
+		assert (await model.download_document('chrome:/html.css'))[1] == 'text/css'
 		
 		try:
-			await model.download_document('chrome://nonexistent')
+			await model.download_document('chrome:/nonexistent')
 		except Exception as error:
 			print("Error for nonexistent chrome resource:", error)
 		else:

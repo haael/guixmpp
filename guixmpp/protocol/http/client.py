@@ -4,6 +4,8 @@
 from asyncio import get_running_loop, Event, Lock, wait_for
 from asyncio.exceptions import TimeoutError
 from collections import deque
+from http import HTTPStatus
+
 
 import h11
 import h2.connection
@@ -15,7 +17,15 @@ class ResolveError(Exception):
 
 
 class HTTPError(Exception):
-	pass
+	def __init__(self, status, method, baseurl, path):
+		self.status = status
+		self.method = method
+		self.baseurl = baseurl
+		self.path = path
+		try:
+			super().__init__(HTTPStatus(status).phrase, status, method, baseurl, path)
+		except ValueError:
+			super().__init__(f"Nonstandard HTTP status {status}", status, method, baseurl, path)
 
 
 class Connection:
@@ -27,7 +37,7 @@ class Connection:
 	def __init__(self, baseurl):
 		self.baseurl = baseurl
 		
-		self.protocol, _, self.host, *path = baseurl.split('/')
+		self.protocol, _, self.host, *path = baseurl.split('/') # TODO: use urllib.parse
 		self.path = '/' + '/'.join(path)
 		
 		if ':' in self.host:
@@ -576,8 +586,8 @@ class Request:
 	def raise_for_status(self, status):
 		if 100 <= status <= 399:
 			pass
-		elif 400 <= status <= 599:
-			raise HTTPError(f"HTTP error {status}.", status)
+		else:
+			raise HTTPError(status, self.method, self.client.baseurl, self.path)
 	
 	async def read(self, bufsize=None):
 		"Read response data from server as bytes. Can only be used after calling response()."

@@ -190,7 +190,6 @@ class CSSFormat:
 		return hasattr(document, 'css_tree')
 	
 	def scan_document_links(self, document):
-		#print("css.scan_document_links")
 		if self.is_css_document(document):
 			return chain(
 				document.scan_imports(),
@@ -256,10 +255,29 @@ class CSSFormat:
 		
 		return parse_float(value) * scale + shift
 	
-	def create_css_matcher(self, document, media_test, get_id, get_classes, get_pseudoclasses, pseudoelement_test, default_namespace):
+	def resolve_css_var(self, name, default=None):
+		raise NotImplementedError(f"Resolve var: {name} / {default}")
+	
+	def resolve_css_func(self, name, *args):
+		raise NotImplementedError(f"Resolve func: {name} ( {args} )")
+	
+	def create_css_matcher(self, view, document, media_test, get_id, get_classes, get_pseudoclasses, pseudoelement_test, default_namespace):
 		namespace = ('{' + default_namespace + '}') if default_namespace else ''
 		
 		def walk_node(css_node, args):
+			"""
+			This method accepts a SyntaxTree and a list of processed arguments from recursive application of this method and returns the processed result.
+			If css_node corresponds to a CSS selector (i.e. "div.c > *"), it should return a function that accepts XML node (from lxml.etree) and returns a boolean whether the node matches the selector.
+			If css_node corresponds to a CSS value (like in "attr:value"), it should return a function that accepts a dict and returns the evaluated value as a string. The dict contains CSS vars (like "--custom-var")
+			evaluated for the particular XML node, which may contain values collected from many different scopes.
+			If css_node corresponds to the root of a stylesheet, it shoud return a function that takes an XML node and returns a dict. This dict should contain items: (attr, (priority, value_fn)) where `attr` is
+			the name of the style attribute, `priority` is a priority determined from the specificity of the selector that contained this value and `value_fn` is a function that when given a var dict will return the evaluated value.
+			Returning None means to ignore the node, as it does not produce any value, i.e. remove it from args list.
+			This function is the hot spot of CSS processing so it must be optimized well.
+			"""
+			
+			args = [_arg for _arg in args if _arg is not None]
+			
 			if isinstance(css_node, str):
 				return css_node
 			elif css_node.name == 'path-operator':
@@ -277,43 +295,38 @@ class CSSFormat:
 				return (lambda _xml_node: args[0] in get_classes(_xml_node) if (get_classes is not None) else False), ('class', args[0])
 			elif css_node.name == 'selector-pseudo-class':
 				if args[0] == 'empty':
-					print("Implement pseudoclass: ", args[0])
-					return lambda _xml_node: False
+					return lambda _xml_node: bool([_child for _child in _xml_node if isinstance(_child, str)]) and not bool(_xml_node.text)
 				elif args[0] == 'first-child':
-					print("Implement pseudoclass: ", args[0])
-					return lambda _xml_node: False
+					return lambda _xml_node: _xml_node.getparent()[0] == _xml_node
 				elif args[0] == 'first-of-type':
-					print("Implement pseudoclass: ", args[0])
+					self.emit_warning(view, "Implement pseudoclass: " + str(args[0]), css_node)
 					return lambda _xml_node: False
 				elif args[0] == 'last-child':
-					print("Implement pseudoclass: ", args[0])
-					return lambda _xml_node: False
+					return lambda _xml_node: _xml_node.getparent()[-1] == _xml_node
 				elif args[0] == 'last-of-type':
-					print("Implement pseudoclass: ", args[0])
+					self.emit_warning(view, "Implement pseudoclass: " + str(args[0]), css_node)
 					return lambda _xml_node: False
 				elif args[0] == 'only-child':
-					print("Implement pseudoclass: ", args[0])
-					return lambda _xml_node: False
+					return lambda _xml_node: len(_xml_node.getparent()) == 1
 				elif args[0] == 'only-of-type':
-					print("Implement pseudoclass: ", args[0])
+					self.emit_warning(view, "Implement pseudoclass: " + str(args[0]), css_node)
 					return lambda _xml_node: False
 				elif args[0] == 'root':
-					print("Implement pseudoclass: ", args[0])
-					return lambda _xml_node: False
+					return lambda _xml_node: _xml_node.getroottree().getroot() == _xml_node
 				else:
 					return (lambda _xml_node: (args[0] in get_pseudoclasses(_xml_node)) if (get_pseudoclasses is not None) else False), ('pseudoclass', args[0])
 			elif css_node.name == 'selector-pseudo-class-fn':
 				if args[0] == 'not':
-					print("Implement pseudoclass function: ", args[0])
+					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]), css_node)
 					return lambda _xml_node: False
 				elif args[0] == 'is':
-					print("Implement pseudoclass function: ", args[0])
+					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]), css_node)
 					return lambda _xml_node: False
 				elif args[0] == 'has':
-					print("Implement pseudoclass function: ", args[0])
+					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]), css_node)
 					return lambda _xml_node: False
 				elif args[0] == 'with':
-					print("Implement pseudoclass function: ", args[0])
+					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]), css_node)
 					return lambda _xml_node: False
 				elif args[0] == 'nth-child':
 					
@@ -346,24 +359,23 @@ class CSSFormat:
 								else:
 									cmp = lambda _n: (_n == c)
 							case _:
-								print("Implement pseudoclass function: ", args[0], args[1])
+								self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]) + " " + str(args[1]), css_node)
 					except ValueError:
-						print("Implement pseudoclass function: ", args[0], args[1])
+						self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]) + " " + str(args[1]), css_node)
 					
 					return lambda _xml_node: cmp(_xml_node.getparent().index(_xml_node) + 1)
 				
 				elif args[0] == 'nth-last-child':
-					print("Implement pseudoclass function: ", args[0])
+					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]), css_node)
 					return lambda _xml_node: False
 				elif args[0] == 'nth-last-of-type':
-					print("Implement pseudoclass function: ", args[0])
+					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]), css_node)
 					return lambda _xml_node: False
 				elif args[0] == 'nth-of-type':
-					print("Implement pseudoclass function: ", args[0])
+					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]), css_node)
 					return lambda _xml_node: False
 				else:
-					print("Implement pseudoclass function: ", args[0])
-					return lambda _xml_node: False
+					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]), css_node)
 			elif css_node.name == 'selector-pseudo-element':
 				return lambda _xml_node: pseudoelement_test(_xml_node, args[0]) if (pseudoelement_test is not None) else False
 			elif css_node.name == 'selector-attr':
@@ -380,16 +392,14 @@ class CSSFormat:
 				elif args[1] == '|=':
 					return lambda _xml_node: (args[0] in _xml_node.attrib) and (args[2] == _xml_node.attrib[args[0]] or _xml_node.attrib[args[0]].startswith(args[2] + '-'))
 				else:
-					print("Implement attribute selector operator:", repr(args[1]))
+					self.emit_warning(view, "Implement attribute selector operator " + repr(args[1]), css_node)
 					return lambda _xml_node: False
 			elif css_node.name == 'selector-id':
 				return (lambda _xml_node: args[0] == get_id(_xml_node) if (get_id is not None) else False), ('id', args[0])
 			elif css_node.name == 'selector-percentage': # TODO: keyframes
-				#print("Implement keyframes.")
+				#self.emit_warning(view, "Implement keyframes.", css_node)
 				return lambda _xml_node: False
 			elif css_node.name == 'selector-single':
-				if isinstance(args[-1], StyleNode) and args[-1].name == 'selector-attr-present':
-					del args[-1]
 				assert all(callable(_check) if not isinstance(_check, tuple) else callable(_check[0]) for _check in args), str(args)
 				
 				tag = None
@@ -442,7 +452,7 @@ class CSSFormat:
 						else:
 							return False
 					else:
-						print("Implement path operator:", args[-2])
+						self.emit_warning(view, "Implement path operator: " + str(args[-2]), css_node)
 						return False
 				
 				fargs = [_matcher[0] if isinstance(_matcher, tuple) else _matcher for _matcher in args]
@@ -450,20 +460,26 @@ class CSSFormat:
 				
 				return (lambda _xml_node: check_selector_seq(fargs, _xml_node)), props
 			elif css_node.name == 'function':
-				return args[0] + '(' + ', '.join(args[1]) + ')'
+				assert len(args) == 2
+				return lambda _vars: FuncExpr(args[0], args[1](_vars))
 			elif css_node.name == 'url':
 				assert len(args) == 1
-				return f'url({args[0]})'
+				return lambda _vars: f'url({args[0]})'
 			elif css_node.name == 'arguments':
-				return args
+				return lambda _vars: [_arg(_vars) for _arg in args]
 			elif css_node.name == 'value':
-				return ''.join(args)
+				assert len(args) == 1
+				#assert isinstance(args[0], str), repr(args[0])
+				if isinstance(args[0], str):
+					return lambda _vars: args[0]
+				else:
+					return lambda _vars: args[0](_vars)
 			elif css_node.name == 'values':
-				return ','.join(_arg for _arg in args if isinstance(_arg, str))
+				return lambda _vars: [_arg(_vars) for _arg in args]
 			elif css_node.name == 'rule':
 				return args
 			elif css_node.name == 'rules':
-				return dict((_kv[0], _kv[1:]) for _kv in args)
+				return dict((_kv[0], _kv[1:]) for _kv in args if _kv is not None)
 			elif css_node.name == 'selector':
 				testers = []
 				properties = []
@@ -510,7 +526,7 @@ class CSSFormat:
 								per_pseudoclass[pclass_].add(selector)
 							per_pseudoclass[True].add(selector)
 						
-						per_selector[selector].append((tester, self.css_selector_priority(document, selector), rules))
+						per_selector[selector].append((tester, self.css_selector_priority(view, document, selector), rules))
 						all_selectors.add(selector)
 				
 				def match_selector(xml_node):
@@ -549,30 +565,45 @@ class CSSFormat:
 					
 					return result
 				
-				return match_selector				
+				return match_selector
 			elif css_node.name == 'prelude':
 				return args
 			elif css_node.name == 'atrule-simple':
-				print("atrule-simple", args)
 				return None
 			elif css_node.name == 'atrule-style':
 				if args[0] == 'font-face':
 					return None
-				print("atrule-style", args)
 				return None
 			elif css_node.name == 'atrule-block':
 				if args[0] == 'keyframes':
-					#print("Implement keyframes")
+					#self.emit_warning(view, "Implement keyframes.", css_node)
 					return None
-				print("atrule-block", args)
 				return None
+			elif css_node.name == 'var-decl':
+				assert len(args) == 2
+				return args[0], lambda _vars: args[1](_vars)
+			elif css_node.name == 'var':
+				assert len(args) == 1 or len(args) == 2, str(args)
+				return lambda _vars: _vars.get(*args)
+			elif css_node.name == 'selector-attr-present':
+				return None
+			elif css_node.name == 'infix-operator':
+				return css_node
+			elif css_node.name == 'expression':
+				if len(args) == 3:
+					if args[1].name == 'infix-operator':
+						return lambda _var: [args[1].args[0], [args[0](_var), args[2](_var)]]
+				
+				#raise NotImplementedError(f"Unimplemented CSS expression {css_node}; {args}.")
+				self.emit_warning(view, "Unimplemented CSS expression.", css_node)
 			else:
-				print("Unimplemented CSS css_node:", css_node)
+				#raise NotImplementedError(f"Unimplemented CSS css_node {css_node}; {args}.")
+				self.emit_warning(view, "Unimplemented CSS syntax.", css_node)
 				return css_node
 		
 		return document.traverse(document.css_tree, None, None, walk_node, None)
 	
-	def css_selector_priority(self, document, selector):
+	def css_selector_priority(self, view, document, selector):
 		try:
 			return selector.__cache_selector_priority
 		except AttributeError:
@@ -617,10 +648,10 @@ class CSSFormat:
 						case '+':
 							pri.append(5)
 						case _:
-							print("Implement path operator priority:", arg)
+							self.emit_warning(view, "Implement path operator priority: " + str(arg), node)
 				return sum(pri)
 			else:
-				print("Implement selector priority:", node.name)
+				self.emit_warning(view, "Implement selector priority: " + str(node.name), node)
 				return 0
 		
 		def descend(node):
@@ -634,6 +665,21 @@ class CSSFormat:
 		priority = document.traverse(selector, [], None, walk_node, descend)
 		selector.__cache_selector_priority = priority
 		return priority
+	
+	def eval_css_value(self, value):
+		if not isinstance(value, list):
+			raise TypeError
+		
+		r = []
+		for val in value:
+			if isinstance(val, str):
+				r.append(val)
+			elif isinstance(val, FuncExpr):
+				r.append(val.name + "(" + self.eval_css_value(val.args) + ")")
+			else:
+				raise ValueError(f"{type(val)} {repr(val)}")
+		
+		return ",".join(r)
 
 
 class StyleNode:
@@ -645,6 +691,9 @@ class StyleNode:
 	
 	def __repr__(self):
 		return f"<{self.__class__.__qualname__} {repr(self.name)} @{hex(id(self))}>"
+	
+	def __str__(self):
+		return str(self.name) + "(" + ", ".join(str(_arg) for _arg in self.args) + ")"
 	
 	def __eq__(self, other):
 		try:
@@ -761,9 +810,10 @@ class CSSDocument:
 					node.name == 'atrule-simple',
 					node.args[0] == 'import',
 					node.args[1].name == 'prelude',
-					node.args[1].args[0].name == 'url'
+					node.args[1].args[0].name == 'value',
+					node.args[1].args[0].args[0].name == 'url'
 				]):
-					yield node.args[1].args[0].args[0]
+					yield node.args[1].args[0].args[0].args[0]
 			except (AttributeError, IndexError):
 				pass
 	
@@ -776,8 +826,8 @@ class CSSDocument:
 					for subnode in node.args[2].args:
 						if subnode.name == 'rule' and subnode.args[0] == 'src':
 							for urlnode in subnode.args[1].args:
-								if urlnode.name == 'url':
-									yield urlnode.args[0]
+								if urlnode.name == 'value' and urlnode.args[0].name == 'url':
+									yield urlnode.args[0].args[0]
 			except (AttributeError, IndexError):
 				pass
 	
@@ -787,17 +837,29 @@ class CSSDocument:
 				if node.name == 'atrule-style' and node.args[0] == 'font-face' and node.args[2].name == 'rules':
 					font_family = []
 					font_weight = []
-					props = []
-					for subnode in node.args[2].args:
-						if subnode.name != 'rule':
-							continue
-						elif subnode.args[0] == 'src':
+					srcs = []
+					for subnode1 in node.args[2].args:
+						if subnode1.name != 'rule':
+							continue # warning
+						
+						if subnode1.args[0] == 'src':
 							prop = {}
-							for subnode2 in subnode.args[1].args:
-								if subnode2.name == 'url':
-									prop['url'] = subnode2.args[0]
-								elif subnode2.name == 'function':
-									for value in subnode2.args[1].args:
+							for subnode2 in subnode1.args[1].args:
+								if subnode2.name == 'separator':
+									if prop:
+										srcs.append(prop)
+										prop = {}
+									continue
+								elif subnode2.name != 'value':
+									print('subnode2', subnode2.name, subnode2.args) # warning
+									continue
+								
+								#print("iter", subnode2)
+								subnode3 = subnode2.args[0]
+								if subnode3.name == 'url':
+									prop['url'] = subnode3.args[0]
+								elif subnode3.name == 'function':
+									for value in subnode3.args[1].args:
 										if value.name != 'value': continue
 										
 										for vv in value.args:
@@ -807,17 +869,18 @@ class CSSDocument:
 											if vv[-1] in '\'\"':
 												vv = vv[:-1]
 											
-											prop[subnode2.args[0]] = vv
-								elif subnode2.name == 'separator':
-									if prop:
-										props.append(prop)
-										prop = {}
+											prop[subnode3.args[0]] = vv
+								#elif subnode3.name == 'separator':
+								#	if prop:
+								#		srcs.append(prop)
+								#		prop = {}
 								else:
-									print('subnode2', subnode2.name, subnode2.args) # warning
+									print('subnode3', subnode3.name, subnode3.args) # warning
+							
 							if prop:
-								props.append(prop)
-						elif subnode.args[0] == 'font-family' and subnode.args[1].name == 'values':
-							for value in subnode.args[1].args:
+								srcs.append(prop)
+						elif subnode1.args[0] == 'font-family' and subnode1.args[1].name == 'values':
+							for value in subnode1.args[1].args:
 								if value.name != 'value': continue # warning
 								ff = value.args[0].strip()
 								if ff[0] in '\'\"':
@@ -833,17 +896,16 @@ class CSSDocument:
 					#	font_style.append('normal')
 					
 					for fontspec in product(font_family, font_weight):
-						yield fontspec, props
+						yield fontspec, srcs
 			except (AttributeError, IndexError):
 				pass
-		
+	
 	def scan_urls(self):
 		"Yield all urls in style values."
 		
 		result = []
 		
 		def walk_node(node, ancestors):
-			#print("walk node", ancestors)
 			if ancestors == ['stylesheet', 'style', 'rules', 'rule', 'values', 'url'] and isinstance(node, str):
 				result.append(node)
 			
@@ -852,6 +914,9 @@ class CSSDocument:
 		self.traverse(self.css_tree, [], walk_node, None, None)
 		
 		return result
+	
+	def scan_vars(self):
+		raise NotImplementedError
 
 
 class CSSParser:
@@ -908,7 +973,6 @@ class CSSParser:
 		e = False
 		h = []
 		for c in s:
-			#print("c", c)
 			if e:
 				if c in cls.__hex_digits:
 					h.append(c)
@@ -928,10 +992,9 @@ class CSSParser:
 		
 		if e:
 			r.append(chr(int(''.join(h), 16)))
-		#print("hex escape", s, r)
 		return r
 	
-	LexerContext = Enum('LexerContext', 'comment quote dblquote variable identifier number whitespace hexnumber')
+	LexerContext = Enum('LexerContext', 'comment xmlcomment quote dblquote variable identifier number whitespace hexnumber')
 	
 	def lexer(self, stream):
 		context = None
@@ -941,6 +1004,13 @@ class CSSParser:
 			if context == self.LexerContext.comment:
 				if stream.prefix(2) == '*/':
 					stream.shift(2)
+					context = None
+				else:
+					stream.shift(1)
+			
+			elif context == self.LexerContext.xmlcomment:
+				if stream.prefix(3) == '-->':
+					stream.shift(3)
 					context = None
 				else:
 					stream.shift(1)
@@ -1015,6 +1085,10 @@ class CSSParser:
 			elif stream.prefix(2) == '/*':
 				context = self.LexerContext.comment
 				stream.shift(2)
+			
+			elif stream.prefix(4) == '<!--':
+				context = self.LexerContext.xmlcomment
+				stream.shift(4)
 			
 			elif stream.prefix(1) == '\'':
 				context = self.LexerContext.quote
@@ -1181,7 +1255,6 @@ class CSSParser:
 					pass # warning
 			
 			else:
-				#print("build block", child.args)
 				if child.args[-1].name == self.ParserSymbol.curly:
 					children.append(StyleNode('style', [self.parse_selector(child.args[:-1]), self.build_rules(child.args[-1])]))
 				else:
@@ -1250,37 +1323,29 @@ class CSSParser:
 	
 	def parse_values(self, tokens):
 		self.strip_space(tokens)
-		
 		result = []
 		seq = []
-		for token in tokens + [',']:
-			if token in [' ', ',', '!']:
-				if not seq:
-					pass
-				elif len(seq) == 2 and hasattr(seq[1], 'name') and seq[1].name == self.ParserSymbol.brace:
-					if seq[0] == 'var':
-						result.append(StyleNode('var', seq[1].args))
-					elif seq[0] == 'url':
-						result.append(StyleNode('url', [self.__remove_optional_quotes(''.join(seq[1].args))]))
-					else:
-						result.append(StyleNode('function', [seq[0], self.parse_arguments(seq[0], seq[1].args)]))
-				else:
+		for token in tokens + [None]:
+			if token in [' ', ',', '!', None]:
+				if seq:
 					result.append(self.parse_expression(seq))
-				seq = []
+					seq = []
 				
-				if token == '!':
+				if token is None:
+					pass
+				elif token == '!':
 					seq.append(token)
-				elif token in ',;':
+				elif token in [',', ';']:
 					result.append(StyleNode('separator', token))
-			else:
+			elif token is not None:
 				seq.append(token)
 		
 		assert not seq
 		return StyleNode('values', result)
 	
 	def parse_expression(self, tokens):
+		assert tokens
 		self.strip_space(tokens)
-		
 		op = False
 		
 		result = []
@@ -1289,7 +1354,8 @@ class CSSParser:
 			if token in [' ', '\t', '\r', '\n']:
 				pass
 			elif token in ['+', '-', '*', '/']:
-				result.append(self.parse_expression(ts))
+				if ts:
+					result.append(self.parse_expression(ts))
 				result.append(StyleNode('infix-operator', [token]))
 				ts = []
 				op = True
@@ -1297,11 +1363,14 @@ class CSSParser:
 				ts[-1] = ts[-1] + token
 			elif hasattr(token, 'name') and token.name == self.ParserSymbol.brace and ts:
 				if ts[-1] == 'var':
-					return StyleNode('var', token.args)
+					result.append(StyleNode('var', token.args))
+					del ts[-1]
 				elif ts[-1] == 'url':
 					result.append(StyleNode('url', [self.__remove_optional_quotes(''.join(token.args))]))
+					del ts[-1]
 				else:
-					return StyleNode('function', [ts[-1], self.parse_arguments(ts[-1], token.args)])
+					result.append(StyleNode('function', [ts[-1], self.parse_arguments(ts[-1], token.args)]))
+					del ts[-1]
 			else:
 				ts.append(token)
 		
@@ -1310,8 +1379,6 @@ class CSSParser:
 				result.append(self.parse_expression(ts))
 		else:
 			result = ts
-		
-		#print("css expression", tokens, repr(result))
 		
 		if op:
 			return StyleNode('expression', result)
@@ -1567,10 +1634,15 @@ class CSSParser:
 		if not hasattr(node, 'name'):
 			return node
 		elif node.name == 'function':
-			#print("feature:", node)
 			return node
 		else:
 			return StyleNode(node.name, [self.build_features(_child) for _child in node.args])
+
+
+class FuncExpr:
+	def __init__(self, name, args):
+		self.name = name
+		self.args = args
 
 
 if __name__ == '__main__':
@@ -1582,11 +1654,17 @@ if __name__ == '__main__':
 	
 	print("css format")
 	
-	model = CSSFormat()
+	class CSSFormatPlus(CSSFormat):
+		def emit_warning(self, view, message, node):
+			print(message, node)
+	
+	model = CSSFormatPlus()
+	
+	view = None
 	
 	sample_css = model.create_document(b'''
 	 *.x { tag: '*'; selector: '*'; selector_all: 1 }
-	 a { tag: 'a'; selector: 'a'; selector_a: 2 }
+	 a { tag: 'a'; selector: 1, 2, 3; selector_a: 2 }
 	 /*a * { tag: '*'; selector: 'a *'; selector_a_all: 3 }
 	 a > * { tag: '*'; selector: 'a > *'; selector_a_direct_all: 4 }*/
 	 b { tag: 'b'; selector: 'b'; selector_b: 5 }
@@ -1596,8 +1674,11 @@ if __name__ == '__main__':
 	 d { tag: 'd'; selector: 'd'; selector_d: 9 }
 	 b c { tag: 'c'; selector: 'b c'; selector_b_c: 10 }
 	 b, c { tag: 'b,c'; selector: 'b, c'; selector_b_or_c: 11 }
-
 	''', 'text/css')
+	
+	assert sample_css.is_valid()
+	assert model.is_css_document(sample_css)
+	#sample_css.print_tree()
 	
 	sample_xml = XMLDocument(fromstring(b'''
 	<a>
@@ -1611,11 +1692,17 @@ if __name__ == '__main__':
 	</a>
 	'''))
 	
-	matcher = model.create_css_matcher(sample_css, None, None, None, None, None, None)
+	print()
+	print("matcher")
+	matcher = model.create_css_matcher(view, sample_css, None, None, None, None, None, None)
 	for element in sample_xml.iter():
-		value = matcher(element)
-		print(element, value)
+		values = matcher(element)
+		print(element)
+		for name, (value, priority) in values.items():
+			print("", name, priority, value({}))
 	
+	print()
+	print("vars")
 	tree = model.create_document(b'''
 		:root {
 			--one: '1';
@@ -1624,11 +1711,14 @@ if __name__ == '__main__':
 		}
 		
 		element_1 {
-			prop: var(--one);
+			--five: '5';
+			prop1: var(--one);
+			prop2: var(--five);
 		}
 		
 		element_2 {
-			prop: var(--two);
+			prop1: var(--two);
+			prop2: var(--five);
 		}
 		
 		element_3 {
@@ -1639,28 +1729,201 @@ if __name__ == '__main__':
 			prop: var(--four);
 		}
 	''', 'text/css')
+	
+	assert tree.is_valid()
+	assert model.is_css_document(tree)
+	#tree.print_tree()
+	
+	sample_xml = XMLDocument(fromstring(b'''
+	<root>
+	 <element_1/>
+	 <element_2/>
+	 <element_3/>
+	 <element_4/>
+	</root>
+	'''))
+	
 	for node in tree.scan_syntax_errors():
 		tree.print_css_context(node)
-	assert model.is_css_document(tree)
-	assert tree.is_valid()
+	matcher = model.create_css_matcher(view, tree, None, None, None, None, None, None)
+	for element in sample_xml.iter():
+		values = matcher(element)
+		print(element)
+		for name, (value, priority) in values.items():
+			print("", name, priority, value({'--one':"1", '--two':"2", '--three':"3", '--four':"4", '--five':"5"}))
 	
+	print()
+	print("not")
 	tree = model.create_document(b'''
 		html.html__responsive  *[data-is-here-when]:not([data-is-here-when~="sm"]){display:none}
 	''', 'text/css')
+	assert tree.is_valid()
+	assert model.is_css_document(tree)
+	#tree.print_tree()
+	
 	for node in tree.scan_syntax_errors():
 		tree.print_css_context(node)
-	assert model.is_css_document(tree)
-	assert tree.is_valid()
 	
+	print()
+	print("calc")
+	tree = model.create_document(b'.a { a:a; b:calc(a); c:calc(a*b); d:var(--a); e:calc(var(--a)); f:calc(var(--a)*b);  }', 'text/css')
+	
+	assert tree.is_valid()
+	assert model.is_css_document(tree)
+	#tree.print_tree()
+	
+	sample_xml = XMLDocument(fromstring(b'<root class="a"/>'))
+	for node in tree.scan_syntax_errors():
+		tree.print_css_context(node)
+	matcher = model.create_css_matcher(view, tree, None, None, lambda _node: frozenset(_node.attrib['class'].split(",")), None, None, None)
+	for element in sample_xml.iter():
+		values = matcher(element)
+		print(element)
+		for name, (value, priority) in values.items():
+			print("", name, priority, value({'--a':'va'}))
+	
+	print()
+	print("font-face")
 	tree = model.create_document(b'''
-		.s-editor-resizable{max-height:calc(var(--s-step) * 6);resize:vertical}
+	@font-face
+	{
+		font-family:OpenSans;
+		src:url(/f/open-sans-3/OpenSans-Regular.eot);
+		src:
+			url(/f/open-sans-3/OpenSans-Regular.eot?#iefix) format('embedded-opentype'),
+			url(/f/open-sans-3/OpenSans-Regular.woff2) format('woff2'),
+			url(/f/open-sans-3/OpenSans-Regular.woff) format('woff'),
+			url(/f/open-sans-3/OpenSans-Regular.ttf) format('truetype'),
+			url(/f/open-sans-3/OpenSans-Regular.svg#OpenSansRegular) format('svg');
+		font-weight:400;
+		font-style:normal;
+		font-display:swap
+	}
+	@font-face
+	{
+		font-family:OpenSansSB;
+		src:url(/f/open-sans-3/OpenSans-Semibold.eot);
+		src:
+			url(/f/open-sans-3/OpenSans-Semibold.eot?#iefix) format('embedded-opentype'),
+			url(/f/open-sans-3/OpenSans-Semibold.woff2) format('woff2'),
+			url(/f/open-sans-3/OpenSans-Semibold.woff) format('woff'),
+			url(/f/open-sans-3/OpenSans-Semibold.ttf) format('truetype'),
+			url(/f/open-sans-3/OpenSans-Semibold.svg#OpenSansSemibold) format('svg');
+		font-weight:400;
+		font-style:normal;
+		font-display:swap
+	}
+	@font-face
+	{
+		font-family:OpenSansB;
+		src:url(/f/open-sans-3/OpenSans-Bold.eot);
+		src:
+			url(/f/open-sans-3/OpenSans-Bold.eot?#iefix) format('embedded-opentype'),
+			url(/f/open-sans-3/OpenSans-Bold.woff2) format('woff2'),
+			url(/f/open-sans-3/OpenSans-Bold.woff) format('woff'),
+			url(/f/open-sans-3/OpenSans-Bold.ttf) format('truetype'),
+			url(/f/open-sans-3/OpenSans-Bold.svg#OpenSansBold) format('svg');
+		font-weight:400;
+		font-style:normal;
+		font-display:swap
+	}
+	@font-face
+	{
+		font-family:OpenSansEB;
+		src:url(/f/open-sans-3/OpenSans-ExtraBold.eot);
+		src:
+			url(/f/open-sans-3/OpenSans-ExtraBold.eot?#iefix) format('embedded-opentype'),
+			url(/f/open-sans-3/OpenSans-ExtraBold.woff2) format('woff2'),
+			url(/f/open-sans-3/OpenSans-ExtraBold.woff) format('woff'),
+			url(/f/open-sans-3/OpenSans-ExtraBold.ttf) format('truetype'),
+			url(/f/open-sans-3/OpenSans-ExtraBold.svg#OpenSansExtraBold) format('svg');
+		font-weight:400;
+		font-style:normal;
+		font-display:swap
+	}
+	@font-face
+	{
+		font-family:OpenSansLI;
+		src:url(/f/open-sans-3/OpenSans-LightItalic.eot);
+		src:
+			url(/f/open-sans-3/OpenSans-LightItalic.eot?#iefix) format('embedded-opentype'),
+			url(/f/open-sans-3/OpenSans-LightItalic.woff2) format('woff2'),
+			url(/f/open-sans-3/OpenSans-LightItalic.woff) format('woff'),
+			url(/f/open-sans-3/OpenSans-LightItalic.ttf) format('truetype'),
+			url(/f/open-sans-3/OpenSans-LightItalic.svg#OpenSanslightitalic) format('svg');
+		font-weight:400;
+		font-style:normal;
+		font-display:swap
+	}
+	@font-face
+	{
+		font-family:OpenSansL;
+		src:url(/f/open-sans-3/OpenSans-Light.eot);
+		src:
+			url(/f/open-sans-3/OpenSans-Light.eot?#iefix) format('embedded-opentype'),
+			url(/f/open-sans-3/OpenSans-Light.woff2) format('woff2'),
+			url(/f/open-sans-3/OpenSans-Light.woff) format('woff'),
+			url(/f/open-sans-3/OpenSans-Light.ttf) format('truetype'),
+			url(/f/open-sans-3/OpenSans-Light.svg#OpenSanslight) format('svg');
+		font-weight:400;
+		font-style:normal;
+		font-display:swap
+	}
+	body,html { background-color:#fff; color:#1e1f23; font-family:OpenSans,Arial,sans-serif; font-size:16px }
 	''', 'text/css')
-	#model.print_css_tree(tree)
+	
+	assert tree.is_valid()
+	assert model.is_css_document(tree)
+	#tree.print_tree()
+	
 	for node in tree.scan_syntax_errors():
 		tree.print_css_context(node)
-	assert model.is_css_document(tree)
-	assert tree.is_valid()
+	for (name, type_), srcs in tree.scan_font_faces():
+		print(name, type_)
+		for src in srcs:
+			print("src:", src)
+	print("font urls:", list(tree.scan_fonts()))
+	#m = model.create_css_matcher(tree, None, None, None, None, None, None)
 	
+	#print(m())
+	
+	print()
+	print("url")
+	tree = model.create_document(b'''
+@import
+  url(http://fonts.googleapis.com/css?family=Miltonian+Tattoo); 
+
+        svg {
+            font-family: "Miltonian Tattoo", serif;
+            font-size: 18pt;
+        }
+        .verse {
+            fill: darkGreen;
+            stroke: #031;
+            word-spacing: 2px;                             
+        }
+        .verse > tspan:nth-child(2n) {                     
+            fill: navy;
+            stroke: #013;
+        }
+	''', 'text/css')
+	
+	assert tree.is_valid()
+	assert model.is_css_document(tree)
+	tree.print_tree()
+	
+	for node in tree.scan_syntax_errors():
+		tree.print_css_context(node)
+	for (name, type_), srcs in tree.scan_font_faces():
+		print(name, type_)
+		for src in srcs:
+			print("src:", src)
+	print("import urls:", list(tree.scan_imports()))
+	#m = model.create_css_matcher(tree, None, None, None, None, None, None)
+
+	
+	print()
+	print("examples")
 	for example in Path('examples').iterdir():
 		if not example.is_dir(): continue
 		for cssfile in example.iterdir():
@@ -1676,6 +1939,10 @@ if __name__ == '__main__':
 			assert model.is_css_document(tree)
 			assert tree.is_valid()
 			#print(list(model.scan_document_links(tree)))
-			print(dict(tree.scan_font_faces()))
-
+			for (name, type_), srcs in tree.scan_font_faces():
+				print(name, type_)
+				for src in srcs:
+					print("src:", src)
+			print("font urls:", list(tree.scan_fonts()))
+			
 			#profiler.done()
