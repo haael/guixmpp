@@ -847,6 +847,9 @@ class HTMLRender:
 				color = self.__get_attribute(view, document, element, pseudoelement, color_attr, default_color).strip()
 			target = target.getparent()
 		
+		if color == 'currentColor' or color == 'inherit': # FIXME: workaround, delete it
+			color = default_color
+		
 		assert color != 'currentColor' and color != 'inherit'
 		
 		try:
@@ -1043,16 +1046,8 @@ class HTMLRender:
 		for stylesheet in stylesheets:
 			if stylesheet not in self.__css_matcher:
 				self.__css_matcher[stylesheet] = self.create_css_matcher(view, stylesheet, (lambda _media: self.__media_test(view, _media)), self.__get_id, self.__get_classes, (lambda _node: self.__get_pseudoclasses(view, _node)), None, self.__xmlns(document))
+			
 			css_attrs = self.__css_matcher[stylesheet](node)
-			
-			#if node.tag == '{http://www.w3.org/1999/xhtml}body':
-			#	print("", css_attrs, stylesheet)
-
-			#if css_attrs:
-			#	print("search_attribute", node.tag, pseudoelement, attr)
-			#	print("", css_attrs)
-			
-			#css_attrs = stylesheet.match_element(document, node, (lambda _media: self.__media_test(view, _media)), self.__get_id, self.__get_classes, (lambda _node: self.__get_pseudoclasses(view, _node)), self.__pseudoelement_test)
 			if attr in css_attrs:
 				value, priority = css_attrs[attr]
 				if css_priority == None or priority >= css_priority:

@@ -317,16 +317,16 @@ class CSSFormat:
 					return (lambda _xml_node: (args[0] in get_pseudoclasses(_xml_node)) if (get_pseudoclasses is not None) else False), ('pseudoclass', args[0])
 			elif css_node.name == 'selector-pseudo-class-fn':
 				if args[0] == 'not':
-					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]), css_node)
+					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]) + ".", css_node)
 					return lambda _xml_node: False
 				elif args[0] == 'is':
-					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]), css_node)
+					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]) + ".", css_node)
 					return lambda _xml_node: False
 				elif args[0] == 'has':
-					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]), css_node)
+					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]) + ".", css_node)
 					return lambda _xml_node: False
 				elif args[0] == 'with':
-					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]), css_node)
+					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]) + ".", css_node)
 					return lambda _xml_node: False
 				elif args[0] == 'nth-child':
 					
@@ -359,23 +359,23 @@ class CSSFormat:
 								else:
 									cmp = lambda _n: (_n == c)
 							case _:
-								self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]) + " " + str(args[1]), css_node)
+								self.emit_warning(view, "Unknown format of nth child spec: " + str(args[0]) + ", " + str(args[1]) + ".", css_node)
 					except ValueError:
-						self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]) + " " + str(args[1]), css_node)
+						self.emit_warning(view, "Unknown format of nth child spec: " + str(args[0]) + ", " + str(args[1]) + ".", css_node)
 					
 					return lambda _xml_node: cmp(_xml_node.getparent().index(_xml_node) + 1)
 				
 				elif args[0] == 'nth-last-child':
-					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]), css_node)
+					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]) + ".", css_node)
 					return lambda _xml_node: False
 				elif args[0] == 'nth-last-of-type':
-					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]), css_node)
+					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]) + ".", css_node)
 					return lambda _xml_node: False
 				elif args[0] == 'nth-of-type':
-					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]), css_node)
+					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]) + ".", css_node)
 					return lambda _xml_node: False
 				else:
-					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]), css_node)
+					self.emit_warning(view, "Implement pseudoclass function: " + str(args[0]) + ".", css_node)
 			elif css_node.name == 'selector-pseudo-element':
 				return lambda _xml_node: pseudoelement_test(_xml_node, args[0]) if (pseudoelement_test is not None) else False
 			elif css_node.name == 'selector-attr':
@@ -467,6 +467,8 @@ class CSSFormat:
 				return lambda _vars: f'url({args[0]})'
 			elif css_node.name == 'arguments':
 				return lambda _vars: [_arg(_vars) for _arg in args]
+			elif css_node.name == 'selector-function-arguments':
+				return args
 			elif css_node.name == 'value':
 				assert len(args) == 1
 				#assert isinstance(args[0], str), repr(args[0])
@@ -474,6 +476,8 @@ class CSSFormat:
 					return lambda _vars: args[0]
 				else:
 					return lambda _vars: args[0](_vars)
+			elif css_node.name == 'multivalue':
+				return lambda _vars: [_arg if isinstance(_arg, str) else _arg(_vars) for _arg in args]
 			elif css_node.name == 'values':
 				return lambda _vars: [_arg(_vars) for _arg in args]
 			elif css_node.name == 'rule':
@@ -584,7 +588,15 @@ class CSSFormat:
 				return args[0], lambda _vars: args[1](_vars)
 			elif css_node.name == 'var':
 				assert len(args) == 1 or len(args) == 2, str(args)
-				return lambda _vars: _vars.get(*args)
+				def get_arg(_vars):
+					try:
+						return _vars[args[0]]
+					except KeyError:
+						if len(args) == 2:
+							return args[1]
+						else:
+							return ''
+				return get_arg
 			elif css_node.name == 'selector-attr-present':
 				return None
 			elif css_node.name == 'infix-operator':
@@ -594,12 +606,10 @@ class CSSFormat:
 					if args[1].name == 'infix-operator':
 						return lambda _var: [args[1].args[0], [args[0](_var), args[2](_var)]]
 				
-				#raise NotImplementedError(f"Unimplemented CSS expression {css_node}; {args}.")
-				self.emit_warning(view, "Unimplemented CSS expression.", css_node)
+				self.emit_warning(view, f"Unimplemented CSS expression: {args}.", css_node)
 			else:
-				#raise NotImplementedError(f"Unimplemented CSS css_node {css_node}; {args}.")
-				self.emit_warning(view, "Unimplemented CSS syntax.", css_node)
-				return css_node
+				self.emit_warning(view, f"Unimplemented CSS syntax: {css_node.name}.", css_node)
+				#return css_node
 		
 		return document.traverse(document.css_tree, None, None, walk_node, None)
 	
@@ -1363,13 +1373,19 @@ class CSSParser:
 				ts[-1] = ts[-1] + token
 			elif hasattr(token, 'name') and token.name == self.ParserSymbol.brace and ts:
 				if ts[-1] == 'var':
-					result.append(StyleNode('var', token.args))
+					if ',' in token.args:
+						c = token.args.index(',')
+						assert c == 1 # warning
+						args = self.parse_arguments(token.args[c + 1:])
+						result.append(StyleNode('var', [token.args[0], args]))
+					else:
+						result.append(StyleNode('var', token.args))
 					del ts[-1]
 				elif ts[-1] == 'url':
 					result.append(StyleNode('url', [self.__remove_optional_quotes(''.join(token.args))]))
 					del ts[-1]
 				else:
-					result.append(StyleNode('function', [ts[-1], self.parse_arguments(ts[-1], token.args)]))
+					result.append(StyleNode('function', [ts[-1], self.parse_arguments(token.args)]))
 					del ts[-1]
 			else:
 				ts.append(token)
@@ -1391,7 +1407,7 @@ class CSSParser:
 		else:
 			return StyleNode('multivalue', result)
 	
-	def parse_arguments(self, name, tokens):
+	def parse_arguments(self, tokens):
 		result = []
 		ts = []
 		for token in tokens:
@@ -1626,9 +1642,9 @@ class CSSParser:
 	def parse_selector_function_args(self, name, tokens):
 		if name in [':is', ':has', ':with', ':not']:
 			node = self.parse_selector_seq(tokens)
-			return StyleNode('arguments', node.args)
+			return StyleNode('selector-function-arguments', node.args)
 		else: # TODO
-			return StyleNode('arguments', tokens)
+			return StyleNode('selector-function-arguments', tokens)
 	
 	def build_features(self, node):
 		if not hasattr(node, 'name'):
