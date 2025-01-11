@@ -163,14 +163,7 @@ class SVGRender:
 	
 	def __stylesheets(self, document):
 		myurl = self.get_document_url(document)
-		
-		for link in document.scan_stylesheets():
-			absurl = self.resolve_url(link, myurl)
-			doc = self.get_document(absurl)
-			if self.is_css_document(doc):
-				yield doc
-		
-		for link in self.__data_internal_links(self.__style_tags(document)):
+		for link in chain(document.scan_stylesheets(), self.__data_internal_links(self.__style_tags(document))):
 			absurl = self.resolve_url(link, myurl)
 			doc = self.get_document(absurl)
 			if self.is_css_document(doc):

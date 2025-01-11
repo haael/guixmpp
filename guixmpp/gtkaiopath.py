@@ -360,7 +360,7 @@ class Path(pathlib.Path, pathlib.PurePosixPath):
 		enumerator = await self.__enumerate_children(Gio.File.new_for_path(str(self)), Gio.FILE_ATTRIBUTE_STANDARD_NAME, 0)
 		something = True
 		while something:
-			file_list = await self.__next_files(enumerator, 4) # read 4 items at once
+			file_list = await self.__next_files(enumerator, 10) # read 10 items at once; TODO: make it configurable, smaller for USB/network reads to improve latency, large for local SSD reads to improve speed
 			something = False
 			for f in file_list:
 				something = True
