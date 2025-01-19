@@ -570,7 +570,7 @@ class Path(pathlib.Path, pathlib.PurePosixPath):
 		await f.close()
 
 
-if __name__ == '__main__':
+if __debug__ and __name__ == '__main__':
 	from guixmpp.gtkaio import GtkAioEventLoopPolicy
 	from asyncio import set_event_loop_policy, run
 	

@@ -8,7 +8,7 @@ behave as it had await inside.)
 
 import gi
 if __name__ == '__main__':
-	#gi.require_version('Gtk', '4.0')
+	#gi.require_version('Gtk', '3.0')
 	gi.require_version('GLib', '2.0')
 	gi.require_version('Gio', '2.0')
 from gi.repository import GLib, Gio
@@ -21,7 +21,6 @@ from asyncio import Future, Task, iscoroutine, gather, wrap_future, wait_for, Ev
 from asyncio.tasks import current_task
 from asyncio.events import _set_running_loop, Handle, TimerHandle
 from asyncio.subprocess import PIPE, STDOUT, DEVNULL
-from asyncio.streams import FlowControlMixin, StreamReaderProtocol, _DEFAULT_LIMIT as DEFAULT_READER_LIMIT
 from asyncio.exceptions import InvalidStateError
 
 import socket
@@ -60,6 +59,17 @@ def _ret_false(old_fun):
 	return new_fun
 
 
+def idle_add(fun, *args):
+	GLib.idle_add(_ret_false(fun), *args)
+	
+	#def _debug(*args):
+	#	print("Running:", fun, *args)
+	#	fun(*args)
+	#	return False
+	#print("Scheduling:", GLib.main_depth(), fun, *args)
+	#GLib.idle_add(_debug, *args)
+
+
 class AllConnectionAttemptsFailedError(ExceptionGroup):
 	pass
 
@@ -76,8 +86,10 @@ class BaseTransport(asyncio.transports.BaseTransport):
 		self.transport_closed = Event()
 	
 	def __del__(self):
-		self.watch_in(False)
-		self.watch_out(False)
+		if hasattr(self, '_BaseTransport__watch_in'):
+			self.watch_in(False)
+		if hasattr(self, '_BaseTransport__watch_out'):
+			self.watch_out(False)
 	
 	def watching_in(self):
 		return self.__watch_in is not None
@@ -129,14 +141,14 @@ class BaseTransport(asyncio.transports.BaseTransport):
 			if self.__protocol is not None:
 				_debug_transports(' error_received', self.__protocol)
 				if hasattr(self.__protocol, 'error_received'):
-					GLib.idle_add(_ret_false(self.__protocol.error_received), None)
+					idle_add(self.__protocol.error_received, None)
 		
 		if result is True: # keep receiving events
 			return True
 		elif result is False: # stop receiving events
 			if self.__protocol:
 				_debug_transports(' connection_lost', self.__protocol)
-				GLib.idle_add(_ret_false(self.__protocol.connection_lost), None)
+				idle_add(self.__protocol.connection_lost, None)
 				self.__protocol = None
 			self.__watch_in = None
 			return False
@@ -191,7 +203,7 @@ class BaseTransport(asyncio.transports.BaseTransport):
 		self.watch_out(False)
 		
 		if self.__protocol is not None:
-			GLib.idle_add(_ret_false(self.__protocol.connection_lost), None)
+			idle_add(self.__protocol.connection_lost, None)
 			self.__protocol = None
 		
 		self.__closing = False
@@ -260,7 +272,7 @@ class BaseTransport(asyncio.transports.BaseTransport):
 	def set_protocol(self, protocol):
 		self.__protocol = protocol
 	
-	def start(self):
+	async def start(self):
 		_debug_transports('BaseTransport.start', hex(id(self))[2:])
 		
 		protocol = self.get_protocol()
@@ -373,10 +385,10 @@ class UDPTransport(NetworkTransport, asyncio.transports.DatagramTransport):
 				break
 			except Exception as error:
 				if protocol is not None and hasattr(protocol, 'error_received'):
-					GLib.idle_add(_ret_false(protocol.error_received), error)
+					idle_add(protocol.error_received, error)
 			else:
 				if protocol is not None:
-					GLib.idle_add(_ret_false(protocol.datagram_received), data, addr)
+					idle_add(protocol.datagram_received, data, addr)
 		
 		return True
 	
@@ -395,7 +407,7 @@ class UDPTransport(NetworkTransport, asyncio.transports.DatagramTransport):
 		except Exception as error:
 			protocol = self.get_protocol()
 			if protocol is not None and hasattr(protocol, 'error_received'):
-				GLib.idle_add(_ret_false(protocol.error_received), error)
+				idle_add(protocol.error_received, error)
 
 
 class ReadTransport(BaseTransport, asyncio.transports.ReadTransport):
@@ -403,7 +415,7 @@ class ReadTransport(BaseTransport, asyncio.transports.ReadTransport):
 		_debug_transports('ReadTransport.__init__', hex(id(self))[2:])
 	
 	def _data_in(self, channel):
-		_debug_transports('NetworkTransport._data_in', hex(id(self))[2:], channel)
+		_debug_transports('ReadTransport._data_in', hex(id(self))[2:], channel)
 		
 		sock = self.get_extra_info('read_endpoint')
 		if not sock:
@@ -420,12 +432,12 @@ class ReadTransport(BaseTransport, asyncio.transports.ReadTransport):
 				return True
 			else:
 				if data:
-					_debug_transports(' data_received', len(data))
-					GLib.idle_add(_ret_false(protocol.data_received), data)
+					_debug_transports(' data_received', len(data), repr(data) if len(data) < 10 else "")
+					idle_add(protocol.data_received, data)
 				else:
 					_debug_transports(' eof_received')
 					if hasattr(protocol, 'eof_received'):
-						GLib.idle_add(_ret_false(protocol.eof_received))
+						idle_add(protocol.eof_received)
 					return False
 		
 		return True
@@ -457,6 +469,8 @@ class WriteTransport(BaseTransport, asyncio.transports.WriteTransport):
 		self.__write_buffer = deque()
 		self.__writing = True
 		self.write_buffer_empty = Event()
+		self.write_buffer_empty.set() # empty by default
+		self.__closing = False
 	
 	def _data_out(self, channel):
 		_debug_transports('WriteTransport._data_out', hex(id(self))[2:], channel)
@@ -481,7 +495,11 @@ class WriteTransport(BaseTransport, asyncio.transports.WriteTransport):
 				self.__writing = True
 				protocol.resume_writing()
 		
-		if not self.__write_buffer: self.write_buffer_empty.set()
+		if not self.__write_buffer:
+			_debug_transports('WriteTransport._data_out (write_buffer_empty=True)', hex(id(self))[2:], channel)
+			if self.__closing:
+				super().close()
+			self.write_buffer_empty.set()
 		return bool(self.__write_buffer)
 	
 	def set_write_buffer_limits(self, high=None, low=None):
@@ -537,7 +555,12 @@ class WriteTransport(BaseTransport, asyncio.transports.WriteTransport):
 		
 		_debug_transports('WriteTransport.write', hex(id(self))[2:], len(data))
 		
-		if data: self.write_buffer_empty.clear()
+		if self.__closing:
+			raise RuntimeError("Transport closed.")
+		
+		if data:
+			_debug_transports('WriteTransport.write (write_buffer_empty=False)', hex(id(self))[2:], len(data))
+			self.write_buffer_empty.clear()
 		self.__write_buffer.append(data)
 		if self.__writing:
 			if self.get_write_buffer_size() > self.__write_high:
@@ -563,11 +586,24 @@ class WriteTransport(BaseTransport, asyncio.transports.WriteTransport):
 		(This is like typing ^D into a UNIX program reading from stdin.)
 		Data may still be received.
 		"""
-		raise NotImplementedError("write_eof")
+		self.close()
 	
 	def can_write_eof(self):
 		"""Return True if this transport supports write_eof(), False if not."""
-		raise NotImplementedError("can_write_eof")
+		return True
+	
+	def abort(self):
+		self.write_buffer_empty.clear()
+		self.__write_buffer.clear()
+		self.__closing = False
+		super().abort()
+		self.write_buffer_empty.set()
+	
+	def close(self):
+		if self.__closing: return
+		self.__closing = True
+		if not self.__write_buffer:
+			super().close()
 
 
 class TCPTransport(NetworkTransport, ReadTransport, WriteTransport, asyncio.transports.Transport):
@@ -644,7 +680,7 @@ class SSLTransport(TCPTransport):
 				if (protocol := self.get_protocol()) is not None:
 					_debug_transports(' SSL EOF', protocol)
 					if hasattr(protocol, 'eof_received'):
-						GLib.idle_add(_ret_false(protocol.eof_received))
+						idle_add(protocol.eof_received)
 				return None
 	
 	def _data_in(self, channel):
@@ -660,13 +696,14 @@ class SSLTransport(TCPTransport):
 				if (protocol := self.get_protocol()) is not None:
 					_debug_transports(' SSL exception', protocol)
 					if hasattr(protocol, 'error_received'):
-						GLib.idle_add(_ret_false(protocol.error_received), error)
+						idle_add(protocol.error_received, error)
 				return None
 
 
 class GioStreamTransport:
 	def __init__(self, stream):
 		_debug_transports('GioStreamTransport.__init__', hex(id(self))[2:])
+		#print(type(stream), stream.get_fd.__doc__)
 		fd = stream.get_fd()
 		set_blocking(fd, False)
 		channel = GLib.IOChannel.unix_new(fd)
@@ -675,10 +712,16 @@ class GioStreamTransport:
 	
 	def _read_raw(self):
 		stream = self.get_extra_info('read_endpoint')
+		assert stream.can_poll()
+		if not stream.is_readable():
+			raise BlockingIOError
 		return stream.read_bytes(4096, None).get_data()
 	
 	def _write_raw(self, data):
 		stream = self.get_extra_info('write_endpoint')
+		assert stream.can_poll()
+		if not stream.is_writable():
+			raise BlockingIOError
 		return stream.write(data)
 
 
@@ -697,7 +740,7 @@ class OutputStreamTransport(GioStreamTransport, WriteTransport):
 		GioStreamTransport.__init__(self, stream)
 		WriteTransport.__init__(self)
 	
-	def start(self):
+	async def start(self):
 		_debug_transports('InputStreamTransport.start', hex(id(self))[2:])
 		
 		protocol = self.get_protocol()
@@ -710,6 +753,7 @@ class SubprocessTransport(BaseTransport, asyncio.transports.SubprocessTransport)
 		def __init__(self, pipe_fd, subprocess_transport):
 			self.pipe_fd = pipe_fd
 			self.subprocess_transport = subprocess_transport
+			self._stream_reader = None
 		
 		def connection_made(self, pipe_transport):
 			_debug_transports('SubprocessTransport.ReaderProtocol.connection_made', hex(id(self))[2:], pipe_transport)
@@ -722,8 +766,12 @@ class SubprocessTransport(BaseTransport, asyncio.transports.SubprocessTransport)
 			
 			assert protocol._transport is not None, repr(protocol) + "@" + hex(id(protocol))[2:]
 			
-			_debug_transports(' pipe_connection_lost', hex(id(self))[2:], self.pipe_fd, reason, protocol)
-			protocol.pipe_connection_lost(self.pipe_fd, reason)
+			if self._stream_reader is not None:
+				_debug_transports(' forwarding connection lost', self.pipe_fd)
+				self._stream_reader.feed_eof()
+			else:
+				_debug_transports(' pipe_connection_lost', hex(id(self))[2:], self.pipe_fd, reason, protocol)
+				protocol.pipe_connection_lost(self.pipe_fd, reason)
 		
 		def data_received(self, data):
 			_debug_transports('SubprocessTransport.ReaderProtocol.data_received', hex(id(self))[2:], len(data))
@@ -731,13 +779,21 @@ class SubprocessTransport(BaseTransport, asyncio.transports.SubprocessTransport)
 			if protocol is None:
 				return
 			
-			_debug_transports(' pipe_data_received', hex(id(self))[2:], self.pipe_fd, len(data), protocol)
-			protocol.pipe_data_received(self.pipe_fd, data)
+			if self._stream_reader is not None:
+				_debug_transports(' forwarding data', self.pipe_fd, len(data))
+				self._stream_reader.feed_data(data)
+			else:
+				_debug_transports(' pipe_data_received', hex(id(self))[2:], self.pipe_fd, len(data), protocol)
+				protocol.pipe_data_received(self.pipe_fd, data)
 	
 	class WriterProtocol:
 		def __init__(self, pipe_fd, subprocess_transport):
 			self.pipe_fd = pipe_fd
 			self.subprocess_transport = subprocess_transport
+			self._stream_writer = None
+		
+		async def _drain_helper(self):
+			pass # TODO: poll the fd to check if writing blocks
 		
 		def connection_made(self, pipe_transport):
 			_debug_transports('SubprocessTransport.WriterProtocol.connection_made', hex(id(self))[2:], pipe_transport)
@@ -750,14 +806,18 @@ class SubprocessTransport(BaseTransport, asyncio.transports.SubprocessTransport)
 			
 			assert protocol._transport is not None, repr(protocol) + "@" + hex(id(protocol))[2:]
 			
-			_debug_transports(' pipe_connection_lost', hex(id(self))[2:], self.pipe_fd, reason, protocol)
-			protocol.pipe_connection_lost(self.pipe_fd, reason)
+			if self._stream_writer is not None:
+				pass
+				#_debug_transports(' forwarding connection lost', self.pipe_fd)
+				#self._stream_writer.feed_eof()
+			else:
+				_debug_transports(' pipe_connection_lost', hex(id(self))[2:], self.pipe_fd, reason, protocol)
+				protocol.pipe_connection_lost(self.pipe_fd, reason)
 	
 	def __init__(self, cmd, stdin, stdout, stderr, pass_fds=(), loop=None, **kwargs):
 		_debug_transports('SubprocessTransport.__init__', hex(id(self))[2:], cmd)
 		
-		if loop is None:
-			loop = get_running_loop()
+		self.__loop = loop
 		
 		self.__returncode = None
 		self.__finished = Event()
@@ -804,7 +864,7 @@ class SubprocessTransport(BaseTransport, asyncio.transports.SubprocessTransport)
 		else:
 			raise ValueError("Invalid value for stderr pipe.")
 		
-		launcher = Gio.SubprocessLauncher.new(flags)
+		launcher = self.__launcher = Gio.SubprocessLauncher.new(flags)
 		
 		if isinstance(stdin, int):
 			launcher.take_stdin_fd(stdin)
@@ -814,24 +874,16 @@ class SubprocessTransport(BaseTransport, asyncio.transports.SubprocessTransport)
 			launcher.take_stderr_fd(stderr)
 		
 		for fd in pass_fds:
-			launcher.take_fd(fd)
+			launcher.take_fd(fd, fd)
 		
-		self.__child = child = launcher.spawnv(cmd)
-		self.__pid = int(child.get_identifier())
-		GLib.child_watch_add(self.__pid, self.__child_exit)
+		self.__cmd = cmd
 		
-		if stdin_pipe := child.get_stdin_pipe():
-			self.__pipe[0], _ = loop.connect_write_pipe(lambda: self.WriterProtocol(0, self), stdin_pipe)
-		if stdout_pipe := child.get_stdout_pipe():
-			self.__pipe[1], _ = loop.connect_read_pipe(lambda: self.ReaderProtocol(1, self), stdout_pipe)
-		if stderr_pipe := child.get_stderr_pipe():
-			self.__pipe[2], _ = loop.connect_read_pipe(lambda: self.ReaderProtocol(2, self), stderr_pipe)
-		
-		super().__init__(child, None)
+		super().__init__(None, None)
 	
 	def __child_exit(self, pid, status):
 		_debug_transports('SubprocessTransport.__child_exit', hex(id(self))[2:], pid, status)
 		self.__returncode = status
+		self.__finished.set()
 		
 		protocol = self.get_protocol()
 		if not protocol:
@@ -839,19 +891,46 @@ class SubprocessTransport(BaseTransport, asyncio.transports.SubprocessTransport)
 		
 		_debug_transports(' process_exited', protocol)
 		protocol.process_exited()
-		self.__finished.set()
 	
 	def __writer_drain_helper(self, protocol, orig_drain_helper):
 		"Original drain() waits only for flow control commands. Wait also for stdin write buffer to empty."
 		async def _drain_helper():
 			_debug_transports(' _drain_helper', protocol)
+			_debug_transports(' _drain_helper.1', protocol)
 			await orig_drain_helper()
+			_debug_transports(' _drain_helper.2', protocol)
 			if stdin := self.get_pipe_transport(0):
+				_debug_transports(' _drain_helper.3', protocol)
 				await stdin.write_buffer_empty.wait()
+				_debug_transports(' _drain_helper.4', protocol)
+			_debug_transports(' _drain_helper.5', protocol)
 		return _drain_helper()
 	
-	def start(self):
+	def register_pipe_transport(self, fd, transport):
+		self.__pipe[fd] = transport
+	
+	async def start(self):
 		_debug_transports('SubprocessTransport.start', hex(id(self))[2:])
+		
+		loop = self.__loop
+		if loop is None:
+			loop = get_running_loop()
+		
+		self._BaseTransport__endpoint = self.__child = child = self.__launcher.spawnv(self.__cmd)
+		del self.__launcher
+		self.__pid = int(child.get_identifier())
+		GLib.child_watch_add(self.__pid, self.__child_exit)
+		
+		if stdin_pipe := child.get_stdin_pipe():
+			transport, _ = await loop.connect_write_pipe(lambda: self.WriterProtocol(0, self), stdin_pipe)
+			self.register_pipe_transport(0, transport)
+		if stdout_pipe := child.get_stdout_pipe():
+			transport, _ = await loop.connect_read_pipe(lambda: self.ReaderProtocol(1, self), stdout_pipe)
+			self.register_pipe_transport(1, transport)
+		if stderr_pipe := child.get_stderr_pipe():
+			transport, _ = await loop.connect_read_pipe(lambda: self.ReaderProtocol(2, self), stderr_pipe)
+			self.register_pipe_transport(2, transport)
+		
 		protocol = self.get_protocol()
 		if not protocol:
 			return
@@ -963,14 +1042,14 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		self.__use_app = (self.__app is not None) and (not special_method)
 		if iscoroutine(future):
 			_debug_tasks('create_task', future)
-			future = self.create_task(future)
+			future = self.create_task(future, name=future.__name__)
 		self.__completing = future
 		self.__completing_done = False
 		
 		GLib.idle_add(self._check_completing_state)
 		
 		if not self.__use_app:
-			_debug_tasks("Main begin")
+			_debug_tasks("Main begin", future)
 			#try:
 			#	main = Gtk.main
 			#except AttributeError:
@@ -978,11 +1057,13 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 			context = GLib.MainContext.default()
 			self.__main_quit = False
 			while not self.__main_quit:
+				#print("iteration.begin", context.pending())
 				context.iteration()
+				#print("iteration.end")
 			self.__main_level -= 1
 			#else:
 			#	main()
-			_debug_tasks("Main end")
+			_debug_tasks("Main end", future)
 		else:
 			#_debug_tasks("__app.hold")
 			#self.__app.hold()
@@ -1033,7 +1114,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		while self.__handle_queue:
 			_debug_tasks("executing queued handle")
 			handle = self.__handle_queue.pop()
-			GLib.idle_add(self.__run_handle, handle)
+			idle_add(self.__run_handle, handle)
 		
 		exception = None
 		try:
@@ -1145,8 +1226,10 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		pass
 	
 	def __run_handle(self, handle):
+		_debug_tasks('__run_handle', handle)
 		try:
 			if not handle._cancelled:
+				#_debug_tasks('__run_handle._run', handle)
 				handle._run()
 		except BaseException as exc:
 			self.call_exception_handler({'exception':exc})
@@ -1157,7 +1240,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 	def call_soon(self, callback, *args, context=None):
 		handle = Handle(callback, args, self, context=context)
 		if self.__loop_initialized:
-			GLib.idle_add(self.__run_handle, handle)
+			idle_add(self.__run_handle, handle)
 		else:
 			_debug_tasks("handle queued")
 			self.__handle_queue.append(handle)
@@ -1171,6 +1254,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 	#	return handle
 	
 	def call_later(self, delay, callback, *args, context=None):
+		_debug_tasks('call_later', delay, callback)
 		current_time = self.time()
 		when = current_time + delay
 		handle = TimerHandle(when, callback, args, self, context=context)
@@ -1178,6 +1262,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		return handle
 	
 	def call_at(self, when, callback, *args, context=None):
+		_debug_tasks('call_at', when, callback)
 		current_time = self.time()
 		delay = when - current_time
 		handle = TimerHandle(when, callback, args, self, context=context)
@@ -1194,6 +1279,11 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 	
 	def create_task(self, coro, *, name=None, context=None):
 		if self.__task_factory is None:
+			if name is None:
+				try:
+					name = 'Coroutine: ' + coro.__name__
+				except AttributeError:
+					pass
 			return Task(coro, loop=self, name=name, context=context)
 		else:
 			task = self.__task_factory(self, coro, context)
@@ -1323,7 +1413,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 				await transport.connect(self, gremote_addr)
 				if ssl:
 					await transport.starttls(self, ssl, False, server_hostname)
-				transport.start()
+				await transport.start()
 			except Exception as error:
 				errors.append(error)
 			else:
@@ -1469,15 +1559,15 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 			transport.bind(glocal_addr, reuse_address)
 		if gremote_addr:
 			await transport.connect(self, gremote_addr)
-		transport.start()
+		await transport.start()
 		
 		return transport, protocol
 	
 	# Pipes and subprocesses.
 	
-	def connect_read_pipe(self, protocol_factory, pipe):
+	async def connect_read_pipe(self, protocol_factory, pipe):
 		"""Register read pipe in event loop. Set the pipe to non-blocking mode.
-
+		
 		protocol_factory should instantiate object with Protocol interface.
 		pipe is a file-like object.
 		Return pair (transport, protocol), where transport supports the
@@ -1488,20 +1578,20 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		# close fd in pipe transport then close f and vise versa.
 		
 		if isinstance(pipe, int):
-			pipe = Gio.UnixInputStream(pipe, True)
+			pipe = Gio.UnixInputStream.new(pipe, True)
 		elif hasattr(pipe, 'fileno'):
-			pipe = Gio.UnixInputStream(pipe.fileno(), True)
+			pipe = Gio.UnixInputStream.new(pipe.fileno(), True)
 		
 		transport = InputStreamTransport(pipe)
 		
 		protocol = protocol_factory()
 		transport.set_protocol(protocol)
 		
-		transport.start()
+		await transport.start()
 		
 		return transport, protocol
 	
-	def connect_write_pipe(self, protocol_factory, pipe):
+	async def connect_write_pipe(self, protocol_factory, pipe):
 		"""Register write pipe in event loop.
 
 		protocol_factory should instantiate object with BaseProtocol interface.
@@ -1514,16 +1604,16 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		# close fd in pipe transport then close f and vise versa.
 		
 		if isinstance(pipe, int):
-			pipe = Gio.UnixOutputStream(pipe, True)
+			pipe = Gio.UnixOutputStream.new(pipe, True)
 		elif hasattr(pipe, 'fileno'):
-			pipe = Gio.UnixOutputStream(pipe.fileno(), True)
+			pipe = Gio.UnixOutputStream.new(pipe.fileno(), True)
 		
 		transport = OutputStreamTransport(pipe)
 		
 		protocol = protocol_factory()
 		transport.set_protocol(protocol)
 		
-		transport.start()
+		await transport.start()
 		
 		return transport, protocol
 	
@@ -1536,7 +1626,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		protocol = protocol_factory()
 		transport.set_protocol(protocol)
 		
-		transport.start()
+		await transport.start()
 		
 		return transport, protocol
 	
@@ -1547,7 +1637,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 					executable = str(path_part) + '/' + args[0]
 					break
 			else:
-				raise IOError("Program not found in path.")
+				raise IOError(f"Program not found in path: {args[0]}")
 		
 		if capture_output:
 			stdout = stderr = PIPE
@@ -1557,7 +1647,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		protocol = protocol_factory()
 		transport.set_protocol(protocol)
 		
-		transport.start()
+		await transport.start()
 		
 		return transport, protocol
 	
@@ -1696,16 +1786,40 @@ class GtkAioAppEventLoopPolicy(GtkAioEventLoopPolicy):
 		return GtkAioEventLoop(self.__app, self.__argv)
 
 
-if __name__ == '__main__':
+if __debug__ and __name__ == '__main__':
+	from sys import argv
+	
+	if len(argv) == 4 and argv[1] == '--test-pipes':
+		from os import fdopen, close, set_blocking
+		#from time import sleep
+		
+		r_fd = int(argv[2])
+		w_fd = int(argv[3])
+		
+		set_blocking(r_fd, True)
+		set_blocking(w_fd, True)
+		
+		read_pipe = fdopen(r_fd, 'rb', buffering=0)
+		write_pipe = fdopen(w_fd, 'wb', buffering=0)
+		
+		while ch := read_pipe.read(5):
+			assert ch in frozenset({b"12345", b"6789.", b".....", b"...!", b"abcde", b"fgh.."}), repr(ch)
+		
+		print("writing...")
+		write_pipe.write(b"aaa\n")
+		write_pipe.flush()
+		
+		quit()
+	
 	from asyncio import sleep, set_event_loop_policy, run, gather, create_task, create_subprocess_exec
 	from protocol.http.client import Connection1
 	
 	set_event_loop_policy(GtkAioEventLoopPolicy())
 	
-	async def test_basic():
-		print("test_basic")
+	#async def test_basic():
+	#	print("test_basic")
 	
-	run(test_basic())
+	#run(test_basic())
 	
 	async def test_process():
 		print("test_process")
@@ -1810,10 +1924,56 @@ if __name__ == '__main__':
 			await sleep(0.3)
 			print("testE", n)
 	
+	async def test_pipes():
+		from os import pipe, set_blocking, fdopen, close
+		from asyncio import StreamReaderProtocol
+		from asyncio.streams import FlowControlMixin
+		
+		read_fd_in, write_fd_in = pipe()
+		read_fd_out, write_fd_out = pipe()
+		set_blocking(write_fd_in, False)
+		set_blocking(read_fd_out, False)
+		
+		loop = get_running_loop()
+		print("spawning slave")
+		slave = await create_subprocess_exec(__file__, '--test-pipes', str(read_fd_in), str(write_fd_out), stdin=PIPE, pass_fds=(read_fd_in, write_fd_out))
+		
+		reader = StreamReader(loop=loop)
+		r_transport, r_protocol = await loop.connect_read_pipe(lambda: SubprocessTransport.ReaderProtocol(read_fd_out, slave._transport), Gio.UnixInputStream.new(read_fd_out, True))
+		reader.set_transport(r_transport)
+		r_protocol._stream_reader = reader
+		
+		w_transport, w_protocol = await loop.connect_write_pipe(lambda: SubprocessTransport.WriterProtocol(write_fd_in, slave._transport), Gio.UnixOutputStream.new(write_fd_in, True))
+		writer = StreamWriter(w_transport, w_protocol, reader, loop)
+		w_protocol._stream_writer = writer
+		
+		await r_transport.start()
+		await w_transport.start()
+		
+		await slave.stdin.drain()
+		
+		await writer.drain()
+		writer.write(b"123456789........................!")
+		await sleep(1)
+		writer.write(b"abcdefgh.........................!")
+		await sleep(1)
+		writer.write_eof()
+		
+		print("reading...")
+		print("read:", await reader.readline())
+		
+		print("closing")
+		writer.close()
+		print("closed")
+		
+		await slave.wait()
+		print("done")
+	
 	async def test():
-		await test_process()
-		await test_executors()
-		await testA()
+		await test_pipes()
+		#await test_process()
+		#await test_executors()
+		#await testA()
 		return 'a'
 	
 	a = run(test())

@@ -511,7 +511,7 @@ class HTMLRender:
 				yield from self.__data_internal_links(self.__style_attrs(document))
 				yield from self.__data_internal_links(self.__style_tags(document))
 				yield from self.__style_links(document)
-				#yield from self.__script_tags(document)
+				yield from self.__script_tags(document)
 			return links()
 		else:
 			return NotImplemented
@@ -579,6 +579,23 @@ class HTMLRender:
 				mime = 'text/css'
 			style = styletag.text
 			yield f'data:{mime},' + url_quote(style)
+	
+	def __script_tags(self, document):
+		xmlns_html = self.__xmlns(document)
+		for scripttag in document.findall(f'.//{{{xmlns_html}}}script'):
+			try:
+				yield scripttag.attrib['src']
+			except KeyError:
+				pass
+			
+			try:
+				mime = scripttag.attrib['type'].lower()
+			except KeyError:
+				mime = 'application/javascript'
+			
+			script = scripttag.text
+			if script:
+				yield f'data:{mime},' + url_quote(script)
 	
 	def image_dimensions(self, view, document):
 		"Return the SVG dimensions, that might depend on the view state."

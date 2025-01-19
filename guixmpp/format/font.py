@@ -93,12 +93,10 @@ class FontFormat:
 		'font/otf':'otf'
 	}
 	
-	def __init__(self, *args, font_dir=None, **kwargs):
-		if not font_dir:
-			font_dir = '/tmp/guixmpp-fonts' # FIXME: Remove default and make every instance use separate directory.
-		self.font_dir = font_dir
+	def __init__(self, *args, font_dir='/tmp/guixmpp-fonts', **kwargs):
+		self.font_dir = font_dir # TODO: Remove default and make every instance use separate directory.
 		# FIXME: This method will fetch the config created by PangoCairo.FontMap.new() in DOMWidget
-		self.__config = Config.get_current() # TODO: Create a new config here and make PangoCairo.FontMap use it.
+		self.__config = Config.get_current() # TODO: Create a new config per document and make PangoCairo.FontMap use it.
 		self.__lock = Lock()
 	
 	def create_document(self, data:bytes, mime_type):

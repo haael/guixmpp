@@ -23,8 +23,8 @@ class DocumentNotFound(Exception):
 	pass
 
 
+'''
 active = set()
-
 
 def print_call(amethod_old):
 	async def amethod_new(*args):
@@ -43,6 +43,7 @@ def print_call(amethod_old):
 			return  r
 
 	return amethod_new
+'''
 
 
 def unique(gen):
@@ -358,6 +359,13 @@ class Model:
 			try:
 				self.documents[url] = await to_thread(self.create_document, data, mime_type)
 			except (RuntimeError, NameError, KeyError, IndexError, AttributeError, ArithmeticError, CancelledError, KeyboardInterrupt, AssertionError, TypeError) as error:
+				if isinstance(error, NotImplementedError):
+					self.emit_warning(view, f"Error creating document: {type(error).__name__}: {str(error)}", url)
+					self.documents[url] = self.create_document(None, 'application/x-null')
+					result = view.emit('dom_event', CustomEvent('error', detail=url), parent)
+					if isawaitable(result):
+						await result
+					return
 				raise
 			except Exception as error:
 				self.emit_warning(view, f"Error creating document: {type(error).__name__}: {str(error)}", url)

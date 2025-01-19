@@ -47,7 +47,7 @@ else:
 
 
 try:
-	distance = math.dist
+	distance = math.dist # TODO: move to utils
 except AttributeError:
 	def distance(a, b):
 		return math.sqrt(sum((_a - _b)**2 for (_a, _b) in zip(a, b)))
@@ -118,7 +118,7 @@ class SVGRender:
 				yield from self.__xlink_hrefs(document)
 				yield from self.__data_internal_links(self.__style_attrs(document))
 				yield from self.__data_internal_links(self.__style_tags(document))
-				#yield from self.__script_tags(document)
+				yield from self.__script_tags(document)
 				yield from self.__foreign_objects(document)
 			return links()
 		else:
@@ -142,10 +142,10 @@ class SVGRender:
 					else:
 						break
 		
-		loads = []
+		loads = set()
 		for stylesheet in self.__stylesheets(document):
 			for (font_family, *_), font_spec in stylesheet.scan_font_faces():
-				loads.append(load_font(font_family, font_spec))
+				loads.add(load_font(font_family, font_spec))
 		await gather(*loads)
 		
 		if self.use_pango: # TODO: move to render function, implement arbitration in FontFormat
@@ -191,11 +191,18 @@ class SVGRender:
 	def __script_tags(self, document):
 		for scripttag in document.findall(f'.//{{{self.xmlns_svg}}}script'):
 			try:
-				mime = styletag.attrib['type'].lower()
+				yield scripttag.attrib['href']
 			except KeyError:
-				mime = 'text/javascript'
+				pass
+			
+			try:
+				mime = scripttag.attrib['type'].lower()
+			except KeyError:
+				mime = 'application/javascript'
+			
 			script = scripttag.text
-			yield f'data:{mime},' + url_quote(script)
+			if script:
+				yield f'data:{mime},' + url_quote(script)
 	
 	def __foreign_objects(self, document):
 		for foreigntag in document.findall(f'.//{{{self.xmlns_svg}}}foreignObject'):
@@ -423,8 +430,8 @@ class SVGRender:
 					css_attrs = self.__css_matcher[css](node)
 					
 					if attr in css_attrs:
-						raw_value = css_attrs[attr][0]({})
-						result = view.__attr_cache[node][attr] = self.eval_css_value(raw_value) # TODO: css vars
+						raw_value = css_attrs[attr][0]({}) # TODO: css vars
+						result = view.__attr_cache[node][attr] = self.eval_css_value(raw_value)
 						assert isinstance(result, str)
 						return result
 			
@@ -446,8 +453,8 @@ class SVGRender:
 				if attr in css_attrs:
 					value, priority = css_attrs[attr]
 					if css_priority == None or priority >= css_priority:
-						raw_value = value({})
-						css_value = self.eval_css_value(raw_value) # TODO: css vars
+						raw_value = value({}) # TODO: css vars
+						css_value = self.eval_css_value(raw_value)
 						assert isinstance(css_value, str), str(css_value)
 						css_priority = priority
 			

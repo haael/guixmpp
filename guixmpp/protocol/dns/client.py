@@ -85,8 +85,10 @@ class AsyncResolver(asyncio.protocols.DatagramProtocol):
 	
 	def connection_lost(self, exc):
 		del self.transport
-		if exc:
+		if isinstance(exc, BaseException):
 			raise exc # TODO: raise proper exception
+		else:
+			print("warning", exc) # TODO: raise proper exception
 	
 	def prune_cache(self):
 		t = self.loop.time()

@@ -34,13 +34,15 @@ if __name__ == '__main__':
 	from guixmpp.format.css import CSSFormat
 	from guixmpp.format.font import FontFormat
 	from guixmpp.format.json import JSONFormat
+	#from guixmpp.format.xforms import XFormsFormat
 	
 	from guixmpp.render.svg import SVGRender
 	from guixmpp.render.png import PNGRender
 	from guixmpp.render.webp import WEBPRender
 	from guixmpp.render.pixbuf import PixbufRender
 	from guixmpp.render.html import HTMLRender
-	#from guixmpp.format.xforms import XFormsFormat
+	
+	from guixmpp.script.javascript import JSFormat
 	
 	from guixmpp.download.data import DataDownload
 	from guixmpp.download.file import FileDownload
@@ -65,13 +67,15 @@ else:
 	from .format.css import CSSFormat
 	from .format.font import FontFormat
 	from .format.json import JSONFormat
+	#from .format.xforms import XFormsFormat
 	
 	from .render.svg import SVGRender
 	from .render.png import PNGRender
 	from .render.webp import WEBPRender
 	from .render.pixbuf import PixbufRender
 	from .render.html import HTMLRender
-	#from .format.xforms import XFormsFormat
+	
+	from .script.javascript import JSFormat
 	
 	from .download.data import DataDownload
 	from .download.file import FileDownload
@@ -115,7 +119,7 @@ except NameError:
 			'file' : (GObject.TYPE_STRING, "File", "File to load; works even if `file:` scheme is disabled.", None, GObject.ParamFlags.READWRITE)
 		}
 		
-		def __init__(self, file_=None, url=None, keyboard_input=False, pointer_input=False, file_download=False, http_download=False, cid_download=False, chrome=None, auto_show=True):
+		def __init__(self, file_=None, url=None, keyboard_input=False, pointer_input=False, file_download=False, http_download=False, cid_download=False, js_script=False, chrome=None, auto_show=True):
 			super().__init__()
 			
 			self.set_can_focus(True)
@@ -130,6 +134,7 @@ except NameError:
 			self.file_download = file_download
 			self.http_download = http_download
 			self.cid_download = cid_download
+			self.js_script = js_script
 			self.chrome = chrome
 			self.auto_show = auto_show
 			
@@ -152,29 +157,32 @@ except NameError:
 			cc = []
 			if self.keyboard_input:
 				features.append(KeyboardView)
-				cc.append('K')
+				cc.append('Kb')
 			if self.pointer_input:
 				features.append(PointerView)
-				cc.append('P')
+				cc.append('Pt')
 			if self.file_download:
 				features.append(FileDownload)
-				cc.append('F')
+				cc.append('Fl')
 			if self.http_download:
 				features.append(HTTPDownload)
-				cc.append('H')
+				cc.append('Ht')
 			if self.cid_download:
 				features.append(CIDDownload)
-				cc.append('C')
-			#if self.chrome:
-			#	features.append(ChromeDownload)
-			#	cc.append('C')
+				cc.append('Ci')
+			if self.js_script:
+				features.append(JSFormat)
+				cc.append('Js')
+			if self.chrome:
+				features.append(ChromeDownload)
+				cc.append('Ch')
 			
 			if cc:
 				cc.insert(0, '_')
 			else:
 				cc.append('_X')
 			
-			DOMWidgetModel = Model.features('<local>.DOMWidgetModel' + ''.join(cc), DisplayView, SVGRender, PNGRender, WEBPRender, PixbufRender, HTMLRender, FontFormat, *features, ChromeDownload, ResourceDownload, XMLFormat, CSSFormat, JSONFormat, PlainFormat, NullFormat, DataDownload)
+			DOMWidgetModel = Model.features('<local>.DOMWidgetModel' + ''.join(cc), DisplayView, SVGRender, PNGRender, WEBPRender, PixbufRender, HTMLRender, FontFormat, *features, ResourceDownload, XMLFormat, CSSFormat, JSONFormat, PlainFormat, NullFormat, DataDownload)
 			self.model = DOMWidgetModel(chrome_dir=self.chrome)
 			
 			self.connections = []
@@ -357,7 +365,7 @@ if __name__ == '__main__':
 	
 	window = Gtk.Window()
 	window.set_title("SVG test widget")
-	widget = DOMWidget(keyboard_input=True, pointer_input=True, file_download=True, http_download=True, auto_show=False, chrome='chrome')
+	widget = DOMWidget(keyboard_input=True, pointer_input=True, file_download=True, http_download=True, auto_show=False, chrome='chrome', js_script=True)
 	window.add(widget)
 	
 	window.connect('destroy', lambda window: loop_quit())

@@ -18,15 +18,19 @@ class AsyncGLibCallHelper:
 		self._finish = finish
 	
 	def init(self, *args, cancellable, on_result):
+		"Run init function (first part of GLib async call)."
 		self._init(*args, cancellable=cancellable, on_result=on_result)
 	
 	def finish(self, obj, task):
+		"Run finish function (second part of GLib async call)."
 		if obj is not None:
 			return self._finish(obj, task)
 		else:
 			return self._finish(task)
 	
 	def __call__(self, *args):
+		"Arrange GLib async call. Returns a future that can be awaited for result."
+		
 		future = get_running_loop().create_future()
 		cancellable = Gio.Cancellable()
 		
