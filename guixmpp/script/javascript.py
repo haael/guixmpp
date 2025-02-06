@@ -29,6 +29,13 @@ record_separator = bytes([0x1e])
 unit_separator = bytes([0x1f])
 
 
+def deindent(s, p):
+	r = []
+	for l in s.split(b"\n"):
+		r.append(l[p:])
+	return b"\n".join(r)
+
+
 class JSDocument:
 	def __init__(self, content):
 		self.content = content
@@ -37,7 +44,7 @@ class JSDocument:
 def locked(old_meth):
 	async def new_meth(self, *args, **kwargs):
 		async with self._JSFormat__lock:
-			return old_meth(self, *args, **kwargs)
+			return await old_meth(self, *args, **kwargs)
 	return new_meth
 
 
@@ -48,7 +55,7 @@ class JSFormat:
 		self.__lock = Lock()
 	
 	@locked
-	async def on_open_document(self, view, document):
+	async def on_open_document(self, view, root_document):
 		read_fd_in, write_fd_in = pipe()
 		read_fd_out, write_fd_out = pipe()
 		set_blocking(write_fd_in, False)
@@ -72,7 +79,7 @@ class JSFormat:
 		self.__events = create_task(self.__serve_events())
 	
 	@locked
-	async def on_close_document(self, view, document):
+	async def on_close_document(self, view, root_document):
 		await self.__engine.stdin.drain()
 		self.__engine.stdin.write(end_of_transmission)
 		self.__engine.stdin.write(file_separator)
@@ -98,7 +105,7 @@ class JSFormat:
 		del self.__reader, self.__writer, self.__engine, self.__events
 	
 	def create_document(self, data:bytes, mime:str):
-		if mime == 'application/javascript':
+		if mime in ['application/javascript', 'text/javascript']:
 			document = JSDocument(data.decode('utf-8'))
 			return document
 		else:
@@ -180,7 +187,7 @@ if __debug__ and __name__ == '__main__':
 	model = JSFormat()
 	
 	async def test_1():
-		a = model.create_document(b'''
+		a = model.create_document(deindent(b'''
 			
 			var a = 1;
 			
@@ -192,10 +199,10 @@ if __debug__ and __name__ == '__main__':
 			
 			hello();
 			
-		''', 'application/javascript')
+		''', 3), 'application/javascript')
 		assert model.is_js_document(a)
 		
-		b = model.create_document(b'''
+		b = model.create_document(deindent(b'''
 			
 			var b;
 			
@@ -210,7 +217,7 @@ if __debug__ and __name__ == '__main__':
 			}
 			get_title();
 			
-		''', 'application/javascript')
+		''', 3), 'application/javascript')
 		assert model.is_js_document(b)
 		
 		await model.on_open_document(None, True)
@@ -222,6 +229,11 @@ if __debug__ and __name__ == '__main__':
 		await model.on_close_document(None, True)
 	
 	run(test_1())
+	
+	#async def test_empty():
+	#	pass
+	
+	#run(test_empty())
 	
 	quit()
 	for example in Path('examples').iterdir():

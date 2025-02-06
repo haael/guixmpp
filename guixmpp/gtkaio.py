@@ -1209,7 +1209,8 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 	
 	async def shutdown_asyncgens(self):
 		"""Shutdown all active asynchronous generators."""
-		pass # TODO
+		#print("shutdown_asyncgens")
+		pass # FIXME
 	
 	shutdown_asyncgens.special_method = True
 	
@@ -1226,7 +1227,7 @@ class GtkAioEventLoop(asyncio.events.AbstractEventLoop):
 		pass
 	
 	def __run_handle(self, handle):
-		_debug_tasks('__run_handle', handle)
+		#_debug_tasks('__run_handle', handle)
 		try:
 			if not handle._cancelled:
 				#_debug_tasks('__run_handle._run', handle)
@@ -1870,6 +1871,9 @@ if __debug__ and __name__ == '__main__':
 		ab = await gather(a, b)
 		assert ab == [285292, 591580], str(ab)
 	
+	async def test_A_prim():
+		print("test_A_prim")
+	
 	async def testA():
 		print("testA", 0)
 		await sleep(1)
@@ -1885,6 +1889,7 @@ if __debug__ and __name__ == '__main__':
 		await sleep(0.2)
 		print("testA", 6)
 		await sleep(0.2)
+		await test_A_prim()
 		print("testA", 7)
 		await sleep(0.2)
 		await e
@@ -1970,10 +1975,10 @@ if __debug__ and __name__ == '__main__':
 		print("done")
 	
 	async def test():
-		await test_pipes()
-		#await test_process()
-		#await test_executors()
-		#await testA()
+		#await test_pipes()
+		await test_process()
+		await test_executors()
+		await testA()
 		return 'a'
 	
 	a = run(test())
