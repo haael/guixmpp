@@ -27,6 +27,11 @@ class PNGRender:
 		else:
 			return NotImplemented
 	
+	def destroy_document(self, document):
+		if not self.is_png_document(document):
+			return NotImplemented
+		document.surface.finish()
+	
 	def is_png_document(self, document):
 		return isinstance(document, PNGImage)
 	

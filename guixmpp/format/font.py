@@ -106,6 +106,11 @@ class FontFormat:
 		else:
 			return NotImplemented
 	
+	def destroy_document(self, document):
+		if not self.is_font_document(document):
+			return NotImplemented
+		# installed font remains available even after the document is destroyed
+	
 	def is_font_document(self, document):
 		return isinstance(document, FontDocument)
 	
@@ -172,7 +177,7 @@ class FontFormat:
 		async with self.__lock:
 			return bool(await to_thread(query, ':family=' + font_family))
 	
-	async def uninstall_fonts(self):
+	async def uninstall_all_fonts(self):
 		async with self.__lock:
 			await to_thread(self.__config.app_font_clear)
 
@@ -229,7 +234,7 @@ AAA='''
 		assert not query(':family=slick'), "font 'slick' should not be installed by default"
 		await model.install_font(font, "slick")
 		assert await model.is_font_installed('slick'), "font should be installed under font family name 'slick'"
-		await model.uninstall_fonts()
+		await model.uninstall_all_fonts()
 		assert not query(':family=slick'), "font 'slick' should be uninstalled"
 	
 	run(main())

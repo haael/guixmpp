@@ -105,10 +105,14 @@ class JSFormat:
 		del self.__reader, self.__writer, self.__engine, self.__events
 	
 	def create_document(self, data:bytes, mime:str):
-		if mime in ['application/javascript', 'text/javascript']:
+		if mime in ['application/javascript', 'text/javascript', 'text/ecmascript']:
 			document = JSDocument(data.decode('utf-8'))
 			return document
 		else:
+			return NotImplemented
+	
+	def destroy_document(self, document):
+		if not self.is_js_document(document):
 			return NotImplemented
 	
 	def is_js_document(self, document):

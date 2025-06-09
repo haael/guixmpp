@@ -7,7 +7,7 @@ __all__ = 'DOMWidget',
 
 import gi
 if __name__ == '__main__':
-	gi.require_version('Gtk', '3.0')
+	gi.require_version('Gtk', '4.0')
 	gi.require_version('Gio', '2.0')
 	gi.require_version('PangoCairo', '1.0')
 from gi.repository import Gtk, Gdk, GObject, GLib, Gio
@@ -40,6 +40,7 @@ if __name__ == '__main__':
 	from guixmpp.render.png import PNGRender
 	from guixmpp.render.webp import WEBPRender
 	from guixmpp.render.pixbuf import PixbufRender
+	from guixmpp.render.image import ImageRender
 	from guixmpp.render.html import HTMLRender
 	
 	from guixmpp.script.javascript import JSFormat
@@ -73,6 +74,7 @@ else:
 	from .render.png import PNGRender
 	from .render.webp import WEBPRender
 	from .render.pixbuf import PixbufRender
+	from .render.image import ImageRender
 	from .render.html import HTMLRender
 	
 	from .script.javascript import JSFormat
@@ -123,6 +125,7 @@ except NameError:
 			super().__init__()
 			
 			self.set_can_focus(True)
+			self.set_focusable(True)
 			self.lock = Lock()
 			self.main_url = None
 			
@@ -138,20 +141,23 @@ except NameError:
 			self.chrome = chrome
 			self.auto_show = auto_show
 			
-			self.add_events(Gdk.EventMask.POINTER_MOTION_MASK)
-			self.add_events(Gdk.EventMask.BUTTON_RELEASE_MASK)
-			self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)		
-			self.add_events(Gdk.EventMask.KEY_PRESS_MASK)
-			self.add_events(Gdk.EventMask.KEY_RELEASE_MASK)
-			self.add_events(Gdk.EventMask.SMOOTH_SCROLL_MASK)
+			if hasattr(self, 'add_events'):
+				self.add_events(Gdk.EventMask.POINTER_MOTION_MASK)
+				self.add_events(Gdk.EventMask.BUTTON_RELEASE_MASK)
+				self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)		
+				self.add_events(Gdk.EventMask.KEY_PRESS_MASK)
+				self.add_events(Gdk.EventMask.KEY_RELEASE_MASK)
+				self.add_events(Gdk.EventMask.SMOOTH_SCROLL_MASK)
 			
 			self.configure_model()
 		
 		def configure_model(self):
 			if hasattr(self, 'model'):
-				for conn in self.connections:
-					self.disconnect(conn)
-				del self.model, self.connections
+				for subj, conn in self.connections:
+					subj.disconnect(conn)
+				for ctrl in self.controllers:
+					self.remove_controller(ctrl)
+				del self.model, self.connections, self.controllers
 			
 			features = []
 			cc = []
@@ -182,21 +188,68 @@ except NameError:
 			else:
 				cc.append('_X')
 			
-			DOMWidgetModel = Model.features('<local>.DOMWidgetModel' + ''.join(cc), DisplayView, SVGRender, PNGRender, WEBPRender, PixbufRender, HTMLRender, FontFormat, *features, ResourceDownload, XMLFormat, CSSFormat, JSONFormat, PlainFormat, NullFormat, DataDownload)
+			DOMWidgetModel = Model.features('<local>.DOMWidgetModel' + ''.join(cc), DisplayView, SVGRender, PNGRender, WEBPRender, ImageRender if Gtk.get_major_version() >= 4 else PixbufRender, HTMLRender, FontFormat, *features, ResourceDownload, XMLFormat, CSSFormat, JSONFormat, PlainFormat, NullFormat, DataDownload)
 			self.model = DOMWidgetModel(chrome_dir=self.chrome)
 			
-			self.connections = []
-			self.connections.append(self.connect('draw', self.model.draw))
-			self.connections.append(self.connect('configure-event', self.model.handle_event, 'display'))
-			self.connections.append(self.connect('motion-notify-event', self.model.handle_event, 'motion'))
-			self.connections.append(self.connect('button-press-event', self.model.handle_event, 'button'))
-			self.connections.append(self.connect('button-release-event', self.model.handle_event, 'button'))
-			#self.connections.append(self.connect('clicked', self.model.handle_event, 'click'))
-			#self.connections.append(self.connect('auxclicked', self.model.handle_event, 'click'))
-			#self.connections.append(self.connect('dblclicked', self.model.handle_event, 'click'))
-			self.connections.append(self.connect('scroll-event', self.model.handle_event, 'scroll'))
-			self.connections.append(self.connect('key-press-event', self.model.handle_event, 'key'))
-			self.connections.append(self.connect('key-release-event', self.model.handle_event, 'key'))
+			if Gtk.get_major_version() < 4:
+				self.controllers = []
+				self.connections = [
+					(self, self.connect('draw', self.model.draw_gtk3)),
+					(self, self.connect('configure-event', self.model.handle_event_gtk3, 'display')),
+					(self, self.connect('motion-notify-event', self.model.handle_event_gtk3, 'motion')),
+					(self, self.connect('button-press-event', self.model.handle_event_gtk3, 'button')),
+					(self, self.connect('button-release-event', self.model.handle_event_gtk3, 'button')),
+					#(self, self.connect('clicked', self.model.handle_event_gtk3, 'click')),
+					#(self, self.connect('auxclicked', self.model.handle_event_gtk3, 'click')),
+					#(self, self.connect('dblclicked', self.model.handle_event_gtk3, 'click')),
+					(self, self.connect('scroll-event', self.model.handle_event_gtk3, 'scroll')),
+					(self, self.connect('key-press-event', self.model.handle_event_gtk3, 'key')),
+					(self, self.connect('key-release-event', self.model.handle_event_gtk3, 'key'))
+				]
+			else:
+				motion_controller = Gtk.EventControllerMotion.new()
+				self.add_controller(motion_controller)
+				
+				click_controller = Gtk.GestureClick.new()
+				self.add_controller(click_controller)
+				
+				key_controller = Gtk.EventControllerKey.new()
+				self.add_controller(key_controller)
+				
+				scroll_controller = Gtk.EventControllerScroll.new(Gtk.EventControllerScrollFlags.BOTH_AXES)
+				self.add_controller(scroll_controller)
+				
+				self.controllers = [motion_controller, click_controller, key_controller, scroll_controller]
+				
+				self.connections = [
+					# Snapshot signal for drawing
+					#(self, self.connect('snapshot', self.model.draw)),
+					
+					# Configure event
+					(self, self.connect('resize', self.model.handle_event_gtk4, 'CONFIGURE_EVENT', 'display', self)),
+					
+					# Motion event controller
+					(motion_controller, motion_controller.connect('motion', self.model.handle_event_gtk4, 'MOTION_NOTIFY', 'motion', self)),
+					
+					# Button press and release event controller
+					(click_controller, click_controller.connect('pressed', self.model.handle_event_gtk4, 'BUTTON_PRESS', 'button', self)),
+					(click_controller, click_controller.connect('released', self.model.handle_event_gtk4, 'BUTTON_RELEASE', 'button', self)),
+					
+					# Clicked, auxclicked, and dblclicked are handled by Gtk.GestureClick
+					#(click_controller, click_controller.connect('clicked', self.model.handle_event_gtk4, 'CLICK', 'click', self)),
+					#(click_controller, click_controller.connect('secondary-clicked', self.model.handle_event_gtk4, '_2NDCLICK', 'click', self)),
+					#(click_controller, click_controller.connect('unpaired-release', self.model.handle_event_gtk4, 'DBLCKICK', 'click', self)),
+					
+					# Key event controller
+					(key_controller, key_controller.connect('key-pressed', self.model.handle_event_gtk4, 'KEY_PRESS', 'key', self)),
+					(key_controller, key_controller.connect('key-released', self.model.handle_event_gtk4, 'KEY_RELEASE', 'key', self)),
+					(key_controller, key_controller.connect('modifiers', self.model.handle_event_gtk4, 'MODIFIERS', 'key', self)),
+					
+					# Scroll event controller
+					(scroll_controller, scroll_controller.connect('scroll', self.model.handle_event_gtk4, 'SCROLL_EVENT', 'scroll', self))
+				]
+				
+				self.set_draw_func(self.model.draw_gtk4)
 		
 		def do_get_property(self, spec):
 			name = spec.name.replace('-', '_')
@@ -282,18 +335,12 @@ except NameError:
 		def set_image(self, image):
 			"Directly set image to display (document returned by `model.create_document`). None to unset."
 			self.model.set_image(self, image)
-	
-		def dispose_surface(self, surface, model):
-			surface.finish()
 		
-		def draw_image(self, model):
+		def draw_image(self, model, context):
 			"Draw the currently opened image to a Cairo surface. Returns the rendered surface. `model` argument is to allow multi-model widgets."
+			
 			viewport_width = model.get_viewport_width(self)
 			viewport_height = model.get_viewport_height(self)
-			
-			surface = cairo.RecordingSurface(cairo.Content.COLOR_ALPHA, (0, 0, viewport_width, viewport_height)) # more memory friendly, but slower
-			#surface = cairo.ImageSurface(cairo.Format.ARGB32, viewport_width, viewport_height) # faster, but uses more memory (as much as unscaled image size, which can lead to exploits)
-			context = cairo.Context(surface)
 			
 			image = model.get_image(self)
 			if (image is not None) and (viewport_width > 0) and (viewport_height > 0):
@@ -315,17 +362,12 @@ except NameError:
 				except NotImplementedError as error:
 					model.emit_warning(self, f"NotImplementedError: {error}", image)
 					pass # draw placeholder for non-image formats
-			
-			return surface
 		
-		def poke_image(self, model, px, py):
+		def poke_image(self, model, context, px, py):
 			"Simulate pointer event at widget coordinates (px, py). Returns a list of nodes under the provided point and coordinates (qx, qy) after Cairo context transformations."
 			
 			viewport_width = model.get_viewport_width(self)
 			viewport_height = model.get_viewport_height(self)
-			
-			surface = cairo.RecordingSurface(cairo.Content.COLOR_ALPHA, (0, 0, viewport_width, viewport_height))
-			context = cairo.Context(surface)
 			
 			qx, qy = px, py
 			nop = []
@@ -352,7 +394,6 @@ except NameError:
 					model.emit_warning(self, f"NotImplementedError: {error}", image)
 					pass
 			
-			surface.finish()
 			return nop, qx, qy
 
 
@@ -365,10 +406,15 @@ if __name__ == '__main__':
 	
 	window = Gtk.Window()
 	window.set_title("SVG test widget")
-	widget = DOMWidget(keyboard_input=True, pointer_input=True, file_download=True, http_download=True, auto_show=False, chrome='chrome', js_script=True)
-	window.add(widget)
+	widget = DOMWidget(keyboard_input=True, pointer_input=True, file_download=True, http_download=True, auto_show=False, chrome='chrome', js_script=False)
+	if hasattr(window, 'add'):
+		window.add(widget)
+	else:
+		window.set_child(widget)
 	
-	window.connect('destroy', lambda window: loop_quit())
+	window.set_focus(widget)
+	
+	window.connect('close-request', lambda window: loop_quit())
 	
 	event_lock = Lock()
 	opening_task = None
@@ -458,14 +504,17 @@ if __name__ == '__main__':
 					images.append(doc.as_uri())
 		images.sort(key=(lambda x: x.lower()))
 		await widget.open(images[image_index])
-		window.show_all()
+		if hasattr(window, 'show_all'):
+			window.show_all()
+		else:
+			window.present()
 		print("start")
 		try:
 			await loop_run()
 		except KeyboardInterrupt:
 			pass
 		print("stop")
-		window.hide()
+		#window.close()
 	#'''
 	
 	'''
@@ -493,6 +542,23 @@ if __name__ == '__main__':
 		images.sort(key=(lambda x: x.lower()))
 		await widget.open_document(images[image_index])
 		window.show_all()
+		try:
+			await loop_run()
+		except KeyboardInterrupt:
+			pass
+		window.hide()
+	#'''
+
+	'''
+	async def main():
+		global images, image_index, model, root_dir
+		root_dir = Path.cwd() / 'examples'
+		DOMEvent._time = get_running_loop().time
+		async for doc in (Path.cwd() / 'examples/raster').iterdir():
+			images.append(doc.as_uri())
+		images.sort(key=(lambda x: x.lower()))
+		await widget.open(images[image_index])
+		window.present()
 		try:
 			await loop_run()
 		except KeyboardInterrupt:

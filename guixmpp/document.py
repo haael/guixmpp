@@ -191,7 +191,7 @@ class Model:
 				continue
 			
 			result = method(self, *args, **kwargs)
-			if result != NotImplemented:
+			if result is not NotImplemented:
 				return result
 		else:
 			raise NotImplementedError(f"Could not find implementation for method {type(self).__name__}.{method_name}. Arguments: {args}")
@@ -209,7 +209,7 @@ class Model:
 				continue
 			
 			result = await method(self, *args, **kwargs)
-			if result != NotImplemented:
+			if result is not NotImplemented:
 				return result
 		else:
 			raise NotImplementedError(f"Could not find implementation for method {type(self).__name__}.{method_name}. Arguments: {args}")
@@ -449,6 +449,8 @@ class Model:
 		result = view.emit('dom_event', UIEvent('unload', view=view, detail=url), document)
 		if isawaitable(result):
 			await result
+		
+		self.destroy_document(document)
 	
 	def get_document_url(self, document):
 		try:
@@ -499,8 +501,14 @@ class Model:
 	#def set_view(self, widget):
 	#	self.__chain_impl('set_view', (widget,))
 	
-	def handle_event(self, widget, event, name):
-		self.__chain_impl('handle_event', (widget, event, name))
+	def handle_event_gtk3(self, widget, event, name):
+		evtype = event.type.name
+		self.__chain_impl('handle_event', (widget, event, evtype, name))
+	
+	def handle_event_gtk4(self, controller, *args):
+		evtype, name, widget = args[-3:]
+		params = args[:-3]
+		self.__chain_impl('handle_event', (widget, params, evtype, name))
 	
 	def set_image(self, widget, image):
 		self.__chain_impl('set_image', (widget, image))
@@ -513,8 +521,10 @@ class Model:
 		return await self.__find_impl_async('download_document', (url,))
 	
 	def create_document(self, data:bytes, mime_type:str):
-		#print("create_document", len(data), mime_type)
 		return self.__find_impl('create_document', [data, mime_type])
+	
+	def destroy_document(self, document):
+		return self.__find_impl('destroy_document', [document])
 	
 	def save_document(self, document, fileobj=None):
 		return self.__find_impl('save_document', [document, fileobj])

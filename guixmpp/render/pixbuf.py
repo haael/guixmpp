@@ -16,7 +16,7 @@ from collections import defaultdict
 
 
 class PixbufRender:
-	"Supports many image formats through GdkPixbuf library."
+	"Supports many image formats through GdkPixbuf library. Works only in Gtk3."
 	
 	def create_document(self, data, mime_type):
 		assert isinstance(mime_type, str), str(type(mime_type))
@@ -29,6 +29,10 @@ class PixbufRender:
 			loader.write(data)
 			loader.close()
 			return loader.get_pixbuf()
+	
+	def destroy_document(self, document):
+		if not self.is_pixbuf_document(document):
+			return NotImplemented
 	
 	def is_image_document(self, document):
 		return isinstance(document, GdkPixbuf.Pixbuf)

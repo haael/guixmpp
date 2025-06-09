@@ -2,7 +2,7 @@
 #-*- coding: utf-8 -*-
 
 
-__all__ = 'Renderer', 'render_to_surface'
+__all__ = 'Renderer', 'render_to_surface', 'Rect'
 
 
 import gi
@@ -136,15 +136,20 @@ class Renderer:
 		else:
 			self.model = RenderModel(chrome_dir=self.chrome, http_semaphore=self.http_semaphore)
 	
-	async def open(self, w, h, url):
-		self.allocation = Rect(0, 0, w, h)
-		
+	async def open(self, url):
+		print("open renderer")
 		async with self.lock:
+			print("lock grabbed")
 			if self.main_url is not None:
+				print("close previous document")
 				await self.model.close_document(self)
 			self.main_url = url
+			print("open new document")
 			image = await wait_for(self.model.open_document(self, url), 5)
+			print("set image", image)
 			self.set_image(image)
+			print("set image done")
+		print("open renderer done")
 	
 	async def close(self):
 		async with self.lock:
@@ -196,6 +201,33 @@ class Renderer:
 		
 		return surface
 	
+	def render_to_context(self, context):
+		model = self.model
+		
+		viewport_width = model.get_viewport_width(self)
+		viewport_height = model.get_viewport_height(self)
+		
+		image = model.get_image(self)
+		if (image is not None) and (viewport_width > 0) and (viewport_height > 0):
+			try:
+				w, h = model.image_dimensions(self, image)
+				
+				if w <= viewport_width and h <= viewport_height:
+					bw = w
+					bh = h
+				elif w / h <= viewport_width / viewport_height:
+					bw = model.image_width_for_height(self, image, viewport_height)
+					bh = viewport_height
+				else:
+					bw = viewport_width
+					bh = model.image_height_for_width(self, image, viewport_width)
+				
+				model.draw_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh))
+			
+			except NotImplementedError as error:
+				model.emit_warning(self, f"NotImplementedError: {error}", image)
+				pass # draw placeholder for non-image formats
+	
 	def emit(self, type_, event, view):
 		if self.log:
 			if type_ == 'dom_event':
@@ -210,17 +242,28 @@ class Renderer:
 		if self.widget:
 			self.widget.emit(type_, event, view)
 	
+	def set_allocation(self, allocation):
+		print("set_allocation")
+		self.allocation = allocation
+		allocation.type = Gdk.EventType.CONFIGURE
+		self.model.handle_event(self, allocation, 'display')
+	
 	def get_allocation(self):
-		return self.allocation
+		print("get_allocation")
+		try:
+			return self.allocation
+		except AttributeError:
+			return Rect(0, 0, 0, 0)
 
 
 async def render_to_surface(w, h, url, file_download=False, http_download=False, cid_download=False, chrome=None, http_cache=None, http_semaphore=None, widget=None, log=None):
-	r = Renderer(file_download=file_download, http_download=http_download, cid_download=cid_download, chrome=chrome, http_cache=http_cache, http_semaphore=http_semaphore, widget=widget, log=log)
-	await r.open(w, h, url)
+	model = Renderer(file_download=file_download, http_download=http_download, cid_download=cid_download, chrome=chrome, http_cache=http_cache, http_semaphore=http_semaphore, widget=widget, log=log)
+	await model.open(url)
+	model.set_allocation(Rect(0, 0, w, h))
 	try:
-		s = r.render()
+		s = model.render()
 	finally:
-		await r.close()
+		await model.close()
 	return s
 
 

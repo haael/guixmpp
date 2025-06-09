@@ -10,24 +10,27 @@ import gi
 from gi.repository import Gdk
 
 
-def modifier_keys(event):
+def modifier(attr):
+	try:
+		return getattr(Gdk.ModifierType, attr)
+	except AttributeError:
+		return 0
+
+
+def modifier_keys(modifiers):
 	return {
-		'shiftKey': bool(event.state & Gdk.ModifierType.SHIFT_MASK),
-		'ctrlKey': bool(event.state & Gdk.ModifierType.CONTROL_MASK),
-		'altKey': bool(event.state & (Gdk.ModifierType.MOD1_MASK | Gdk.ModifierType.MOD5_MASK)),
-		'metaKey': bool(event.state & (Gdk.ModifierType.META_MASK | Gdk.ModifierType.SUPER_MASK | Gdk.ModifierType.MOD4_MASK))
+		'shiftKey': bool(modifiers & (modifier('SHIFT_MASK') | modifier('LOCK_MASK'))),
+		'ctrlKey': bool(modifiers & modifier('CONTROL_MASK')),
+		'altKey': bool(modifiers & (modifier('ALT_MASK') | modifier('MOD1_MASK') | modifier('MOD5_MASK'))),
+		'metaKey': bool(modifiers & (modifier('META_MASK') | modifier('SUPER_MASK') | modifier('HYPER_MASK') | modifier('MOD4_MASK')))
 	}
 
 
-def pressed_mouse_buttons_mask(event):
-	active_buttons = 0
-	if event.state & Gdk.ModifierType.BUTTON1_MASK:
-		active_buttons |= 1
-	if event.state & Gdk.ModifierType.BUTTON3_MASK:
-		active_buttons |= 2
-	if event.state & Gdk.ModifierType.BUTTON2_MASK:
-		active_buttons |= 4
-	return {'buttons': active_buttons}
+def pressed_mouse_buttons_mask(buttons):
+	mask = 0
+	for b in buttons:
+		mask |= 1 << b
+	return {'buttons': mask}
 
 
 def pressed_mouse_button(event):
@@ -42,10 +45,18 @@ def pressed_mouse_button(event):
 
 
 def pointer_position(event, qx, qy):
-	return {
-		'clientX': qx,
-		'clientY': qy,
-		'screenX': event.x_root,
-		'screenY': event.y_root
-	}
+	if isinstance(event, tuple):
+		return {
+			'clientX': qx,
+			'clientY': qy,
+			'screenX': qx, #TODO
+			'screenY': qy #TODO
+		}
+	else:
+		return {
+			'clientX': qx,
+			'clientY': qy,
+			'screenX': event.x_root,
+			'screenY': event.y_root
+		}
 

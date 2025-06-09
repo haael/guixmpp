@@ -30,6 +30,10 @@ class JSONFormat:
 		else:
 			return NotImplemented
 	
+	def destroy_document(self, document):
+		if not self.is_json_document(document):
+			return NotImplemented
+	
 	def save_document(self, document, fileobj=None):
 		if self.is_json_document(document):
 			if fileobj == None:

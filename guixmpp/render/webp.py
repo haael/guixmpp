@@ -15,24 +15,35 @@ import webp
 
 
 class WEBPImage:
-	def __init__(self, arr):
-		self.arr = arr
+	def __init__(self, width, height, array, surface):
+		self.width = width
+		self.height = height
+		self.array = array
+		self.surface = surface
 
 
 class WEBPRender:
 	def create_document(self, data, mime_type):
 		if mime_type == 'image/webp':
 			webp_data = webp.WebPData.from_buffer(data)
-			arr = webp_data.decode(color_mode=webp.WebPColorMode.BGRA)
-			return WEBPImage(arr)
-			#w = arr.shape[1]
-			#h = arr.shape[0]
-			#s = arr.shape[1] * arr.shape[2]
-			#ba = bytearray(arr.tobytes())
-			#ba = arr.data
-			#return WEBPImage(cairo.ImageSurface.create_for_data(ba, cairo.Format.ARGB32, w, h, s), w, h)
+			array = webp_data.decode(color_mode=webp.WebPColorMode.BGRA)
+			w = array.shape[1]
+			h = array.shape[0]
+			
+			# Cairo expects premultiplied pixel values.
+			array[:, :, 0] = (array[:, :, 0] * (array[:, :, 3] / 255.0)).astype(array.dtype)
+			array[:, :, 1] = (array[:, :, 1] * (array[:, :, 3] / 255.0)).astype(array.dtype)
+			array[:, :, 2] = (array[:, :, 2] * (array[:, :, 3] / 255.0)).astype(array.dtype)
+			
+			surface = cairo.ImageSurface.create_for_data(array.data.cast('B'), cairo.Format.ARGB32, w, h)
+			return WEBPImage(w, h, array, surface)
 		else:
 			return NotImplemented
+	
+	def destroy_document(self, document):
+		if not self.is_webp_document(document):
+			return NotImplemented
+		document.surface.finish()
 	
 	def is_webp_document(self, document):
 		return isinstance(document, WEBPImage)
@@ -45,7 +56,7 @@ class WEBPRender:
 	
 	def image_dimensions(self, view, document):
 		if self.is_webp_document(document):
-			return document.arr.shape[1], document.arr.shape[0]
+			return document.width, document.height
 		else:
 			return NotImplemented
 	
@@ -78,10 +89,7 @@ class WEBPRender:
 			if ww != w or hh != h:
 				ctx.scale(ww / w, hh / h)
 		
-		surface = cairo.ImageSurface.create_for_data(document.arr.data, cairo.Format.ARGB32, document.arr.shape[1], document.arr.shape[0], document.arr.shape[1] * document.arr.shape[2])
-		ctx.set_source_surface(surface)
-		#ctx.rectangle(0.1, 0.1, w - 0.2, h - 0.2) # FIXME: workaround; for some reason the surface is not drawn when origin is 0, 0 (incl. translation)
-		#ctx.fill()
+		ctx.set_source_surface(document.surface)
 		ctx.paint()
 		if x != 0 or y != 0 or ww != w or hh != h:
 			ctx.restore()

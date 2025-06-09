@@ -6,3 +6,4 @@ OMEMO
 fontTools
 fontconfig-py
 webp
+imagecodecs[all]

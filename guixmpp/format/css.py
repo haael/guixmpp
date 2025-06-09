@@ -186,6 +186,10 @@ class CSSFormat:
 		else:
 			return NotImplemented
 	
+	def destroy_document(self, document):
+		if not self.is_css_document(document):
+			return NotImplemented
+	
 	def is_css_document(self, document):
 		return hasattr(document, 'css_tree')
 	

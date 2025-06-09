@@ -485,6 +485,10 @@ class HTMLRender:
 		else:
 			return NotImplemented
 	
+	def destroy_document(self, document):
+		if not self.is_html_document(document):
+			return NotImplemented
+	
 	def is_html_document(self, document):
 		if self.is_xml_document(document):
 			return document.getroot().tag.startswith('{' + self.xmlns_html + '}') or document.getroot().tag.startswith('{' + self.xmlns_html2 + '}')

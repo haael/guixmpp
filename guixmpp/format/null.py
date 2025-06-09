@@ -16,6 +16,10 @@ class NullFormat:
 		else:
 			return NotImplemented
 	
+	def destroy_document(self, document):
+		if not self.is_null_document(document):
+			return NotImplemented
+	
 	def is_null_document(self, document):
 		return document is None
 	

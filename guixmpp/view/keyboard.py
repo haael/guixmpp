@@ -34,12 +34,11 @@ def key_location(keyval_name):
 
 
 class KeyboardView:
-	def set_image(self, widget, image):
-		widget.__focus = None
-		widget.__last_keyval = None
-	
 	def get_focus(self, widget):
-		return widget.__focus
+		try:
+			return widget.__focus
+		except AttributeError:
+			return None
 	
 	def set_focus(self, widget, element):
 		widget.__focus = element
@@ -51,18 +50,51 @@ class KeyboardView:
 	def focus_previous(self, widget):
 		raise NotImplementedError
 	
-	def handle_event(self, widget, event, name):
+	def get_modifier_keys(self, widget):
+		try:
+			return widget.__modifier_keys
+		except AttributeError:
+			return 0
+	
+	def get_pressed_keys(self, widget):
+		try:
+			return widget.__pressed_keys
+		except AttributeError:
+			return frozenset()
+	
+	def handle_event(self, widget, event, evtype, name):
 		if name != 'key': return NotImplemented
 		
-		if event.type == Gdk.EventType.KEY_PRESS:
-			keyval_name = Gdk.keyval_name(event.keyval)
-			dom_event = KeyboardEvent('keydown', key=event.string, code=keyval_name, repeat=(widget.__last_keyval == event.keyval), **key_location(keyval_name), **modifier_keys(event))
-			widget.emit('dom_event', dom_event, self.get_focus(widget))
-			widget.__last_keyval = event.keyval
+		try:
+			string = event.string
+			keyval = event.keyval
+			modifiers = event.state
+			keyval_name = Gdk.keyval_name(keyval)
+		except AttributeError:
+			if len(event) == 3:
+				keyval, keycode, modifiers = event
+				string = Gdk.keyval_to_unicode(keyval)
+				keyval_name = Gdk.keyval_name(keyval)
+			else:
+				modifiers, = event
+				string = ""
+				keyval_name = ""
 		
-		elif event.type == Gdk.EventType.KEY_RELEASE:
-			keyval_name = Gdk.keyval_name(event.keyval)
-			dom_event = KeyboardEvent('keyup', key=event.string, code=keyval_name, **key_location(keyval_name), **modifier_keys(event))
+		if not hasattr(widget, '_KeyboardView__pressed_keys'):
+			widget.__pressed_keys = set()
+		
+		if evtype == 'KEY_PRESS':
+			widget.__modifier_keys = modifiers
+			dom_event = KeyboardEvent('keydown', key=string, code=keyval_name, repeat=(keyval in self.get_pressed_keys(widget)), **key_location(keyval_name), **modifier_keys(self.get_modifier_keys(widget)))
+			widget.__pressed_keys.add(keyval)
 			widget.emit('dom_event', dom_event, self.get_focus(widget))
-			widget.__last_keyval = None
+		
+		elif evtype == 'KEY_RELEASE':
+			widget.__modifier_keys = modifiers
+			dom_event = KeyboardEvent('keyup', key=string, code=keyval_name, **key_location(keyval_name), **modifier_keys(self.get_modifier_keys(widget)))
+			widget.__pressed_keys.remove(keyval)
+			widget.emit('dom_event', dom_event, self.get_focus(widget))
+		
+		elif evtype == 'MODIFIERS':
+			widget.__modifier_keys = modifiers
 
