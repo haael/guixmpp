@@ -14,6 +14,12 @@ import cairo
 import webp
 
 
+if __name__ == '__main__':
+	from guixmpp.escape import Escape
+else:
+	from ..escape import Escape
+
+
 class WEBPImage:
 	def __init__(self, width, height, array, surface):
 		self.width = width
@@ -72,9 +78,11 @@ class WEBPRender:
 		p_width, p_height = self.image_dimensions(view, document)
 		return width * p_height / p_width
 	
-	def draw_image(self, view, document, ctx, box):
+	def draw_image(self, view, document, ctx, box, callback):
 		if not self.is_webp_document(document):
 			return NotImplemented
+		
+		if callback: callback(Escape.begin_draw, document)
 		
 		vw = self.get_viewport_width(view)
 		vh = self.get_viewport_height(view)
@@ -93,16 +101,20 @@ class WEBPRender:
 		ctx.paint()
 		if x != 0 or y != 0 or ww != w or hh != h:
 			ctx.restore()
+		
+		if callback: callback(Escape.end_draw, document)
 	
-	def poke_image(self, view, document, ctx, box, px, py):
+	def poke_image(self, view, document, ctx, box, px, py, callback):
 		if not self.is_webp_document(document):
 			return NotImplemented
 		
+		if callback: callback(Escape.begin_poke, document)
 		x, y, w, h = box
 		qx, qy = ctx.device_to_user(px, py)
 		hover_nodes = []
 		if x <= qx <= x + w and y <= qy <= y + h and ctx.in_clip(qx, qy):
 			hover_nodes.insert(0, document)
+		if callback: callback(Escape.end_poke, document)
 		return hover_nodes
 	
 	def element_tabindex(self, document, element):

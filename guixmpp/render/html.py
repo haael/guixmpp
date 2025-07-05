@@ -112,6 +112,14 @@ class Word:
 		ctx.set_font_size(self.font_size)
 		ctx.text_path(self.text)
 		ctx.fill()
+	
+	def check_valid(self):
+		pass
+	
+	def is_ready(self):
+		if all(hasattr(self, _attr) for _attr in ['x', 'y', 'baseline', 'font_size', 'font_variant', 'font_weight']):
+			return True
+		return False
 
 
 class InlineBlockElement:
@@ -126,7 +134,7 @@ class InlineBlockElement:
 	def calculate_dimensions(self, ctx, view, model, em_size):
 		self.em_size = self.parent_em_size = em_size
 		self.width_request = self.content_width = 200
-		self.height_request = self.content_height = 103 # FIXME
+		self.height_request = self.content_height = 103 # TODO
 	
 	def calculate_positions(self, ctx, view, model):
 		pass
@@ -143,9 +151,13 @@ class InlineBlockElement:
 		ctx.set_source_rgb(0, 0, 0)
 		ctx.stroke()
 		ctx.move_to(self.width / 4, self.height / 2)
+		ctx.set_font_size(self.em_size)
 		ctx.text_path(self.tag)
 		ctx.fill()
 		ctx.restore()
+	
+	def check_valid(self):
+		pass
 
 
 class InlineElement:
@@ -218,6 +230,11 @@ class InlineElement:
 		print((" " * level) + "INLINE: " + self.tag)
 		for element in self.elements:
 			element.print_tree(level=level+1)
+	
+	def check_valid(self):
+		for child in self.children:
+			assert isinstance(child, Word | InlineBlockElement | InlineElement)
+			child.check_valid()
 
 
 class Line:
@@ -282,10 +299,17 @@ class Line:
 		ctx.translate(self.x, self.y)
 		for element in self.elements:
 			element.render(ctx)
+		
 		#ctx.rectangle(0, 0, self.width, self.height)
 		#ctx.set_source_rgb(0, 0, 1)
 		#ctx.stroke()
+		
 		ctx.restore()
+	
+	def check_valid(self):
+		for child in self.children:
+			assert isinstance(child, InlineBlockElement | InlineElement)
+			child.check_valid()
 
 
 class BlockLinesElement:
@@ -326,8 +350,13 @@ class BlockLinesElement:
 		self.padding_top = model.units(view, self.style['padding-top'], em_size=em_size)
 		self.padding_bottom = model.units(view, self.style['padding-bottom'], em_size=em_size)
 		
-		self.width_request = self.content_width + self.padding_left + self.padding_right
-		self.height_request = self.content_height + self.padding_top + self.padding_bottom
+		#self.margin_left = model.units(view, self.style['margin-left'], em_size=em_size)
+		#self.margin_right = model.units(view, self.style['margin-right'], em_size=em_size)
+		#self.margin_top = model.units(view, self.style['margin-top'], em_size=em_size)
+		#self.margin_bottom = model.units(view, self.style['margin-bottom'], em_size=em_size)
+		
+		self.width_request = self.content_width + self.padding_left + self.padding_right #+ self.margin_left + self.margin_right
+		self.height_request = self.content_height + self.padding_top + self.padding_bottom #+ self.margin_top + self.margin_bottom
 	
 	def calculate_positions(self, ctx, view, model):
 		assert self.line_height is not None
@@ -343,7 +372,7 @@ class BlockLinesElement:
 		offset = None
 		for element in self.inline.block_elements():
 			if offset is None: offset = self.inline.elements[0].x
-			if elements and element.x + element.width - offset > self.width - self.padding_left - self.padding_right:
+			if elements and element.x + element.width - offset > self.width - self.padding_left - self.padding_right: #- self.margin_left - self.margin_right:
 				line = Line(elements, self.inline.style)
 				line.calculate_dimensions(ctx, view, model, self.parent_em_size)
 				self.lines.append(line)
@@ -357,7 +386,7 @@ class BlockLinesElement:
 		
 		offset = self.padding_top
 		for line in self.lines:
-			line.width = self.width - self.padding_left - self.padding_right
+			line.width = self.width - self.padding_left - self.padding_right #- self.margin_left - self.margin_right
 			line.height = line.height_request
 			line.x = self.padding_right
 			line.y = offset
@@ -365,7 +394,7 @@ class BlockLinesElement:
 			assert line.height is not None
 			offset += max(line.height, self.line_height)
 		
-		self.broken_height = offset + self.padding_bottom
+		self.broken_height = offset + self.padding_bottom #+ self.margin_bottom
 	
 	def print_tree(self, level=0):
 		print((" " * level) + "BLOCK-LINES: " + self.tag)
@@ -379,10 +408,16 @@ class BlockLinesElement:
 			line.render(ctx)
 		
 		#ctx.rectangle(self.padding_left, self.padding_top, self.width - self.padding_left - self.padding_right, self.height - self.padding_top - self.padding_bottom)
-		#ctx.set_source_rgb(0.5, 0, 1)
+		#ctx.set_line_width(1)
+		#ctx.set_source_rgba(0.95, 0.75, 1)
 		#ctx.stroke()
 		
 		ctx.restore()
+	
+	def check_valid(self):
+		for child in self.children:
+			assert isinstance(child, Line)
+			child.check_valid()
 
 
 class BlockElement:
@@ -412,20 +447,25 @@ class BlockElement:
 		self.padding_top = model.units(view, self.style['padding-top'], em_size=em_size)
 		self.padding_bottom = model.units(view, self.style['padding-bottom'], em_size=em_size)
 		
-		self.width_request = self.content_width + self.padding_left + self.padding_right
-		self.height_request = self.content_height + self.padding_top + self.padding_bottom
+		self.margin_left = model.units(view, self.style['margin-left'], em_size=em_size)
+		self.margin_right = model.units(view, self.style['margin-right'], em_size=em_size)
+		self.margin_top = model.units(view, self.style['margin-top'], em_size=em_size)
+		self.margin_bottom = model.units(view, self.style['margin-bottom'], em_size=em_size)
+		
+		self.width_request = self.content_width + self.padding_left + self.padding_right + self.margin_left + self.margin_right
+		self.height_request = self.content_height + self.padding_top + self.padding_bottom + self.margin_top + self.margin_bottom
 	
 	def calculate_positions(self, ctx, view, model):
 		offset = self.padding_top
 		for element in self.elements:
-			element.width = self.width - self.padding_left - self.padding_right
-			element.x = self.padding_left
+			element.width = self.width - self.padding_left - self.padding_right - self.margin_left - self.margin_right
+			element.x = self.padding_left + self.margin_left
 			element.y = offset
 			element.calculate_positions(ctx, view, model)
 			element.height = element.broken_height
 			offset += element.broken_height
 		
-		self.broken_height = offset + self.padding_bottom
+		self.broken_height = offset + self.padding_bottom + self.margin_bottom
 	
 	def print_tree(self, level=0):
 		print((" " * level) + "BLOCK: " + self.tag)
@@ -443,6 +483,87 @@ class BlockElement:
 		#ctx.stroke()
 		
 		ctx.restore()
+	
+	def check_valid(self):
+		for child in self.children:
+			assert isinstance(child, BlockLineElement | BlockElement)
+			child.check_valid()
+
+
+class HorizontalElement:
+	def __init__(self, tag, elements, style):
+		self.tag = tag
+		self.elements = elements
+		self.style = style
+	
+	@once
+	def calculate_dimensions(self, ctx, view, model, em_size):
+		self.parent_em_size = em_size
+		if self.style['font-size']:
+			self.em_size = em_size = model.units(view, self.style['font-size'], em_size=em_size, percentage=em_size)
+		else:
+			self.em_size = em_size
+		
+		for element in self.elements:
+			element.calculate_dimensions(ctx, view, model, em_size)
+		
+		self.content_width = len(self.elements) * (max(_element.width_request for _element in self.elements) if self.elements else 0)
+		self.content_height = max(_element.height_request for _element in self.elements) if self.elements else 0
+		
+		self.padding_left = model.units(view, self.style['padding-left'], em_size=em_size)
+		self.padding_right = model.units(view, self.style['padding-right'], em_size=em_size)
+		self.padding_top = model.units(view, self.style['padding-top'], em_size=em_size)
+		self.padding_bottom = model.units(view, self.style['padding-bottom'], em_size=em_size)
+		
+		self.margin_left = model.units(view, self.style['margin-left'], em_size=em_size)
+		self.margin_right = model.units(view, self.style['margin-right'], em_size=em_size)
+		self.margin_top = model.units(view, self.style['margin-top'], em_size=em_size)
+		self.margin_bottom = model.units(view, self.style['margin-bottom'], em_size=em_size)
+		
+		self.width_request = self.content_width + self.padding_left + self.padding_right + self.margin_left + self.margin_right
+		self.height_request = self.content_height + self.padding_top + self.padding_bottom + self.margin_top + self.margin_bottom
+	
+	def calculate_positions(self, ctx, view, model):
+		if self.elements:
+			width = (self.width - self.padding_left - self.padding_right) / len(self.elements)
+		else:
+			width = 0
+		
+		for n, element in enumerate(self.elements):
+			element.width = width
+		
+		for n, element in enumerate(self.elements):
+			element.x = width * n
+			element.y = 0
+			element.calculate_positions(ctx, view, model)
+		
+		height = max(_element.broken_height for _element in self.elements) if self.elements else 0
+		for n, element in enumerate(self.elements):
+			element.height = height
+		
+		self.broken_height = height
+	
+	def render(self, ctx):
+		ctx.save()
+		ctx.translate(self.x, self.y)
+		for element in self.elements:
+			element.render(ctx)
+		
+		#ctx.rectangle(0, 0, self.width, self.height)
+		#ctx.set_source_rgb(0.75, 0.95, 0.95)
+		#ctx.stroke()
+		
+		ctx.restore()
+	
+	def check_valid(self):
+		for child in self.children:
+			#assert isinstance(child, Word | InlineBlockElement | InlineElement)
+			child.check_valid()
+	
+	def print_tree(self, level=0):
+		print((" " * level) + "HORIZONTAL: " + self.tag)
+		for element in self.elements:
+			element.print_tree(level=level+1)
 
 
 class HTMLRender:
@@ -460,7 +581,7 @@ class HTMLRender:
 	def create_document(self, data, mime_type):
 		if mime_type == 'application/xhtml' or mime_type == 'application/xhtml+xml' or mime_type == 'text/html':
 			if mime_type == 'text/html':
-				document = self.create_document(data, 'text/x-html-tag-soup')
+				document = self.create_document(data, 'application/sgml')
 				document.getroot().attrib['xmlns:xlink'] = self.xmlns_xlink
 			else:
 				document = self.create_document(data, 'application/xml')
@@ -621,7 +742,7 @@ class HTMLRender:
 		w, h = self.image_dimensions(view, document)
 		return h # TODO
 	
-	def draw_image(self, view, document, ctx, box):
+	def draw_image(self, view, document, ctx, box, callback):
 		"Perform HTML rendering."
 		
 		if not self.is_html_document(document):
@@ -644,6 +765,7 @@ class HTMLRender:
 				tree = BlockLinesElement('--lines', [tree], tree.style)
 			tree.calculate_dimensions(ctx, view, self, em_size)
 			document.__tree = tree
+			tree.print_tree()
 		else:
 			tree = document.__tree
 		
@@ -656,7 +778,7 @@ class HTMLRender:
 		tree.render(ctx)
 		ctx.restore()
 	
-	def poke_image(self, view, document, ctx, box, px, py):
+	def poke_image(self, view, document, ctx, box, px, py, callback):
 		if not self.is_html_document(document):
 			return NotImplemented
 		
@@ -789,18 +911,18 @@ class HTMLRender:
 					if word:
 						children.append(Word(word, style))
 		
-		block_present = any(isinstance(_subelement, BlockElement) or isinstance(_subelement, BlockLinesElement) for _subelement in children)
+		block_present = any(isinstance(_subelement, BlockElement | HorizontalElement) or isinstance(_subelement, BlockLinesElement) for _subelement in children)
 		inline_present = any(isinstance(_subelement, Word) or isinstance(_subelement, InlineElement) or isinstance(_subelement, InlineBlockElement) for _subelement in children)
 		
 		display = self.__get_attribute(view, document, element, pseudoelement, 'display', 'inline')
 		assert display is not None
 		
-		if display == 'inline-block':
+		if display in ['inline-block', 'inline-flex', 'inline-table', 'inline-grid']:
 			return InlineBlockElement(tag, children, style)
 		
-		elif display in ['block', 'inline']:
+		elif display in ['block', 'inline', 'list-item', 'table', 'table-cell']:
 			if not block_present and inline_present:
-				if display == 'block':
+				if display in ['block', 'list-item', 'table', 'table-cell']:
 					return BlockLinesElement(tag, children, style)
 				elif display == 'inline':
 					return InlineElement(tag, children, style)
@@ -828,18 +950,12 @@ class HTMLRender:
 				return BlockElement(tag, children, style)
 			
 			return InlineElement(tag, children, style)
-		
-		elif display == 'list-item':
-			return None
-		
-		elif display == 'table':
-			return None
-		
+				
 		elif display == 'table-cell':
 			return None
 		
 		elif display == 'table-row':
-			return None
+			return HorizontalElement(tag, children, style)
 		
 		elif display == 'table-row-group':
 			return None
@@ -848,6 +964,27 @@ class HTMLRender:
 			return None
 		
 		elif display == 'table-column-group':
+			return None
+		
+		elif display == 'table-header-group':
+			return None
+		
+		elif display == 'table-footer-group':
+			return None
+		
+		elif display == 'table-caption':
+			return None
+		
+		elif display == 'flex':
+			return None
+		
+		elif display == 'grid':
+			return None
+		
+		elif display == 'contents':
+			return None
+		
+		elif display == 'run-in':
 			return None
 		
 		elif display == 'none':
@@ -1205,11 +1342,11 @@ if __debug__ and __name__ == '__main__':
 				raise NotImplementedError(f"Could not scan links in unsupported document type: {type(document)}")
 		
 		def create_document(self, data, mime_type):
-			if mime_type == 'application/xml' or mime_type == 'text/x-html-tag-soup':
+			if mime_type in {'application/xml', 'text/xml', 'application/sgml', 'text/sgml'}:
 				return XMLFormat.create_document(self, data, mime_type)
 			elif mime_type == 'text/css':
 				return CSSFormat.create_document(self, data, mime_type)
-			elif mime_type == 'text/html' or mime_type == 'application/xhtml+xml':
+			elif mime_type in {'text/html', 'application/xhtml', 'application/xhtml+xml'}:
 				return HTMLRender.create_document(self, data, mime_type)
 			else:
 				raise NotImplementedError("Could not create unsupported document type.")
@@ -1237,7 +1374,7 @@ if __debug__ and __name__ == '__main__':
 			return None
 			#raise NotImplementedError("Could not fetch unsupported url scheme: " + url)
 		
-		def draw_image(self, view, document, ctx, box):
+		def draw_image(self, view, document, ctx, box, callback):
 			r = super().draw_image(view, document, ctx, box)
 			if r is NotImplemented:
 				return defaultdict(list)
@@ -1423,7 +1560,7 @@ src="http://pagead2.googlesyndication.com/pagead/show_ads.js">
 				mime = 'text/html'
 			else:
 				mime = 'application/xhtml+xml'
-
+			
 			document = rnd.create_document(filepath.read_bytes(), mime)
 			l = list(rnd.scan_document_links(document))
 			assert 'chrome:/html.css' in l

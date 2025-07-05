@@ -357,7 +357,7 @@ except NameError:
 						bw = viewport_width
 						bh = model.image_height_for_width(self, image, viewport_width)
 					
-					model.draw_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh))
+					model.draw_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh), (lambda _reason, _param: True))
 				
 				except NotImplementedError as error:
 					model.emit_warning(self, f"NotImplementedError: {error}", image)
@@ -388,7 +388,7 @@ except NameError:
 						bh = model.image_height_for_width(self, image, viewport_width)	
 					
 					qx, qy = context.device_to_user(px, py)
-					nop = model.poke_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh), px, py)
+					nop = model.poke_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh), px, py, (lambda _reason, _param: True))
 				
 				except NotImplementedError as error:
 					model.emit_warning(self, f"NotImplementedError: {error}", image)
@@ -401,6 +401,7 @@ if __name__ == '__main__':
 	from asyncio import run, Lock, get_running_loop, create_task
 	from guixmpp.gtkaiopath import Path
 	from guixmpp.mainloop import *
+	from sys import argv, exit
 	
 	loop_init()
 	
@@ -491,16 +492,16 @@ if __name__ == '__main__':
 	images = []
 	image_index = 0
 	
-	#'''
-	async def main():
+	async def main_1():
 		"Display images from local directory, switch using left-right cursor key."
 		global images, image_index, model, root_dir
 		DOMEvent._time = get_running_loop().time
 		root_dir = Path.cwd() / 'examples'
 		async for dir_ in root_dir.iterdir():
 			if not await dir_.is_dir(): continue
+			if dir_.parts[-1] not in {'text', 'gfx'}: continue
 			async for doc in dir_.iterdir():
-				if doc.suffix not in ('.css', '.svg_'):
+				if doc.suffix not in ('.css', '.svg_', '.html', '.xhtml', '.htm', '.py'):
 					images.append(doc.as_uri())
 		images.sort(key=(lambda x: x.lower()))
 		await widget.open(images[image_index])
@@ -515,25 +516,48 @@ if __name__ == '__main__':
 			pass
 		print("stop")
 		#window.close()
-	#'''
 	
-	'''
-	async def main():
+	async def main_2():
+		"Display HTML files from local directory, switch using left-right cursor key."
+		global images, image_index, model, root_dir
+		DOMEvent._time = get_running_loop().time
+		root_dir = Path.cwd() / 'examples'
+		async for dir_ in root_dir.iterdir():
+			if not await dir_.is_dir(): continue
+			async for doc in dir_.iterdir():
+				if doc.suffix in ('.html', '.xhtml', '.htm'):
+					images.append(doc.as_uri())
+		images.sort(key=(lambda x: x.lower()))
+		await widget.open(images[image_index])
+		if hasattr(window, 'show_all'):
+			window.show_all()
+		else:
+			window.present()
+		print("start")
+		try:
+			await loop_run()
+		except KeyboardInterrupt:
+			pass
+		print("stop")
+		#window.close()
+	
+	async def main_3():
 		"Display image from http url."
 		DOMEvent._time = get_running_loop().time
 		for n in range(219):
 			images.append(f'https://www.w3.org/Consortium/Offices/Presentations/SVG/{n}.svg')
 		await widget.open(images[image_index])
-		window.show_all()
+		if hasattr(window, 'show_all'):
+			window.show_all()
+		else:
+			window.present()
 		try:
 			await loop_run()
 		except KeyboardInterrupt:
 			pass
-		window.hide()
-	#'''
+		#window.hide()
 	
-	'''
-	async def main():
+	async def main_4():
 		"Display images from profile directory."
 		global images, image_index, model		
 		async for doc in (Path.cwd() / 'profile').iterdir():
@@ -541,29 +565,68 @@ if __name__ == '__main__':
 				images.append(doc.as_uri())
 		images.sort(key=(lambda x: x.lower()))
 		await widget.open_document(images[image_index])
-		window.show_all()
+		if hasattr(window, 'show_all'):
+			window.show_all()
+		else:
+			window.present()
 		try:
 			await loop_run()
 		except KeyboardInterrupt:
 			pass
-		window.hide()
-	#'''
+		#window.hide()
 
-	'''
-	async def main():
+	async def main_5():
 		global images, image_index, model, root_dir
 		root_dir = Path.cwd() / 'examples'
 		DOMEvent._time = get_running_loop().time
-		async for doc in (Path.cwd() / 'examples/raster').iterdir():
+		async for doc in (root_dir / 'raster').iterdir():
 			images.append(doc.as_uri())
 		images.sort(key=(lambda x: x.lower()))
 		await widget.open(images[image_index])
-		window.present()
+		if hasattr(window, 'show_all'):
+			window.show_all()
+		else:
+			window.present()
 		try:
 			await loop_run()
 		except KeyboardInterrupt:
 			pass
-		window.hide()
-	#'''
+		#window.hide()
 	
-	run(main())
+	async def main_6():
+		global images, image_index, model, root_dir
+		root_dir = Path.cwd() / 'examples'
+		DOMEvent._time = get_running_loop().time
+		async for doc in (root_dir / 'animations').iterdir():
+			images.append(doc.as_uri())
+		images.sort(key=(lambda x: x.lower()))
+		await widget.open(images[image_index])
+		if hasattr(window, 'show_all'):
+			window.show_all()
+		else:
+			window.present()
+		try:
+			await loop_run()
+		except KeyboardInterrupt:
+			pass
+		#window.hide()
+	
+	if len(argv) != 2:
+		print("Pass one of arguments: --test-svg, --test-animations, --test-html, --test-tutorial, --test-profile, --test-raster.")
+		exit(1)
+	elif argv[1] == '--test-svg':
+		run(main_1())
+	elif argv[1] == '--test-html':
+		run(main_2())
+	elif argv[1] == '--test-tutorial':
+		run(main_3())
+	elif argv[1] == '--test-profile':
+		run(main_4())
+	elif argv[1] == '--test-raster':
+		run(main_5())
+	elif argv[1] == '--test-animations':
+		run(main_6())
+	else:
+		print("Unknown argument combination.")
+		exit(1)
+

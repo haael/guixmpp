@@ -39,11 +39,13 @@ if __name__ == '__main__':
 	from guixmpp.format.css import CSSFormat
 	from guixmpp.format.font import TTLibError
 	from guixmpp.document import DocumentNotFound
+	from guixmpp.escape import Escape
 else:
 	from ..format.xml import XMLFormat
 	from ..format.css import CSSFormat
 	from ..format.font import TTLibError
 	from ..document import DocumentNotFound
+	from ..escape import Escape
 
 
 try:
@@ -105,9 +107,9 @@ class SVGRender:
 			return NotImplemented
 	
 	def is_svg_document(self, document):
-		if self.is_xml_document(document):
+		if self.is_xml_document(document): # full XML document
 			return document.getroot().tag.startswith('{' + self.xmlns_svg + '}')
-		else:
+		else: # XML fragment
 			try:
 				return document.tag.startswith('{' + self.xmlns_svg + '}')
 			except AttributeError:
@@ -246,11 +248,13 @@ class SVGRender:
 	
 	initial_em_size = 16
 	
-	def draw_image(self, view, document, ctx, box):
+	def draw_image(self, view, document, ctx, box, callback):
 		"Perform SVG rendering."
 		
 		if not self.is_svg_document(document):
 			return NotImplemented
+		
+		if callback: callback(Escape.begin_draw, document)
 		
 		if hasattr(document, 'getroot'):
 			node = document.getroot()
@@ -266,21 +270,25 @@ class SVGRender:
 		absolute_origin = ctx.get_matrix().transform_point(box[0], box[1])
 		
 		if any(node.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__shape_tags):
-			self.__render_shape(view, document, ctx, box, absolute_origin, node, self.initial_em_size, None)
+			self.__render_shape(view, document, ctx, box, absolute_origin, node, self.initial_em_size, None, callback)
 		elif node.tag == f'{{{self.xmlns_svg}}}text':
-			self.__render_text(view, document, ctx, box, absolute_origin, node, initial_em_size, None)
+			self.__render_text(view, document, ctx, box, absolute_origin, node, initial_em_size, None, callback)
 		elif any(node.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__group_tags):
-			self.__render_group(view, document, ctx, box, absolute_origin, node, self.initial_em_size, None)
+			self.__render_group(view, document, ctx, box, absolute_origin, node, self.initial_em_size, None, callback)
 		elif node.tag == f'{{{self.xmlns_svg}}}image':
-			self.__render_image(view, document, ctx, box, node, self.initial_em_size, None)
+			self.__render_image(view, document, ctx, box, node, self.initial_em_size, None, callback)
 		elif node.tag == f'{{{self.xmlns_svg}}}foreignObject':
-			self.__render_foreign_object(view, document, ctx, box, node, self.initial_em_size, None)
+			self.__render_foreign_object(view, document, ctx, box, node, self.initial_em_size, None, callback)
 		else:
 			self.emit_warning(view, f"Unsupported node: {node.tag}", node)
+		
+		if callback: callback(Escape.end_draw, document)
 	
-	def poke_image(self, view, document, ctx, box, px, py):
+	def poke_image(self, view, document, ctx, box, px, py, callback):
 		if not self.is_svg_document(document):
 			return NotImplemented
+		
+		if callback: callback(Escape.begin_poke, document)
 		
 		if hasattr(document, 'getroot'):
 			node = document.getroot()
@@ -291,18 +299,21 @@ class SVGRender:
 		absolute_origin = ctx.get_matrix().transform_point(box[0], box[1])
 		
 		if any(node.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__shape_tags):
-			return self.__render_shape(view, document, ctx, box, absolute_origin, node, self.initial_em_size, (px, py))
+			hover_nodes = self.__render_shape(view, document, ctx, box, absolute_origin, node, self.initial_em_size, (px, py), callback)
 		elif node.tag == f'{{{self.xmlns_svg}}}text':
-			return self.__render_text(view, document, ctx, box, absolute_origin, node, self.initial_em_size, (px, py))
+			hover_nodes = self.__render_text(view, document, ctx, box, absolute_origin, node, self.initial_em_size, (px, py), callback)
 		elif any(node.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__group_tags):
-			return self.__render_group(view, document, ctx, box, absolute_origin, node, self.initial_em_size, (px, py))
+			hover_nodes = self.__render_group(view, document, ctx, box, absolute_origin, node, self.initial_em_size, (px, py), callback)
 		elif node.tag == f'{{{self.xmlns_svg}}}image':
-			return self.__render_image(view, document, ctx, box, node, self.initial_em_size, (px, py))
+			hover_nodes = self.__render_image(view, document, ctx, box, node, self.initial_em_size, (px, py), callback)
 		elif node.tag == f'{{{self.xmlns_svg}}}foreignObject':
-			return self.__render_foreign_object(view, document, ctx, box, node, self.initial_em_size, (px, py))
+			hover_nodes = self.__render_foreign_object(view, document, ctx, box, node, self.initial_em_size, (px, py), callback)
 		else:
 			self.emit_warning(view, f"Unsupported node: {node.tag}", node)
-			return []
+			hover_nodes = []
+		
+		if callback: callback(Escape.end_poke, document)
+		return hover_nodes
 	
 	__presentation_attributes = frozenset({
 		'alignment-baseline',
@@ -484,8 +495,10 @@ class SVGRender:
 		else:
 			return None
 	
-	def __render_group(self, view, document, ctx, box, absolute_origin, node, em_size, pointer):
+	def __render_group(self, view, document, ctx, box, absolute_origin, node, em_size, pointer, callback):
 		"Render SVG group element and its subelements."
+		
+		if callback: callback(Escape.begin_tag, node)
 		
 		em_size = self.__font_size(view, document, ctx, box, node, em_size)
 		
@@ -493,7 +506,8 @@ class SVGRender:
 		visibility = self.__get_attribute(view, document, ctx, box, node, em_size, 'visibility', 'visible').lower()
 		
 		if visibility == 'collapse' or display == 'none':
-			return defaultdict(list)
+			if callback: callback(Escape.end_tag, node)
+			return []
 		
 		left, top, width, height = box
 		
@@ -556,6 +570,7 @@ class SVGRender:
 		left, top, width, height = box
 		
 		if transform:
+			if callback: callback(Escape.begin_transform, transform)
 			self.__apply_transform(view, document, ctx, box, node, em_size, transform)
 		
 		if (node.getparent() is not None) and (x or y):
@@ -585,6 +600,15 @@ class SVGRender:
 						child = self.__construct_use(document, child)
 					except DocumentNotFound as error:
 						self.emit_warning(view, "Root document not found.", node)
+						
+						if transform or ((node.getparent() is not None) and (x or y)) or node.tag == f'{{{self.xmlns_svg}}}svg' or node.tag == f'{{{self.xmlns_svg}}}symbol':
+							ctx.restore()
+						
+						if callback:
+							if transform:
+								callback(Escape.end_transform, transform)
+							callback(Escape.end_tag, node)
+						
 						return []
 				if child.tag == f'{{{self.xmlns_svg}}}switch':
 					for subchild in child:
@@ -601,31 +625,31 @@ class SVGRender:
 				pass
 			
 			elif any(child.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__shape_tags):
-				hover_subnodes = self.__render_shape(view, document, ctx, box, absolute_origin, child, em_size, pointer)
+				hover_subnodes = self.__render_shape(view, document, ctx, box, absolute_origin, child, em_size, pointer, callback)
 				hover_nodes.extend(hover_subnodes)
 			
 			elif child.tag == f'{{{self.xmlns_svg}}}text':
-				hover_subnodes = self.__render_text(view, document, ctx, box, absolute_origin, child, em_size, pointer)
+				hover_subnodes = self.__render_text(view, document, ctx, box, absolute_origin, child, em_size, pointer, callback)
 				hover_nodes.extend(hover_subnodes)
 			
 			elif any(child.tag == f'{{{self.xmlns_svg}}}{_tagname}' for _tagname in self.__group_tags):
-				hover_subnodes = self.__render_group(view, document, ctx, box, absolute_origin, child, em_size, pointer)
+				hover_subnodes = self.__render_group(view, document, ctx, box, absolute_origin, child, em_size, pointer, callback)
 				hover_nodes.extend(hover_subnodes)
 			
 			elif child.tag == f'{{{self.xmlns_svg}}}image':
-				hover_subnodes = self.__render_image(view, document, ctx, box, child, em_size, pointer)
+				hover_subnodes = self.__render_image(view, document, ctx, box, child, em_size, pointer, callback)
 				hover_nodes.extend(hover_subnodes)
 			
 			elif child.tag == f'{{{self.xmlns_svg}}}foreignObject':
-				hover_subnodes = self.__render_foreign_object(view, document, ctx, box, child, em_size, pointer)
+				hover_subnodes = self.__render_foreign_object(view, document, ctx, box, child, em_size, pointer, callback)
 				hover_nodes.extend(hover_subnodes)
 			
 			elif not child.tag.startswith(f'{{{self.xmlns_svg}}}'):
 				try:
 					if not pointer:
-						self.draw_image(view, child, ctx, box)
+						self.draw_image(view, child, ctx, box, callback)
 					else:
-						hover_subnodes = self.poke_image(view, child, ctx, box, *pointer)
+						hover_subnodes = self.poke_image(view, child, ctx, box, *pointer, callback)
 						hover_nodes.extend(hover_subnodes)
 				except NotImplementedError:
 					self.emit_warning(view, f"Unsupported non-SVG element: {child.tag}", child)
@@ -640,8 +664,14 @@ class SVGRender:
 		if transform or ((node.getparent() is not None) and (x or y)) or node.tag == f'{{{self.xmlns_svg}}}svg' or node.tag == f'{{{self.xmlns_svg}}}symbol':
 			ctx.restore()
 		
+		if transform:
+			if callback: callback(Escape.end_transform, transform)
+		
 		if pointer and hover_nodes:
 			hover_nodes.insert(0, node)
+		
+		if callback: callback(Escape.end_tag, node)
+		
 		return hover_nodes
 	
 	def __begin_filter(self, ctx):
@@ -674,9 +704,15 @@ class SVGRender:
 		image_ctx.set_source_surface(pattern.get_surface(), -dx, -dy)
 		image_ctx.paint()
 		
-		# Apply filter to the image.
-		image_surface.flush()
-		image_surface.get_data()[:] = PIL.Image.frombytes('RGBa', (image_surface.get_width(), image_surface.get_height()), image_surface.get_data().cast('B')).filter(pil_filter).tobytes()
+		# Construct PIL image from surface.
+		image_surface.flush()		
+		image = PIL.Image.frombytes('RGBa', (image_surface.get_width(), image_surface.get_height()), image_surface.get_data().cast('B'))
+		
+		# Perform filters.
+		image = image.filter(pil_filter)
+		
+		# Update surface with filtered results.
+		image_surface.get_data()[:] = image.tobytes()
 		image_surface.mark_dirty()
 		
 		## DEBUG: Draw rectangle around the subgroup (incl. kernel margin).
@@ -696,8 +732,10 @@ class SVGRender:
 		
 		image_surface.finish()
 	
-	def __render_shape(self, view, document, ctx, box, absolute_origin, node, em_size, pointer):
+	def __render_shape(self, view, document, ctx, box, absolute_origin, node, em_size, pointer, callback):
 		"Render one of SVG shapes."
+		
+		if callback: callback(Escape.begin_tag, node)
 		
 		left, top, width, height = box
 		
@@ -705,11 +743,13 @@ class SVGRender:
 		visibility = self.__get_attribute(view, document, ctx, box, node, em_size, 'visibility', 'visible').lower()
 		
 		if visibility == 'collapse' or display == 'none':
-			return defaultdict(list)
+			if callback: callback(Escape.end_tag, node)
+			return []
 		
 		#transform = self.__get_attribute(view, document, ctx, box, node, em_size, 'transform', None)
 		transform = node.attrib.get('transform', None)
 		if transform:
+			if callback: callback(Escape.begin_transform, transform)
 			ctx.save()
 			self.__apply_transform(view, document, ctx, box, node, em_size, transform)
 		
@@ -719,6 +759,7 @@ class SVGRender:
 			filter_ = None
 		
 		if filter_:
+			if callback: callback(Escape.begin_filter, filter_)
 			self.__begin_filter(ctx)
 		
 		if node.tag == f'{{{self.xmlns_svg}}}rect':
@@ -800,7 +841,7 @@ class SVGRender:
 		else:
 			self.emit_warning(view, f"Tag {node.tag} not supported by this method.", node)
 		
-		has_fill, has_stroke = self.__apply_paint(view, document, ctx, box, absolute_origin, node, em_size, (visibility != 'hidden'))
+		has_fill, has_stroke = self.__apply_paint(view, document, ctx, box, absolute_origin, node, em_size, (visibility != 'hidden'), callback)
 		
 		hover_nodes = []
 		if pointer:
@@ -814,10 +855,13 @@ class SVGRender:
 		if filter_:
 			print(filter_)
 			self.__end_filter(ctx, box, absolute_origin, filter_)
+			if callback: callback(Escape.end_filter, filter_)
 		
 		if transform:
 			ctx.restore()
+			if callback: callback(Escape.end_transform, transform)
 		
+		if callback: callback(Escape.end_tag, node)
 		return hover_nodes
 	
 	def __construct_use(self, document, node):
@@ -899,7 +943,7 @@ class SVGRender:
 			return NotImplemented
 		svg_width, svg_height = self.image_dimensions(view, document)
 		return width * svg_height / svg_width
-		
+	
 	__p_number = r'[+-]?(?:\d+\.?\d*|\d*\.?\d+)(?:[eE][+-]?\d+)?' # regex pattern matching a floating point number
 	__re_tokens = re.compile(fr'({__p_number}|[a-zA-Z])')
 	__re_matrix = re.compile(fr'matrix\s*\(\s*({__p_number})\s*,?\s*({__p_number})\s*,?\s*({__p_number})\s*,?\s*({__p_number})\s*,?\s*({__p_number})\s*,?\s*({__p_number})\s*\)')
@@ -930,75 +974,75 @@ class SVGRender:
 		text = transform_string
 		n = 0
 		while n < len(text):
-			match = self.__re_matrix.search(text, n)
-			if match and self.__transform_separators(text[n:match.start()]):
-				m0, m1, m2, m3, m4, m5 = map(parse_float, list(match.groups()))
+			match_ = self.__re_matrix.search(text, n)
+			if match_ and self.__transform_separators(text[n:match_.start()]):
+				m0, m1, m2, m3, m4, m5 = map(parse_float, list(match_.groups()))
 				transformation = cairo.Matrix(m0, m1, m2, m3, m4, m5)
 				if (m0 or m1 or m2) and (m3 or m4 or m5): # TODO: hide view if matrix is singular
 					ctx.transform(transformation)
-				n = match.end()
+				n = match_.end()
 				continue
 			
-			match = self.__re_translate1.search(text, n)
-			if match and self.__transform_separators(text[n:match.start()]):
-				x, = [self.units(view, _spec, em_size=em_size) for _spec in match.groups()]
+			match_ = self.__re_translate1.search(text, n)
+			if match_ and self.__transform_separators(text[n:match_.start()]):
+				x, = [self.units(view, _spec, em_size=em_size) for _spec in match_.groups()]
 				ctx.translate(x, 0)
-				n = match.end()
+				n = match_.end()
 				continue
 			
-			match = self.__re_translate.search(text, n)
-			if match and self.__transform_separators(text[n:match.start()]):
-				x, y = [self.units(view, _spec, em_size=em_size) for _spec in match.groups()]
+			match_ = self.__re_translate.search(text, n)
+			if match_ and self.__transform_separators(text[n:match_.start()]):
+				x, y = [self.units(view, _spec, em_size=em_size) for _spec in match_.groups()]
 				ctx.translate(x, y)
-				n = match.end()
+				n = match_.end()
 				continue
 			
-			match = self.__re_scale1.search(text, n)
-			if match and self.__transform_separators(text[n:match.start()]):
-				s, = map(parse_float, list(match.groups()))
+			match_ = self.__re_scale1.search(text, n)
+			if match_ and self.__transform_separators(text[n:match_.start()]):
+				s, = map(parse_float, list(match_.groups()))
 				if s: # TODO: hide view if matrix is singular
 					ctx.scale(s, s)
-				n = match.end()
+				n = match_.end()
 				continue
 			
-			match = self.__re_scale2.search(text, n)
-			if match and self.__transform_separators(text[n:match.start()]):
-				sx, sy = map(parse_float, list(match.groups()))
+			match_ = self.__re_scale2.search(text, n)
+			if match_ and self.__transform_separators(text[n:match_.start()]):
+				sx, sy = map(parse_float, list(match_.groups()))
 				if sx and sy: # TODO: hide view if matrix is singular
 					ctx.scale(sx, sy)
-				n = match.end()
+				n = match_.end()
 				continue
 			
-			match = self.__re_rotate1.search(text, n)
-			if match and self.__transform_separators(text[n:match.start()]):
-				r, = map(parse_float, list(match.groups()))
+			match_ = self.__re_rotate1.search(text, n)
+			if match_ and self.__transform_separators(text[n:match_.start()]):
+				r, = map(parse_float, list(match_.groups()))
 				ctx.rotate(math.radians(r))
-				n = match.end()
+				n = match_.end()
 				continue
 			
-			match = self.__re_rotate3.search(text, n)
-			if match and self.__transform_separators(text[n:match.start()]):
-				r, cx, cy = map(parse_float, list(match.groups()))
+			match_ = self.__re_rotate3.search(text, n)
+			if match_ and self.__transform_separators(text[n:match_.start()]):
+				r, cx, cy = map(parse_float, list(match_.groups()))
 				ctx.translate(cx, cy)
 				ctx.rotate(math.radians(r))
 				ctx.translate(-cx, -cy)
-				n = match.end()
+				n = match_.end()
 				continue
 			
-			match = self.__re_skewX.search(text, n)
-			if match and self.__transform_separators(text[n:match.start()]):
-				a, = map(parse_float, list(match.groups()))
+			match_ = self.__re_skewX.search(text, n)
+			if match_ and self.__transform_separators(text[n:match_.start()]):
+				a, = map(parse_float, list(match_.groups()))
 				transformation = cairo.Matrix(1, 0, math.tan(math.radians(a)), 1, 0, 0)
 				ctx.transform(transformation)
-				n = match.end()
+				n = match_.end()
 				continue
 			
-			match = self.__re_skewY.search(text, n)
-			if match and self.__transform_separators(text[n:match.start()]):
-				a, = map(parse_float, list(match.groups()))
+			match_ = self.__re_skewY.search(text, n)
+			if match_ and self.__transform_separators(text[n:match_.start()]):
+				a, = map(parse_float, list(match_.groups()))
 				transformation = cairo.Matrix(1, math.tan(math.radians(a)), 0, 1, 0, 0)
 				ctx.transform(transformation)
-				n = match.end()
+				n = match_.end()
 				continue
 			
 			self.emit_warning(view, f"Unsupported transformation: {text[n:]}.", node)
@@ -1009,12 +1053,12 @@ class SVGRender:
 		
 		return True
 	
-	def __apply_paint(self, view, document, ctx, box, absolute_origin, node, em_size, draw):
+	def __apply_paint(self, view, document, ctx, box, absolute_origin, node, em_size, draw, callback):
 		"Draw the current shape, applying fill and stroke. The path is preserved. Returns a pair of bool, indicating whether fill and stroke was non-transparent."
 		
 		has_fill = False
 		ctx.save()
-		if self.__apply_fill(view, document, ctx, box, absolute_origin, node, em_size):
+		if self.__apply_fill(view, document, ctx, box, absolute_origin, node, em_size, callback):
 			has_fill = True
 			if draw:
 				ctx.fill_preserve()
@@ -1022,7 +1066,7 @@ class SVGRender:
 		
 		has_stroke = False
 		ctx.save()
-		if self.__apply_stroke(view, document, ctx, box, absolute_origin, node, em_size):
+		if self.__apply_stroke(view, document, ctx, box, absolute_origin, node, em_size, callback):
 			has_stroke = True
 			if draw:
 				ctx.stroke_preserve()
@@ -1030,10 +1074,10 @@ class SVGRender:
 		
 		return has_fill, has_stroke
 	
-	def __apply_fill(self, view, document, ctx, box, absolute_origin, node, em_size):
+	def __apply_fill(self, view, document, ctx, box, absolute_origin, node, em_size, callback):
 		"Prepares the context to fill() operation, including setting color and fill rules."
 		
-		if not self.__apply_color(view, document, ctx, box, absolute_origin, node, em_size, 'fill', 'fill-opacity', 'black'):
+		if not self.__apply_color(view, document, ctx, box, absolute_origin, node, em_size, 'fill', 'fill-opacity', 'black', callback):
 			return False
 		
 		fill_rule = self.__get_attribute(view, document, ctx, box, node, em_size, 'fill-rule', None)
@@ -1052,10 +1096,10 @@ class SVGRender:
 		
 		return True
 	
-	def __apply_stroke(self, view, document, ctx, box, absolute_origin, node, em_size):
+	def __apply_stroke(self, view, document, ctx, box, absolute_origin, node, em_size, callback):
 		"Prepares the context to stroke() operation, including setting color and line parameters."
 		
-		if not self.__apply_color(view, document, ctx, box, absolute_origin, node, em_size, 'stroke', 'stroke-opacity', 'none'):
+		if not self.__apply_color(view, document, ctx, box, absolute_origin, node, em_size, 'stroke', 'stroke-opacity', 'none', callback):
 			return False
 		
 		try:
@@ -1146,7 +1190,7 @@ class SVGRender:
 		
 		return r, g, b
 	
-	def __apply_color(self, view, document, ctx, box, absolute_origin, node, em_size, color_attr, opacity_attr, default_color):
+	def __apply_color(self, view, document, ctx, box, absolute_origin, node, em_size, color_attr, opacity_attr, default_color, callback):
 		"Set painting source to the color identified by provided parameters."
 		
 		color = self.__get_attribute(view, document, ctx, box, node, em_size, color_attr, default_color).strip()
@@ -1183,7 +1227,7 @@ class SVGRender:
 		if color[:4] == 'url(' and color[-1] == ')':
 			href = color.strip()[4:-1]
 			if href[0] == '"' and href[-1] == '"': href = href[1:-1]
-			return self.__apply_pattern(view, document, ctx, box, absolute_origin, node, em_size, href)
+			return self.__apply_pattern(view, document, ctx, box, absolute_origin, node, em_size, href, callback)
 			# TODO: transparency
 		else:
 			cc = self.__parse_color(color, view, node)
@@ -1202,7 +1246,7 @@ class SVGRender:
 		
 		return True
 	
-	def __apply_pattern(self, view, document, ctx, box, absolute_origin, node, em_size, url):
+	def __apply_pattern(self, view, document, ctx, box, absolute_origin, node, em_size, url, callback):
 		"Set painting source to a pattern, i.e. a gradient, identified by url."
 		
 		try:
@@ -1214,7 +1258,7 @@ class SVGRender:
 		target_doc = self.get_document(href)
 		if target_doc == None:
 			self.emit_warning(view, f"Color pattern ref not found: {href}.", node)
-			return defaultdict(list)
+			return []
 		else:
 			target = target_doc.getroot()
 		
@@ -1482,7 +1526,7 @@ class SVGRender:
 			
 			surface = cairo.ImageSurface(cairo.Format.ARGB32, math.ceil(pattern_width), math.ceil(pattern_height))
 			
-			self.__render_group(view, document, cairo.Context(surface), box, absolute_origin, target, self.initial_em_size, None) # reset em_size to initial value
+			self.__render_group(view, document, cairo.Context(surface), box, absolute_origin, target, self.initial_em_size, None, callback) # reset em_size to initial value
 			pattern = cairo.SurfacePattern(surface)
 			pattern.set_extend(cairo.Extend.REPEAT)
 
@@ -1550,7 +1594,9 @@ class SVGRender:
 		#	txt = txt.lstrip()
 		return txt.lstrip()
 	
-	def __render_text(self, view, document, ctx, box, absolute_origin, textnode, em_size, pointer):
+	def __render_text(self, view, document, ctx, box, absolute_origin, textnode, em_size, pointer, callback):
+		if callback: callback(Escape.begin_tag, textnode)
+		
 		writing_mode = self.__get_attribute(view, document, ctx, box, textnode, em_size, 'writing-mode', 'horizontal-tb')
 		if writing_mode in ('vertical-lr', 'tb-lr', 'vertical-rl', 'tb-rl', 'tb'):
 			rotate = 90
@@ -1565,11 +1611,14 @@ class SVGRender:
 			pango_layout = None
 		
 		textspec = self.__produce_text(view, document, ctx, box, textnode, em_size, '', 0, 0, pango_layout, rotate)
-		return self.__render_text_spec(view, document, ctx, box, absolute_origin, textspec, em_size, None, pango_layout, pointer, rotate)
+		hover_nodes = self.__render_text_spec(view, document, ctx, box, absolute_origin, textspec, em_size, None, pango_layout, pointer, rotate, callback)
+		if callback: callback(Escape.end_tag, textnode)
+		return hover_nodes
 	
-	def __render_text_spec(self, view, document, ctx, box, absolute_origin, textspec, em_size, ta_width, pango_layout, pointer, rotate):
+	def __render_text_spec(self, view, document, ctx, box, absolute_origin, textspec, em_size, ta_width, pango_layout, pointer, rotate, callback):
 		node, txt_paths, tx, ty, extents = textspec
 		
+		if callback: callback(Escape.begin_tag, node)
 		# TODO: support links
 		
 		display = self.__get_attribute(view, document, ctx, box, node, em_size, 'display', 'block').lower()
@@ -1602,6 +1651,7 @@ class SVGRender:
 		
 		transform = node.attrib.get('transform', '')
 		if transform:
+			if callback: callback(Escape.begin_transform, transform)
 			ctx.save()
 			self.__apply_transform(view, document, ctx, box, node, em_size, transform)
 		
@@ -1611,6 +1661,7 @@ class SVGRender:
 			filter_ = None
 		
 		if filter_:
+			if callback: callback(Escape.begin_filter, filter_)
 			self.__begin_filter(ctx)
 		
 		self.__apply_font(view, document, ctx, box, node, em_size, pango_layout)
@@ -1639,7 +1690,7 @@ class SVGRender:
 			if rotate == 90: # vertical text
 				ctx.restore()
 			
-			has_fill, has_stroke = self.__apply_paint(view, document, ctx, box, absolute_origin, node, em_size, (visibility != 'hidden'))
+			has_fill, has_stroke = self.__apply_paint(view, document, ctx, box, absolute_origin, node, em_size, (visibility != 'hidden'), callback)
 			
 			if pointer:
 				px, py = ctx.device_to_user(*pointer)
@@ -1652,14 +1703,17 @@ class SVGRender:
 		
 		for spec in txt_paths:
 			if spec[0] is None: continue
-			hover_nodes.extend(self.__render_text_spec(view, document, ctx, box, absolute_origin, spec, em_size, ta_width, pango_layout, pointer, rotate))
+			hover_nodes.extend(self.__render_text_spec(view, document, ctx, box, absolute_origin, spec, em_size, ta_width, pango_layout, pointer, rotate, callback))
 		
 		if filter_:
 			self.__end_filter(ctx, box, absolute_origin, filter_)
+			if callback: callback(Escape.end_filter, filter_)
 		
 		if transform:
 			ctx.restore()
+			if callback: callback(Escape.end_transform, transform)
 		
+		if callback: callback(Escape.end_tag, node)
 		return hover_nodes
 	
 	def __produce_text(self, view, document, ctx, box, node, em_size, whitespace, x, y, pango_layout, rotate):
@@ -2190,8 +2244,10 @@ class SVGRender:
 			ctx.arc_negative(center_x, center_y, 1, start_angle, end_angle)
 		ctx.restore()
 	
-	def __render_image(self, view, document, ctx, box, node, em_size, pointer):
+	def __render_image(self, view, document, ctx, box, node, em_size, pointer, callback):
 		"Render external image."
+		
+		if callback: callback(Escape.begin_tag, node)
 		
 		try:
 			href = node.attrib[f'{{{self.xmlns_xlink}}}href']
@@ -2200,7 +2256,8 @@ class SVGRender:
 		
 		if not href:
 			self.emit_warning(view, "Image without href.", node)
-			return defaultdict(list)
+			if callback: callback(Escape.end_tag, node)
+			return []
 		
 		url = self.resolve_url(href, self.get_document_url(document))
 		
@@ -2213,6 +2270,7 @@ class SVGRender:
 		
 		transform = node.attrib.get('transform', None)
 		if transform:
+			if callback: callback(Escape.begin_transform, transform)
 			ctx.save()
 			self.__apply_transform(view, document, ctx, box, node, em_size, transform)
 		
@@ -2233,11 +2291,15 @@ class SVGRender:
 		
 		if transform:
 			ctx.restore()
+			if callback: callback(Escape.end_transform, transform)
 		
+		if callback: callback(Escape.end_tag, node)
 		return hover_nodes
 	
-	def __render_foreign_object(self, view, document, ctx, box, node, em_size, pointer):
+	def __render_foreign_object(self, view, document, ctx, box, node, em_size, pointer, callback):
 		"Render <foreignObject/>. Rendering of the child node must be implemented separately."
+		
+		if callback: callback(Escape.begin_tag, node)
 		
 		left, top, width, height = box
 		x = self.units(view, node.attrib.get('x', 0), percentage=width, em_size=em_size)
@@ -2248,6 +2310,7 @@ class SVGRender:
 		
 		transform = node.attrib.get('transform', None)
 		if transform:
+			if callback: callback(Escape.begin_transform, transform)
 			ctx.save()
 			self.__apply_transform(view, document, ctx, box, node, em_size, transform)
 		
@@ -2257,9 +2320,9 @@ class SVGRender:
 			try:
 				ctx.save()
 				if not pointer:
-					self.draw_image(view, child, ctx, box)
+					self.draw_image(view, child, ctx, box, callback)
 				else:
-					hover_subnodes = self.poke_image(view, child, ctx, box, *pointer)
+					hover_subnodes = self.poke_image(view, child, ctx, box, *pointer, callback)
 					hover_nodes.extend(hover_subnodes)
 			except NotImplementedError:
 				self.emit_warning(view, f"Unsupported foreign object: `{child.tag}`.", child)
@@ -2268,9 +2331,12 @@ class SVGRender:
 		
 		if transform:
 			ctx.restore()
+			if callback: callback(Escape.end_transform, transform)
 		
 		if pointer and hover_nodes:
 			hover_nodes.insert(0, node)
+		
+		if callback: callback(Escape.end_tag, node)
 		
 		return hover_nodes
 
@@ -2416,10 +2482,10 @@ if __name__ == '__main__':
 			else:
 				raise KeyError("Could not fetch unsupported url scheme: " + url)
 		
-		def draw_image(self, view, document, ctx, box):
-			r = super().draw_image(view, document, ctx, box)
+		def draw_image(self, view, document, ctx, box, callback):
+			r = super().draw_image(view, document, ctx, box, callback)
 			if r is NotImplemented:
-				return defaultdict(list)
+				return []
 			return r
 		
 		def get_dpi(self, view):
@@ -2472,7 +2538,7 @@ if __name__ == '__main__':
 					#	raise NotImplementedError(link)
 			
 			rnd.tree = document
-			rnd.draw_image(view, document, ctx, (0, 0, 1024, 768))
+			rnd.draw_image(view, document, ctx, (0, 0, 1024, 768), None)
 			assert ctx.balance == 0
 				
 			profiler.done()

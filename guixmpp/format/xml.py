@@ -12,7 +12,7 @@ if __name__ == '__main__':
 
 from io import BytesIO
 from lxml.etree import _ElementTree, ElementBase, fromstring as xml_frombytes, tostring as xml_tounicode, XMLParser, ElementDefaultClassLookup, ProcessingInstruction
-from lxml.html import document_fromstring as html_frombytes
+from lxml.html import document_fromstring as html_frombytes, tostring as html_tobytes
 from collections import defaultdict
 
 
@@ -130,8 +130,11 @@ class XMLFormat:
 		if mime == 'text/xml' or mime == 'application/xml' or mime.endswith('+xml'):
 			document = self.XMLDocument(self.xml_frombytes(data))
 			return document
-		elif mime == 'text/x-html-tag-soup':
-			document = self.XMLDocument(self.html_frombytes(data))
+		elif mime == 'text/sgml' or mime == 'application/sgml':
+			sgml_text = data
+			sgml_doc = self.html_frombytes(sgml_text)
+			xml_text = html_tobytes(sgml_doc, encoding='utf-8', method='xml')
+			document = self.create_document(xml_text, 'application/xml')
 			return document
 		else:
 			return NotImplemented
@@ -187,7 +190,7 @@ if __name__ == '__main__':
 	print("xml format")
 	
 	model = XMLFormat()
-	a = model.create_document(b'''
+	a = model.create_document(b'''<?xml version="1.0" encoding="utf-8"?>
 <?xml-stylesheet href="data:text/css,a{display:block;}"?>
 <?xml-stylesheet href="data:text/css,a b{display:inline;}"?>
 <a>
@@ -199,6 +202,38 @@ if __name__ == '__main__':
 ''', 'application/xml')
 	assert model.is_xml_document(a)
 	
+	b = model.create_document(b'''
+<!DOCTYPE a>
+<a>
+ <b b1 b2=b>
+ <c c1 c2=c>
+ <d d1 d2=d>
+ <e e1 e2=e>
+</a>
+''', 'application/sgml')
+	assert model.is_xml_document(b)
+
+	c = model.create_document(b'''
+<!DOCTYPE html>
+<html>
+ <head>
+  <meta key="a" value="b">
+  <meta key="a" value="b">
+ </head>
+ <body>
+  <ul>
+   <li>1
+   <li>2
+   <li>3
+  </ul>
+ </body>
+</html>
+''', 'application/sgml')
+	assert model.is_xml_document(c)
+	
+	#print(a.to_bytes())
+	#print(b.to_bytes())
+	#print(c.to_bytes())
 	#d = a.getroot()[2]
 	#e = a.getroot()[3]
 	

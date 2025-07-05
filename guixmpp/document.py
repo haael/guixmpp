@@ -23,29 +23,6 @@ class DocumentNotFound(Exception):
 	pass
 
 
-'''
-active = set()
-
-def print_call(amethod_old):
-	async def amethod_new(*args):
-		myid = tuple([amethod_old.__name__] + [_arg for _arg in args if isinstance(_arg, str)])
-		active.add(myid)
-		print("enter", amethod_old.__name__, *[_arg for _arg in args if isinstance(_arg, str)], active)
-		try:
-			r = await amethod_old(*args)
-		except Exception as error:
-			active.remove(myid)
-			print("exit by exception", amethod_old.__name__, *[_arg for _arg in args if isinstance(_arg, str)], active)
-			raise
-		else:
-			active.remove(myid)
-			print("exit by return", amethod_old.__name__, *[_arg for _arg in args if isinstance(_arg, str)], active)
-			return  r
-
-	return amethod_new
-'''
-
-
 def unique(gen):
 	seen = set()
 	for item in gen:
@@ -544,11 +521,11 @@ class Model:
 		"Return image optimal height as calculated for the provided width."
 		return self.__find_impl('image_height_for_width', [view, document, width])
 	
-	def draw_image(self, view, document, ctx, box):
-		return self.__find_impl('draw_image', [view, document, ctx, box])
+	def draw_image(self, view, document, ctx, box, callback):
+		return self.__find_impl('draw_image', [view, document, ctx, box, callback])
 	
-	def poke_image(self, view, document, ctx, box, px, py):
-		return self.__find_impl('poke_image', [view, document, ctx, box, px, py])
+	def poke_image(self, view, document, ctx, box, px, py, callback):
+		return self.__find_impl('poke_image', [view, document, ctx, box, px, py, callback])
 	
 	def element_tabindex(self, document, element):
 		return self.__find_impl('element_tabindex', [document, element])
