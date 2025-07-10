@@ -722,7 +722,7 @@ class HTMLRender:
 			if script:
 				yield f'data:{mime},' + url_quote(script)
 	
-	def image_dimensions(self, view, document):
+	def image_dimensions(self, view, document, callback):
 		"Return the SVG dimensions, that might depend on the view state."
 		
 		if not self.is_html_document(document):
@@ -730,16 +730,16 @@ class HTMLRender:
 		
 		return self.get_viewport_width(view), self.get_viewport_height(view)
 	
-	def image_width_for_height(self, view, document, height):
+	def image_width_for_height(self, view, document, height, callback):
 		if not self.is_html_document(document):
 			return NotImplemented
-		w, h = self.image_dimensions(view, document)
+		w, h = self.image_dimensions(view, document, callback)
 		return w # TODO
 	
-	def image_height_for_width(self, view, document, width):
+	def image_height_for_width(self, view, document, width, callback):
 		if not self.is_html_document(document):
 			return NotImplemented
-		w, h = self.image_dimensions(view, document)
+		w, h = self.image_dimensions(view, document, callback)
 		return h # TODO
 	
 	def draw_image(self, view, document, ctx, box, callback):

@@ -20,8 +20,8 @@ from urllib.parse import quote as url_quote
 from colorsys import hls_to_rgb
 from asyncio import gather
 from os import environ
-
 import PIL.Image, PIL.ImageFilter
+
 
 _use_pango = environ.get('GUIXMPP_USE_PANGO', '1')
 
@@ -912,7 +912,7 @@ class SVGRender:
 		
 		return target
 	
-	def image_dimensions(self, view, document):
+	def image_dimensions(self, view, document, callback):
 		"Return the SVG dimensions, that might depend on the view state."
 		
 		if not self.is_svg_document(document):
@@ -932,16 +932,16 @@ class SVGRender:
 		
 		return svg_width, svg_height
 	
-	def image_width_for_height(self, view, document, height):
+	def image_width_for_height(self, view, document, height, callback):
 		if not self.is_svg_document(document):
 			return NotImplemented
-		svg_width, svg_height = self.image_dimensions(view, document)
+		svg_width, svg_height = self.image_dimensions(view, document, callback)
 		return height * svg_width / svg_height
 	
-	def image_height_for_width(self, view, document, width):
+	def image_height_for_width(self, view, document, width, callback):
 		if not self.is_svg_document(document):
 			return NotImplemented
-		svg_width, svg_height = self.image_dimensions(view, document)
+		svg_width, svg_height = self.image_dimensions(view, document, callback)
 		return width * svg_height / svg_width
 	
 	__p_number = r'[+-]?(?:\d+\.?\d*|\d*\.?\d+)(?:[eE][+-]?\d+)?' # regex pattern matching a floating point number

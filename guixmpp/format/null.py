@@ -5,10 +5,6 @@
 __all__ = 'NullFormat',
 
 
-from math import ceil
-from collections import defaultdict
-
-
 class NullFormat:
 	def create_document(self, data, mime_type):
 		if mime_type in 'application/x-null':

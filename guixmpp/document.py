@@ -509,17 +509,17 @@ class Model:
 	def scan_document_links(self, document):
 		return self.__find_impl('scan_document_links', [document])
 	
-	def image_dimensions(self, view, document):
+	def image_dimensions(self, view, document, callback):
 		"Return image natural width and height, that may depend on viewport size."
-		return self.__find_impl('image_dimensions', [view, document])
+		return self.__find_impl('image_dimensions', [view, document, callback])
 	
-	def image_width_for_height(self, view, document, height):
+	def image_width_for_height(self, view, document, height, callback):
 		"Return image optimal width as calculated for the provided height."
-		return self.__find_impl('image_width_for_height', [view, document, height])
+		return self.__find_impl('image_width_for_height', [view, document, height, callback])
 	
-	def image_height_for_width(self, view, document, width):
+	def image_height_for_width(self, view, document, width, callback):
 		"Return image optimal height as calculated for the provided width."
-		return self.__find_impl('image_height_for_width', [view, document, width])
+		return self.__find_impl('image_height_for_width', [view, document, width, callback])
 	
 	def draw_image(self, view, document, ctx, box, callback):
 		return self.__find_impl('draw_image', [view, document, ctx, box, callback])
@@ -628,7 +628,7 @@ if __name__ == '__main__':
 				document = await model.open_document(view, filepath.as_uri())
 				await view.receive('open')
 				try:
-					dimensions = model.image_dimensions(view, document)
+					dimensions = model.image_dimensions(view, document, (lambda _reason, _params: True))
 				except NotImplementedError:
 					pass
 				await model.close_document(view)

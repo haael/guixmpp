@@ -79,20 +79,20 @@ class PlainFormat:
 		else:
 			return NotImplemented
 	
-	def image_dimensions(self, view, document):
+	def image_dimensions(self, view, document, callback):
 		if self.is_plain_document(document):
 			return 16 * 45 + 2, 16 + 2
 		else:
 			return NotImplemented
 	
-	def image_height_for_width(self, view, document, width):
+	def image_height_for_width(self, view, document, width, callback):
 		if self.is_plain_document(document):
 			return 16 * 45 + 2
 		
 		else:
 			return NotImplemented
 	
-	def image_width_for_height(self, view, document, height):
+	def image_width_for_height(self, view, document, height, callback):
 		if self.is_plain_document(document):
 			return 16 + 2
 		else:

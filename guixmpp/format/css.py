@@ -1948,9 +1948,10 @@ if __name__ == '__main__':
 		if not example.is_dir(): continue
 		for cssfile in example.iterdir():
 			if cssfile.suffix != '.css': continue
+			print(example.name)
 			
-			#profiler = PyCallGraph(output=GraphvizOutput(output_file=f'profile/css_{example.name}_{cssfile.name}.png'))
-			#profiler.start()
+			profiler = PyCallGraph(output=GraphvizOutput(output_file=f'profile/css_{example.name}_{cssfile.name}.png'))
+			profiler.start()
 			
 			tree = model.create_document(cssfile.read_bytes(), 'text/css')
 			for node in tree.scan_syntax_errors():
@@ -1965,4 +1966,5 @@ if __name__ == '__main__':
 					print("src:", src)
 			print("font urls:", list(tree.scan_fonts()))
 			
-			#profiler.done()
+			profiler.done()
+			exit()

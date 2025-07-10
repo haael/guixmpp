@@ -2,7 +2,7 @@
 #-*- coding:utf-8 -*-
 
 
-__all__ = 'PlainFormat',
+__all__ = 'TextFormat',
 
 
 from io import BytesIO
@@ -15,98 +15,34 @@ from collections import defaultdict, deque
 from itertools import chain
 from enum import Enum
 from pyphen import Pyphen
-from inspect import isgeneratorfunction
+from os import environ
+from weakref import WeakKeyDictionary
+
+
+_use_pango = environ.get('GUIXMPP_USE_PANGO', '1')
+
+
+import gi
+if _use_pango == '1':
+	if __name__ == '__main__':
+		gi.require_version('Pango', '1.0')
+		gi.require_version('PangoCairo', '1.0')
+	from gi.repository import Pango, PangoCairo
 
 
 if __name__ == '__main__':
 	from guixmpp.escape import Escape
+	from guixmpp.parser import *
+	from guixmpp.caching import cached
+	from guixmpp.boxes import *
 else:
 	from ..escape import Escape
+	from ..parser import *
+	from ..caching import cached
+	from ..boxes import *
 
 
-def cached(old_method):
-	if isgeneratorfunction(old_method):
-		def new_method(self, *args, **kwargs):
-			try:
-				method_cache = self.__method_cache
-			except AttributeError:
-				method_cache = self.__method_cache = {}
-			
-			try:
-				cache = method_cache[old_method.__name__]
-			except KeyError:
-				cache = method_cache[old_method.__name__] = {}
-			
-			try:
-				series, error = cache[args, frozenset(kwargs.items())]
-			except KeyError:
-				try:
-					series = []
-					for value in old_method(self, *args, **kwargs):
-						series.append(value)
-						yield value
-				except Exception as error:
-					cache[args, frozenset(kwargs.items())] = (series, error)
-				else:
-					cache[args, frozenset(kwargs.items())] = (series, None)
-			else:
-				yield from series
-				if error is not None:
-					raise error
-	else:
-		def new_method(self, *args, **kwargs):
-			try:
-				method_cache = self.__method_cache
-			except AttributeError:
-				method_cache = self.__method_cache = {}
-			
-			try:
-				cache = method_cache[old_method.__name__]
-			except KeyError:
-				cache = method_cache[old_method.__name__] = {}
-			
-			try:
-				result, value = cache[args, frozenset(kwargs.items())]
-			except KeyError:
-				try:
-					value = old_method(self, *args, **kwargs)
-				except Exception as error:
-					cache[args, frozenset(kwargs.items())] = (False, error)
-					raise
-				else:
-					cache[args, frozenset(kwargs.items())] = (True, value)
-					return value
-			else:
-				if result:
-					return value
-				else:
-					raise value
-	
-	return new_method
-
-
-class ParseTree:
-	def __init__(self, production, arguments):
-		self.production = production
-		self.arguments = arguments
-	
-	def __repr__(self):
-		return f"{self.__class__.__name__}({self.production}, {self.arguments})"
-	
-	def __str__(self):
-		if isinstance(self.arguments, str):
-			return self.arguments
-		else:
-			return " ".join(str(_arg) for _arg in self.arguments)
-	
-	def print_tree(self, level=0):
-		yield level, self.production
-		if isinstance(self.arguments, str):
-			yield (level + 1), repr(self.arguments)
-		else:
-			for arg in self.arguments:
-				yield from arg.print_tree(level + 1)
-	
+class BreakLineParseTree(ParseTree):
 	def __call__(self, context, text, position, direction=None):
 		if self.production == 'RULE ::= EXPR OP EXPR':
 			if self.arguments[0](context, text, position - 1, -1) and self.arguments[2](context, text, position, +1):
@@ -127,13 +63,9 @@ class ParseTree:
 			return m
 		elif self.production == 'SEQ ::= SIMPLE ( SIMPLE )*':
 			m = 0
-			#if direction == -1:
-			#	m = 1
 			for arg in self.arguments:
 				if not 0 <= position + direction * m < len(context):
 					return None
-				#if arg.production.startswith('"'):
-				#	continue
 				if (r := arg(context, text, position + direction * m, direction)) is not None:
 					m += r
 				else:
@@ -142,17 +74,19 @@ class ParseTree:
 		elif self.production == 'ATOM ::= "(" EXPR ")"':
 			return self.arguments[1](context, text, position, direction)
 		elif self.production == 'SET ::= "[" "^" EXPR "]"':
-			# TODO
-			return 0
-			#return self.arguments[2](context, text, position, direction)
-		elif self.production == 'SET ::= "[" EXPR "&" EXPR "]"':
-			if self.arguments[1](context, text, position, direction) is not None and self.arguments[3](context, text, position, direction) is not None:
+			if self.arguments[2](context, text, position, direction) is None:
 				return 0
 			else:
 				return None
+			#return self.arguments[2](context, text, position, direction)
+		elif self.production == 'SET ::= "[" EXPR "&" EXPR "]"':
+			if (a := self.arguments[1](context, text, position, direction)) is not None and (b := self.arguments[3](context, text, position, direction)) is not None:
+				return min(a, b)
+			else:
+				return None
 		elif self.production == 'SET ::= "[" EXPR "-" EXPR "]"':
-			if self.arguments[1](context, text, position, direction) is not None and self.arguments[3](context, text, position, direction) is None:
-				return 0
+			if (a := self.arguments[1](context, text, position, direction)) is not None and self.arguments[3](context, text, position, direction) is None:
+				return a
 			else:
 				return None
 		elif self.production == 'SIMPLE ::= ATOM "*"':
@@ -167,7 +101,7 @@ class ParseTree:
 			return m
 		elif self.production == 'MOD ::= "\\p" "{" CHR_CLASS "}"':
 			c = self.arguments[2](context, text, position, None)
-			return 0
+			return None # TODO
 		elif self.production.startswith('"'):
 			if direction == None:
 				return self.arguments
@@ -182,188 +116,12 @@ class ParseTree:
 			raise NotImplementedError(self.production)
 
 
-class ParsingError(Exception):
-	def print_tree(self, level=0):
-		yield level, self.args[0]
-		for err in self.args[2]:
-			yield from err.print_tree(level + 1)
-
-
-class Parser:
-	def __init__(self, start, grammar_source, Tree=ParseTree):
-		self.start = start
-		
-		grammar = defaultdict(list)
-		for nonterminal, production in self.analyze_grammar(grammar_source):
-			grammar[nonterminal].append(tuple(production))
-		
-		self.grammar = dict(grammar)
-		self.Tree = Tree
-	
-	def analyze_grammar(self, grammar_source):
-		for rule in grammar_source.split('\n'):
-			rule = rule.strip()
-			if not rule:
-				continue
-			nonterminal, productions_source = rule.split('::=')
-			nonterminal = nonterminal.strip()
-			for production in self.analyze_productions(productions_source):
-				yield nonterminal, production
-	
-	def analyze_productions(self, productions_source):
-		string = False
-		symbol = False
-		production = []
-		for n, ch in enumerate(productions_source):
-			if string:
-				if ch == '"':
-					production.append(productions_source[m : n + 1])
-					string = False
-				continue
-			elif symbol:
-				if ch == ' ' or ch == '|':
-					production.append(productions_source[m : n])
-					symbol = False
-			
-			if ch == ' ':
-				pass
-			elif ch == '"':
-				string = True
-				m = n
-			elif ch == '|':
-				yield production
-				production = []
-			elif not symbol:
-				symbol = True
-				m = n
-		
-		if string:
-			raise ValueError("Unterminated string")
-		
-		if symbol:
-			production.append(productions_source[m:])
-			symbol = False
-		
-		if production:
-			yield production
-	
-	def __call__(self, source, start=None):
-		tree, length = self.process_nonterminal(source, 0, start if start is not None else self.start)
-		while length < len(source) and source[length]:
-			if source[length] != ' ':
-				raise ParsingError(f"Garbage at the end of input: {repr(source[length:])}.", "", [])
-			length += 1
-		return tree
-	
-	@cached
-	def process_production(self, source, position, nonterminal, production):
-		offset = 0
-		zpos = 0
-		while position < len(source) and source[position] == ' ':
-			position += 1
-			zpos += 1
-		arguments = []
-		
-		m = None
-		
-		try:
-			for n, symbol in enumerate(production):
-				argument = None
-				
-				if symbol == '(':
-					m = n
-				
-				elif symbol == ')*':
-					while True:
-						try:
-							tree, length = self.process_production(source, position + offset, nonterminal, production[m + 1 : n])
-						except ParsingError:
-							break
-						else:
-							arguments.extend(tree.arguments)
-							offset += length
-					m = None
-				
-				elif m is not None:
-					continue
-				
-				elif symbol.startswith('"') and symbol.endswith('"'): # terminal
-					argument, s = self.process_terminal(source, position + offset, symbol)
-				
-				else:
-					argument, s = self.process_nonterminal(source, position + offset, symbol) # nonterminal
-				
-				if argument is not None:
-					arguments.append(argument)
-					offset += s
-		
-		except ParsingError as error:
-			raise ParsingError(f"Production {production} doesn't match source at position {position}: {repr(source[position : position + 32])}", production, [error])
-		
-		else:
-			return self.Tree(nonterminal + ' ::= ' + ' '.join(production), tuple(arguments)), offset + zpos
-	
-	@cached
-	def process_terminal(self, source, position, terminal):
-		zpos = 0
-		while position < len(source) and source[position] == ' ':
-			position += 1
-			zpos += 1
-		
-		length = len(terminal) - 2
-		value = source[position:position + length]
-		if value == terminal[1:-1]:
-			return self.Tree(terminal, value), length + zpos
-		else:
-			raise ParsingError(f"Terminal {terminal} doesn't match source at position {position}: {repr(value)}", terminal, [])
-	
-	@cached
-	def prefixes(self, production):
-		n = 0
-		while production[n] == '(':
-			 n += 1
-		symbol = production[n]
-		
-		if symbol.startswith('"') and symbol.endswith('"'):
-			return frozenset({symbol[1:-1]})
-		else:
-			pfx = set()
-			for production in self.grammar[symbol]:
-				pfx.update(self.prefixes(production))
-			return frozenset(pfx)
-	
-	#def contents(self, production):
-	#	pfx = set()
-	#	for n, symbol in enumerate(production):
-	#		if not n: continue
-	#		pfx.update(self.prefixes(symbol)
-	
-	@cached
-	def process_nonterminal(self, source, position, nonterminal):
-		sp = 0
-		while position + sp < len(source) and source[position + sp] == ' ':
-			sp += 1
-		errors = []
-		results = {}
-		for production in self.grammar[nonterminal]:
-			#print(production, self.prefixes(production), repr(source[sp:]))
-			if not any(source[position + sp : position + sp + len(_pfx)] == _pfx for _pfx in self.prefixes(production)): continue
-			#print("found:", nonterminal, production)
-			try:
-				tree, length = self.process_production(source, position, nonterminal, production)
-			except ParsingError as error:
-				errors.append(error)
-			else:
-				results[length] = tree
-		
-		if results:
-			length = max(results.keys())
-			return results[length], length
-		
-		raise ParsingError(f"Nonterminal {nonterminal} doesn't match source at position {position}: {repr(source[position:position + 32])}", nonterminal, errors)
-
-
 class TextFormat:
+	def __init__(self, *args, **kwargs):
+		self.__cache = {}
+	
+	use_pango = (_use_pango == '1')
+	
 	def create_document(self, data:bytes, mime_type):
 		if mime_type == 'text/plain':
 			return data.decode('utf-8')
@@ -396,6 +154,21 @@ class TextFormat:
 			return []
 		else:
 			return NotImplemented
+	
+	async def on_open_document(self, view, document):
+		if not self.is_text_document(document):
+			return NotImplemented
+		
+		self.__cache[document] = None, None
+	
+	async def on_close_document(self, view, document):
+		if not self.is_text_document(document):
+			return NotImplemented
+		
+		try:
+			del self.__cache[document]
+		except KeyError:
+			pass
 	
 	"Unicode line breaking classes for various character ranges."
 	__unicode_line_breaking_class = {
@@ -451,7 +224,7 @@ class TextFormat:
 	
 	@cached
 	def unicode_line_break_class(self, character):
-		"Return Unicode line break class as defined here: https://www.unicode.org/reports/tr14/"
+		"Return Unicode line break class as defined here: <https://www.unicode.org/reports/tr14/>. May depend on language."
 		
 		if len(character) != 1:
 			raise ValueError("Character must be a 1-char string.")
@@ -464,10 +237,14 @@ class TextFormat:
 			return 'AL'
 		elif self.unicode_category(character) in {'Pf', 'Pi'}:
 			return 'QU'
+		elif self.unicode_category(character) in {'Nd'}:
+			return 'NU'
+		elif character == "$":
+			return 'PR'
 		
 		# TODO: support other characters
 		
-		raise NotImplementedError(f"The character {repr(character)} ({hex(codepoint)}) does not belong to any line break class.")
+		raise NotImplementedError(f"The character {repr(character)} ({hex(codepoint)}) does not belong to any line break class. Unicode category: {self.unicode_category(character)}.")
 	
 	@cached
 	def unicode_category(self, character):
@@ -495,7 +272,7 @@ class TextFormat:
 	'''
 	
 	"Parser of line breaking rules grammar."
-	__line_break_parser = Parser('RULE', __line_break_grammar)
+	__line_break_parser = Parser('RULE', __line_break_grammar, BreakLineParseTree)
 	
 	"Line breaking rules, converted to syntax trees (callable)."
 	__line_break_rules = list(map(__line_break_parser, [
@@ -599,18 +376,16 @@ class TextFormat:
 		optional_break = ""
 		mandatory_break = "\n"
 		space = "\x20"
-		thin_space = "\xa0"
-		hyphen = "\u2009"
+		thin_space = "\u2009"
+		hyphen = "\xad"
 	
 	@cached
-	def line_breaks(self, text, lang=None):
-		if lang is not None:
-			hph = Pyphen(lang=lang)
-		else:
-			hph = None
+	def __line_breaks(self, text):
+		#hph = Pyphen(lang=lang)
+		hph = None
 		
 		m = 1
-		lbcs = list(self.__text_line_break_classes(document))
+		lbcs = list(self.__text_line_break_classes(text))
 		for n in range(len(lbcs)):
 			break_ = None
 			for rule in self.__line_break_rules: # TODO: sort in the order of frequency
@@ -629,7 +404,6 @@ class TextFormat:
 			
 			if break_ and n > 0:
 				word = text[m - 1 : n - 1]
-				m = n
 				k = 0
 				for l, ch in enumerate(word):
 					separator = None
@@ -642,253 +416,345 @@ class TextFormat:
 					
 					if separator:
 						if l > k:
-							if hph and ("\xad" not in word[k:l]):
+							if hph and ("\xad" not in word[k:l]): # soft hyphen
 								p = 0
 								w = word[k:l]
 								for q in hph.positions(w):
-									yield w[p:q]
+									yield w[p:q], m - 1
 									p = q
-									yield self.Separator.hyphen
-									yield self.Separator.optional_break
-								yield w[p:]
+									yield self.Separator.hyphen, m - 1 + q
+									yield self.Separator.optional_break, m - 1 + q
+								yield w[p:], m - 1
 							else:
-								yield word[k:l]
+								yield word[k:l], m - 1
 						k = l + 1
 						if separator is not True:
-							yield separator
+							yield separator, m - 1 + l
 				
 				else:
 					if k < len(word):
-						if hph and ("\xad" not in word[k:]):
+						if hph and ("\xad" not in word[k:]): # soft hyphen
 							p = 0
 							w = word[k:]
 							for q in hph.positions(w):
-								yield w[p:q]
+								yield w[p:q], m - 1
 								p = q
-								yield self.Separator.hyphen
-								yield self.Separator.optional_break
-							yield w[p:]
+								yield self.Separator.hyphen, m - 1 + q
+								yield self.Separator.optional_break, m - 1 + q
+							yield w[p:], m - 1
 						else:
-							yield word[k:]
+							yield word[k:], m - 1
 				
 				if break_ is not True:
-					yield break_
+					yield break_, n - 1
+				
+				m = n
 	
-	def measure_text(self, stream, ctx, width, callback):
-		width_current = 0
+	def __word_width(self, word, ctx, pango_layout, callback):
+		if callback: callback(Escape.begin_measure, (word, ctx, pango_layout))
+		
+		if self.use_pango:
+			pango_layout.set_text(word)
+			ink_rect, logical_rect = pango_layout.get_pixel_extents()
+			width = logical_rect.x + logical_rect.width
+		else:
+			width = ctx.text_extents(word).x_advance
+		
+		if callback: callback(Escape.end_measure, (word, ctx, pango_layout))
+		
+		return width
+	
+	def __hyphen(self, word):
+		if word[-1] == self.Separator.hyphen.value:
+			return word[:-1] + "-"
+		else:
+			return word
+	
+	def __measure_text(self, stream, escapes, ctx, pango_layout, width, callback):
 		line = []
-		unbreakable = []
-		for token in stream:
-			added = 0
-			
-			if token == self.Separator.space:
-				if unbreakable:
-					line.append("".join(unbreakable))
-					added += 1
-					unbreakable.clear()
-				line.append("\x20")
-				added += 1
-			elif token == self.Separator.thin_space:
-				if unbreakable:
-					line.append("".join(unbreakable))
-					added += 1
-					unbreakable.clear()
-				line.append("\u2009")
-				added += 1
-			elif token == self.Separator.hyphen:
-				unbreakable.append("\xad")
-			elif isinstance(token, str):
-				unbreakable.append(token)
-			elif token in {self.Separator.mandatory_break, self.Separator.optional_break}:
-				if unbreakable:
-					line.append("".join(unbreakable))
-					added += 1
-					unbreakable.clear()
-			else:
-				raise ValueError
-			
-			break_ = False
-			if token == self.Separator.mandatory_break:
-				break_ = True
-			else:
-				width_added = 0
-				hyphen = False
-				for n in range(added):
-					word = line[-added + n]
-					if n == added - 1 and word.endswith("\xad"):
-						word = word.replace("\xad", "") + "-"
-						hyphen = True
-					else:
-						word = word.replace("\xad", "")
-					if callback: callback(Escape.begin_measure, word)
-					width_added += ctx.text_extents(word).x_advance
-					if callback: callback(Escape.end_measure, word)
-				width_current += width_added
-
-				##print(line)
-				##text = "".join(line).strip("\x20\u2009").replace("\xad", "")
-				#word = line[-1].replace("\xad", "") + ("-" if token.endswith("\xad") else "")
-				#if callback: callback(Escape.begin_measure, word)
-				#width_current = ctx.text_extents(text).x_advance
-
-				#width_token = ctx.text_extents(word).x_advance
-				#width_current += width_token
-				
-				#if callback: callback(Escape.end_measure, word)
-				
-				if width_current > width:
-					break_ = True
-				else:
-					if hyphen:
-						width_current -= width_added
-						
-						width_added = 0
-						for n in range(added):
-							word = line[-added + n]
-							word = word.replace("\xad", "")
-							if callback: callback(Escape.begin_measure, word)
-							width_added += ctx.text_extents(word).x_advance
-							if callback: callback(Escape.end_measure, word)
-						width_current += width_added
-			
-			if break_:
-				tail = []
-				
-				if line:
-					while True:
-						#print(len(line), line)
-						broken_line = ("".join(line).strip("\x20\u2009") + ("-" if line[-1] and line[-1][-1] == "\xad" else "")).replace("\xad", "")
-						if callback: callback(Escape.begin_measure, broken_line)
-						width_broken = ctx.text_extents(broken_line).x_advance
-						if callback: callback(Escape.end_measure, broken_line)
-						if width_broken <= width or len(line) <= 1:
-							break
-						l = line.pop()
-						tail.insert(0, l)
+		widths = []
+		break_pos = 0
+		
+		line_n = 0
+		if callback: callback(Escape.begin_line, line_n)
+		
+		done = set()
+		str_m = -1
+		for token, str_n in stream:
+			if any(str_m < _esc <= str_n for _esc in escapes.keys() if _esc not in done):
+				for f, esc in enumerate(sorted(_esc for _esc in escapes.keys() if str_m < _esc <= str_n and _esc not in done)):
+					done.add(esc)
 					
-					yield broken_line
+					token_b = None
+					if not f and line and esc != str_m:
+						#print(repr(line[-1]), esc, str_n)
+						token_a = line[-1][:esc - str_m]
+						token_b = line[-1][esc - str_m:]
+						if token_a:
+							line[-1] = token_a
+							widths[-1] = self.__word_width(self.__hyphen(token_a), ctx, pango_layout, callback)
+						else:
+							del line[-1], widths[-1]
+					
+					for cseq in escapes[esc]:
+						if callback: callback(Escape.begin_escape, (cseq, ctx, pango_layout))
+						line.append(cseq)
+						widths.append(0)
+						if callback: callback(Escape.end_escape, (cseq, ctx, pango_layout))
+					
+					if token_b:
+						line.append(token_b)
+						widths.append(self.__word_width(self.__hyphen(token_b), ctx, pango_layout, callback))
+			else:
+				esc = None
+			str_m = str_n
+			
+			if token == self.Separator.mandatory_break:
+				if any(_w[-1] == self.Separator.hyphen.value for _w in line[:-1]):
+					hn = [_w[-1] == self.Separator.hyphen.value for _w in line].index(True)
+					line[hn] = line[hn][:-1] + line[hn + 1]
+					widths[hn] = self.__word_width(self.__hyphen(line[hn]), ctx, pango_layout, callback)
+					del line[hn + 1]
+					del widths[hn + 1]
 				
-				yield "\n"
+				yield from zip(map(self.__hyphen, line), widths)
+				yield "\n", 0
 				
-				width_current = 0				
+				if callback: callback(Escape.end_line, line_n)
+				line_n += 1
+				if callback: callback(Escape.begin_line, line_n)
+				
 				line.clear()
-				line.extend(tail)
-				width_added = 0
-				for n in range(len(line)):
-					word = line[n]
-					word = word.replace("\xad", "")
-					if callback: callback(Escape.begin_measure, word)
-					width_added += ctx.text_extents(word).x_advance
-					if callback: callback(Escape.end_measure, word)
-				width_current += width_added
+				widths.clear()
+				break_pos = 0
+			elif token == self.Separator.optional_break:
+				if any(_w[-1] == self.Separator.hyphen.value for _w in line[:-1]): # merge all parts separated with soft hyphens into whole words
+					hn = [_w[-1] == self.Separator.hyphen.value for _w in line].index(True)
+					line[hn] = line[hn][:-1] + line[hn + 1]
+					widths[hn] = self.__word_width(self.__hyphen(line[hn]), ctx, pango_layout, callback)
+					del line[hn + 1]
+					del widths[hn + 1]
+				break_pos = len(line)
+			elif token == self.Separator.hyphen:
+				if line:
+					line[-1] = line[-1] + token.value
+					widths[-1] = self.__word_width(self.__hyphen(line[-1]), ctx, pango_layout, callback)
+				else:
+					line.append(token.value)
+					widths.append(self.__word_width(self.__hyphen(token.value), ctx, pango_layout, callback))
+			elif hasattr(token, 'value'):
+				line.append(token.value)
+				widths.append(self.__word_width(self.__hyphen(token.value), ctx, pango_layout, callback))
+			else:
+				line.append(token)
+				widths.append(self.__word_width(self.__hyphen(token), ctx, pango_layout, callback))
+			
+			if sum(widths) > width:
+				yield from zip(map(self.__hyphen, line[:break_pos]), widths[:break_pos])
+				yield "\n", 0
+				
+				if callback: callback(Escape.end_line, line_n)
+				line_n += 1
+				if callback: callback(Escape.begin_line, line_n)
+				
+				del line[:break_pos]
+				del widths[:break_pos]
 		
 		if line:
-			broken_line = ("".join(line).strip("\x20\u2009") + ("-" if line[-1] and line[-1][-1] == "\xad" else "")).replace("\xad", "")
-			if broken_line:
-				yield broken_line
-				yield "\n"
+			yield from zip(map(self.__hyphen, line), widths)
+			yield "\n", 0
+			line.clear()
+			widths.clear()
+		
+		for esc in sorted(escapes.keys() - done):
+			line.extend(escapes[esc])
+			widths.append(0 * len(escapes[sec]))
+		if line:
+			yield from zip(map(self.__hyphen, line), widths)
+		
+		if callback: callback(Escape.end_line, line_n)
 	
 	def draw_image(self, view, document, ctx, box, callback):
-		if self.is_text_document(document):
-			if callback: callback(Escape.begin_draw, document)
-			
-			width = box[2]
-			height = box[3]
-			
-			ctx.set_font_size(16)
-			ctx.select_font_face('sans-serif', cairo.FontSlant.NORMAL)
-			ctx.translate(box[0], box[1])
-			
-			if callback: callback(Escape.begin_measure, None)
-			extents = ctx.font_extents()
-			if callback: callback(Escape.end_measure, None)
-			
-			line_height = extents[2]
-			line_level = extents[0]
-			n = 0
-			if callback: callback(Escape.begin_line, n)
-			for string in self.measure_text(self.line_breaks(document, 'en_GB'), ctx, width, callback):
-				if string == "\n":
-					if callback: callback(Escape.end_line, n)
-					n += 1
-					if callback: callback(Escape.begin_line, n)
-				else:
-					offset = 0
-					for mt in finditer(r'(\S+|\s)', string):
-						word = mt.group()
-						print(repr(word))
-						
-						if callback: callback(Escape.begin_text, word)
-						ctx.move_to(offset, n * line_height + line_level)
-						ctx.text_path(word)
-						if callback: callback(Escape.end_text, word)
-						
-						if callback: callback(Escape.begin_print, word)
-						ctx.fill()
-						if callback: callback(Escape.end_print, word)
-						
-						if callback: callback(Escape.begin_measure, word)
-						offset += ctx.text_extents(word).x_advance
-						if callback: callback(Escape.end_measure, word)
-
-			if callback: callback(Escape.end_line, n)
-			
-			if callback: callback(Escape.end_draw, document)
-		
-		else:
+		if not self.is_text_document(document):
 			return NotImplemented
+		
+		#print(repr(document))
+		
+		if callback: callback(Escape.begin_draw, document)
+		self.__render_text(view, document, ctx, box, callback)
+		if callback: callback(Escape.end_draw, document)
 	
 	def poke_image(self, view, document, ctx, box, px, py, callback):
-		if self.is_text_document(document):
-			if callback:
-				callback(Escape.begin_poke, document)
-				callback(Escape.end_poke, document)
-			return []
-		else:
+		if not self.is_text_document(document):
 			return NotImplemented
+		
+		if callback: callback(Escape.begin_poke, document)
+		h = self.__render_text(view, document, ctx, box, callback, (px, py))
+		if callback: callback(Escape.end_poke, document)
+		return h
 	
-	def image_dimensions(self, view, document):
+	def __escape_sequences(self, text):
+		esc = nor = 0
+		while (esc := text.find("\x1bX", nor)) >= 0:
+			if nor or esc:
+				yield (nor, esc)
+			nor = text.find("\x1b\\", esc)
+			if nor >= 0:
+				nor += 2
+			yield (esc, nor)
+		if 0 <= nor < len(text):
+			yield (nor, len(text))
+	
+	def __render_text(self, view, document, ctx, box, callback, pointer=None):
+		width = box[2]
+		height = box[3]
+		
+		if self.use_pango:
+			pango_layout = PangoCairo.create_layout(ctx)
+		else:
+			pango_layout = None
+		
+		if self.use_pango:
+			pango_font = Pango.FontDescription()
+			pango_font.set_family('sans-serif')
+			pango_font.set_size(14 * Pango.SCALE / 1.33333)
+			pango_font.set_style(Pango.Style.NORMAL)
+			pango_font.set_weight(Pango.Weight.NORMAL)
+			pango_layout.set_font_description(pango_font)
+		else:
+			ctx.set_font_size(14)
+			ctx.select_font_face('sans-serif', cairo.FontSlant.NORMAL, cairo.FontWeight.NORMAL)
+		
+		if self.use_pango:
+			if callback: callback(Escape.begin_measure, (None, ctx, pango_layout))
+			pango_context = pango_layout.get_context()
+			extents = pango_context.get_metrics()
+			line_height = (extents.get_ascent() + extents.get_descent()) / Pango.SCALE
+			baseline = extents.get_ascent() / Pango.SCALE
+			if callback: callback(Escape.end_measure, (None, ctx, pango_layout))
+		else:
+			if callback: callback(Escape.begin_measure, (None, ctx, pango_layout))
+			baseline, _, line_height, *_ = extents = ctx.font_extents()
+			if callback: callback(Escape.end_measure, (None, ctx, pango_layout))
+		
+		try:
+			tree, last_box = self.__cache[document]
+		except KeyError:
+			tree = last_box = None
+		
+		if tree is None or last_box != box:
+			align = 'left'
+			line_n = 0
+			lines = []
+			line = []
+			
+			text = []
+			escapes = defaultdict(list)
+			l = 0
+			for m, n in self.__escape_sequences(document):
+				if m == n:
+					pass
+				elif document[m] != "\x1b":
+					d = document[m:n]
+					l += n - m
+					text.append(d)
+				else:
+					escapes[l].append(document[m:n])
+			
+			#print(escapes)
+			assert all("\x1b" not in _slice for _slice in text)
+			
+			for string, advance in self.__measure_text(self.__line_breaks("".join(text)), escapes, ctx, pango_layout, width, callback):
+				if string[0] == "\x1b":
+					line.append(EscapeSeq(string, node=None, pseudoelement=None, inline=True, gravity=Gravity.CENTER, width=0, height=0))
+				elif string == "\n":
+					line_n += 1
+					
+					todel = set()
+					for k, el in enumerate(line):
+						if isinstance(el, EscapeSeq):
+							pass
+						elif isinstance(el, Whitespace):
+							todel.add(k)
+						else:
+							break
+					for k in sorted(todel, reverse=True):
+						del line[k]
+					
+					todel = set()
+					for k, el in reversed(list(enumerate(line))):
+						if isinstance(el, EscapeSeq):
+							pass
+						elif isinstance(el, Whitespace):
+							todel.add(k)
+						else:
+							break
+					for k in sorted(todel, reverse=True):
+						del line[k]
+					
+					if align in {'right', 'center'}:
+						line.insert(0, Whitespace(node=None, pseudoelement=None, inline=True, gravity=Gravity.BOTTOM_LEFT, height=line_height))
+					if align in {'left', 'center'}:
+						line.append(Whitespace(node=None, pseudoelement=None, inline=True, gravity=Gravity.BOTTOM_LEFT, height=line_height))
+					
+					row = Row(line, line_n, node=None, pseudoelement=None, inline=True, gravity=Gravity.BOTTOM_LEFT, height=line_height, max_width=inf)
+					lines.append(row)
+					line = []
+				elif string in {" ", "\u2009"}:
+					space = Whitespace(node=None, pseudoelement=None, inline=True, gravity=Gravity.BOTTOM_LEFT, min_width=advance, max_width=(advance if align != 'justify' else inf), height=line_height)
+					line.append(space)
+				else:
+					word = Word(string, 0, baseline, node=None, pseudoelement=None, inline=True, gravity=Gravity.BOTTOM_LEFT, width=advance, height=line_height)
+					line.append(word)					
+			
+			tree = Column(lines, 0, node=None, pseudoelement=None, inline=False, gravity=Gravity.TOP_LEFT)
+			#for l, v in tree.print_tree():
+			#	print(" " * l, str(v))
+			self.__cache[document] = tree, box
+		
+		if self.use_pango:
+			pango_font = Pango.FontDescription()
+			pango_font.set_family('sans-serif')
+			pango_font.set_size(14 * Pango.SCALE / 1.33333)
+			pango_font.set_style(Pango.Style.NORMAL)
+			pango_font.set_weight(Pango.Weight.NORMAL)
+			pango_layout.set_font_description(pango_font)
+		else:
+			ctx.set_font_size(14)
+			ctx.select_font_face('sans-serif', cairo.FontSlant.NORMAL, cairo.FontWeight.NORMAL)
+		
+		nodes = tree.render(self, view, ctx, pango_layout, box, callback, pointer)
+		if pointer:
+			return nodes
+	
+	def image_dimensions(self, view, document, callback):
 		"Return text dimensions."
 		
 		if self.is_text_document(document):
-			return self.get_viewport_width(view), self.get_viewport_height(view)
+			width = self.get_viewport_width(view)
+			height = self.image_height_for_width(view, document, width, callback)
+			return width, height
 		else:
 			return NotImplemented
 	
-	def image_height_for_width(self, view, document, width):
-		if self.is_text_document(document):
-			surface = cairo.RecordingSurface(cairo.Content.COLOR, None)
-			ctx = cairo.Context(surface)
-			ctx.select_font_face(self.__text_font)
-			ctx.set_font_size(self.__text_size)
-			
-			lines = 0
-			line = []
-			offset = 0
-			for word in re_split(r'[\r\n\t ]+', document):
-				extents = ctx.text_extents(word)
-				offset += extents.x_advance + 3.4
-				if offset > width:
-					if line:
-						lines += 1
-					line.clear()
-					line.append(word)
-					offset = extents.x_advance
-					if offset > width:
-						lines += 1
-						line.clear()
-						offset = 0
-				else:
-					line.append(word)
-			if line:
-				lines += 1
-			
-			return lines * (self.__text_size + self.__text_spacing)
+	def image_height_for_width(self, view, document, width, callback):
+		if not self.is_text_document(document):
+			return NotImplemented
 		
-		else:
-			return NotImplemented
+		#print(repr(document))
+		
+		if callback: callback(Escape.begin_poke, document)
+		
+		surface = cairo.RecordingSurface(cairo.Content.COLOR, None)
+		ctx = cairo.Context(surface)		
+		self.__render_text(view, document, ctx, (0, 0, width, inf), callback)
+		tree, _ = self.__cache[document]
+		
+		if callback: callback(Escape.end_poke, document)
+		
+		return tree.min_height
 	
-	def image_width_for_height(self, view, document, height):
+	def image_width_for_height(self, view, document, height, callback):
 		if self.is_text_document(document):
 			raise NotImplementedError
 		else:
@@ -904,6 +770,8 @@ if __debug__ and __name__ == '__main__':
 		test_type = 1
 	elif sys.argv[1] == '--test-2':
 		test_type = 2
+	elif sys.argv[1] == '--test-3':
+		test_type = 3
 	else:
 		print("Unknown argument combination.")
 		sys.exit(1)
@@ -918,7 +786,7 @@ if __debug__ and __name__ == '__main__' and test_type == 0:
 	assert model.save_document(a).getvalue() == b'hello,void'
 
 
-if __debug__ and __name__ == '__main__' and test_type in {1, 2}:
+if __debug__ and __name__ == '__main__' and test_type != 0:
 	from asyncio import run, get_running_loop
 	
 	import gi
@@ -956,7 +824,7 @@ These words were hard to read when we dug that stone from its deep, ancient laye
 		document = model.create_document("""The City
 By H. P. Lovecraft
 
-	It was golden and splendid,
+	It was golden and\xa0splendid,
 		That City of light;
 	A vision suspended
 		In deeps of the night;
@@ -1012,8 +880,93 @@ And in panic I flew from the knowledge of terrors forgotten and dead.
 
 """.encode('utf-8'), 'text/plain')
 	
+	elif test_type == 3:
+		document = model.create_document("""\x1bX<title>\x1b\\Memory\x1bX</title>\x1b\\
+\x1bX<author>\x1b\\By H. P. Lovecraft\x1bX</author>\x1b\\
+
+	In the valley of \x1bX<name>\x1b\\Nis\x1bX</name>\x1b\\ the\x1bX<empty1/>\x1b\\ accursed\x1bX<empty2/>\x1b\\\x1bX<empty3/>\x1b\\ waning moon shines thinly, tearing a pat\x1bX<empty4/>\x1b\\h for its ligh\x1bX<empty5/>\x1b\\\x1bX<empty6/>\x1b\\t with feeble horns through the lethal foliage of a great \x1bX<name>\x1b\\upas\x1bX</name>\x1b\\-tree. And within the depths of the valley, where the light reaches not, move forms not meet to be beheld. Rank is the herbage on each slope, where evil vines and creeping plants crawl amidst the stones of ruined palaces, twining tightly about broken columns and strange monoliths, and heaving up marble pavements laid by forgotten hands. And in trees that grow gigantic in crumbling courtyards leap little apes, while in and out of deep treasure-vaults writhe poison serpents and scaly things without a name.
+	Vast are the stones which sleep beneath coverlets of dank moss, and mighty were the walls from which they fell. For all time did their builders erect them, and in sooth they yet serve nobly, for beneath them the grey toad makes his habitation.
+	At the very bottom of the valley lies the river \x1bX<name>\x1b\\Than\x1bX</name>\x1b\\, whose waters are slimy and filled with weeds. From hidden springs it rises, and to subterranean grottoes it flows, so that the \x1bX<name>\x1b\\Daemon of the Valley\x1bX</name>\x1b\\ knows not why its waters are red, nor whither they are bound.
+	The \x1bX<name>\x1b\\Genie\x1bX</name>\x1b\\ that haunts the moonbeams spake to the \x1bX<name>\x1b\\Daemon of the Valley\x1bX</name>\x1b\\, saying, \x1bX<quote>\x1b\\“I am old, and forget much. Tell me the deeds and aspect and name of them who built these things of stone.”\x1bX</quote>\x1b\\ And the \x1bX<name>\x1b\\Daemon\x1bX</name>\x1b\\ replied, \x1bX<quote>\x1b\\“I am \x1bX<name>\x1b\\Memory\x1bX</name>\x1b\\, and am wise in lore of the past, but I too am old. These beings were like the waters of the river \x1bX<name>\x1b\\Than\x1bX</name>\x1b\\, not to be understood. Their deeds I recall not, for they were but of the moment. Their aspect I recall dimly, for it was like to that of the little apes in the trees. Their name I recall clearly, for it rhymed with that of the river. These beings of yesterday were called \x1bX<name>\x1b\\Man\x1bX</name>\x1b\\.”\x1bX</quote>\x1b\\
+	So the \x1bX<name>\x1b\\Genie\x1bX</name>\x1b\\ flew back to the thin horned moon, and the \x1bX<name>\x1b\\Daemon\x1bX</name>\x1b\\ looked intently at a little ape in a tree that grew in a crumbling courtyard.
+""".encode('utf-8'), 'text/plain')
+	
+	style_stack = []
+	def callback(reason, params):
+		#if reason == Escape.begin_draw:
+		#	escape, ctx, pango_layout = params
+		#	pango_font = Pango.FontDescription()
+		#	pango_font.set_size(14 * Pango.SCALE / 1.33333)
+		#	pango_font.set_style(Pango.Style.NORMAL)
+		#	pango_layout.set_font_description(pango_font)
+		
+		if reason == Escape.begin_escape:
+			escape, ctx, pango_layout = params
+			escape = escape[2:-2]
+			
+			#print(repr(escape))
+			
+			if escape in {'<empty1/>', '<empty2/>', '<empty3/>', '<empty4/>', '<empty5/>', '<empty6/>'}:
+				pass
+			elif escape == '<title>':
+				if pango_layout:
+					pango_font = pango_layout.get_font_description()
+					style_stack.append((escape[1:-1], pango_font.copy()))
+					pango_font.set_size(20 * Pango.SCALE / 1.33333)
+					pango_font.set_weight(Pango.Weight.BOLD)
+					pango_layout.set_font_description(pango_font)
+				else:
+					cairo_font = ctx.get_font_face()
+					style_stack.append((escape[1:-1], cairo_font, ctx.get_font_matrix()))
+					ctx.set_font_size(20)
+					ctx.select_font_face(cairo_font.get_family(), cairo_font.get_slant(), cairo.FontWeight.BOLD)
+			elif escape == '<author>':
+				if pango_layout:
+					pango_font = pango_layout.get_font_description()
+					style_stack.append((escape[1:-1], pango_font.copy()))
+					pango_font.set_size(16 * Pango.SCALE / 1.33333)
+					pango_font.set_style(Pango.Style.ITALIC)
+					pango_layout.set_font_description(pango_font)
+				else:
+					cairo_font = ctx.get_font_face()
+					style_stack.append((escape[1:-1], cairo_font, ctx.get_font_matrix()))
+					ctx.set_font_size(16)
+					ctx.select_font_face(cairo_font.get_family(), cairo.FontSlant.ITALIC, cairo_font.get_weight())
+			elif escape == '<name>':
+				if pango_layout:
+					pango_font = pango_layout.get_font_description()
+					style_stack.append((escape[1:-1], pango_font.copy()))
+					pango_font.set_weight(Pango.Weight.BOLD)
+					pango_layout.set_font_description(pango_font)
+				else:
+					cairo_font = ctx.get_font_face()
+					style_stack.append((escape[1:-1], cairo_font, ctx.get_font_matrix()))
+					ctx.select_font_face(cairo_font.get_family(), cairo_font.get_slant(), cairo.FontWeight.BOLD)
+			elif escape == '<quote>':
+				if pango_layout:
+					pango_font = pango_layout.get_font_description()
+					style_stack.append((escape[1:-1], pango_font.copy()))
+					pango_font.set_style(Pango.Style.ITALIC)
+					pango_layout.set_font_description(pango_font)
+				else:
+					cairo_font = ctx.get_font_face()
+					style_stack.append((escape[1:-1], cairo_font, ctx.get_font_matrix()))
+					ctx.select_font_face(cairo_font.get_family(), cairo.FontSlant.ITALIC, cairo_font.get_weight())
+			elif escape.startswith('</') and escape.endswith('>'):
+				if pango_layout:
+					tag, pango_font = style_stack.pop()
+					pango_layout.set_font_description(pango_font)
+				else:
+					tag, cairo_font, cairo_font_matrix = style_stack.pop()
+					ctx.set_font_face(cairo_font)
+					ctx.set_font_matrix(cairo_font_matrix)
+			else:
+				raise ValueError(escape)
+		
+		return True
+	
 	def render(widget, ctx, width, height):
-		model.draw_image(widget, document, ctx, (0, 0, width, height), (lambda _reason, _param: True))
+		model.draw_image(widget, document, ctx, (0, 0, width, height), callback)
 	
 	widget.set_draw_func(render)
 	

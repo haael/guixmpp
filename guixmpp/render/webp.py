@@ -60,22 +60,22 @@ class WEBPRender:
 		else:
 			return NotImplemented
 	
-	def image_dimensions(self, view, document):
+	def image_dimensions(self, view, document, callback):
 		if self.is_webp_document(document):
 			return document.width, document.height
 		else:
 			return NotImplemented
 	
-	def image_width_for_height(self, view, document, height):
+	def image_width_for_height(self, view, document, height, callback):
 		if not self.is_webp_document(document):
 			return NotImplemented
-		p_width, p_height = self.image_dimensions(view, document)
+		p_width, p_height = self.image_dimensions(view, document, callback)
 		return height * p_width / p_height
 	
-	def image_height_for_width(self, view, document, width):
+	def image_height_for_width(self, view, document, width, callback):
 		if not self.is_webp_document(document):
 			return NotImplemented
-		p_width, p_height = self.image_dimensions(view, document)
+		p_width, p_height = self.image_dimensions(view, document, callback)
 		return width * p_height / p_width
 	
 	def draw_image(self, view, document, ctx, box, callback):
@@ -87,7 +87,7 @@ class WEBPRender:
 		vw = self.get_viewport_width(view)
 		vh = self.get_viewport_height(view)
 		
-		w, h = self.image_dimensions(view, document)
+		w, h = self.image_dimensions(view, document, callback)
 		x, y, ww, hh = box
 		
 		if x != 0 or y != 0 or ww != w or hh != h:

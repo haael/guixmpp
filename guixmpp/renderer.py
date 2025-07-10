@@ -171,6 +171,7 @@ class Renderer:
 	
 	def render(self):
 		model = self.model
+		callback = (lambda _reason, _param: True)
 		
 		viewport_width = model.get_viewport_width(self)
 		viewport_height = model.get_viewport_height(self)
@@ -181,19 +182,19 @@ class Renderer:
 		image = model.get_image(self)
 		if (image is not None) and (viewport_width > 0) and (viewport_height > 0):
 			try:
-				w, h = model.image_dimensions(self, image)
+				w, h = model.image_dimensions(self, image, callback)
 				
 				if w <= viewport_width and h <= viewport_height:
 					bw = w
 					bh = h
 				elif w / h <= viewport_width / viewport_height:
-					bw = model.image_width_for_height(self, image, viewport_height)
+					bw = model.image_width_for_height(self, image, viewport_height, callback)
 					bh = viewport_height
 				else:
 					bw = viewport_width
-					bh = model.image_height_for_width(self, image, viewport_width)
+					bh = model.image_height_for_width(self, image, viewport_width, callback)
 				
-				model.draw_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh))
+				model.draw_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh), callback)
 			
 			except NotImplementedError as error:
 				model.emit_warning(self, f"NotImplementedError: {error}", image)
@@ -203,6 +204,7 @@ class Renderer:
 	
 	def render_to_context(self, context):
 		model = self.model
+		callback = (lambda _reason, _param: True)
 		
 		viewport_width = model.get_viewport_width(self)
 		viewport_height = model.get_viewport_height(self)
@@ -210,19 +212,19 @@ class Renderer:
 		image = model.get_image(self)
 		if (image is not None) and (viewport_width > 0) and (viewport_height > 0):
 			try:
-				w, h = model.image_dimensions(self, image)
+				w, h = model.image_dimensions(self, image, callback)
 				
 				if w <= viewport_width and h <= viewport_height:
 					bw = w
 					bh = h
 				elif w / h <= viewport_width / viewport_height:
-					bw = model.image_width_for_height(self, image, viewport_height)
+					bw = model.image_width_for_height(self, image, viewport_height, callback)
 					bh = viewport_height
 				else:
 					bw = viewport_width
-					bh = model.image_height_for_width(self, image, viewport_width)
+					bh = model.image_height_for_width(self, image, viewport_width, callback)
 				
-				model.draw_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh))
+				model.draw_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh), callback)
 			
 			except NotImplementedError as error:
 				model.emit_warning(self, f"NotImplementedError: {error}", image)

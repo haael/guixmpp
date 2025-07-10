@@ -30,6 +30,7 @@ if __name__ == '__main__':
 	
 	from guixmpp.format.null import NullFormat
 	from guixmpp.format.plain import PlainFormat
+	from guixmpp.format.text import TextFormat
 	from guixmpp.format.xml import XMLFormat
 	from guixmpp.format.css import CSSFormat
 	from guixmpp.format.font import FontFormat
@@ -41,7 +42,7 @@ if __name__ == '__main__':
 	from guixmpp.render.webp import WEBPRender
 	from guixmpp.render.pixbuf import PixbufRender
 	from guixmpp.render.image import ImageRender
-	from guixmpp.render.html import HTMLRender
+	from guixmpp.render.html2 import HTMLRender
 	
 	from guixmpp.script.javascript import JSFormat
 	
@@ -64,6 +65,7 @@ else:
 	
 	from .format.null import NullFormat
 	from .format.plain import PlainFormat
+	from .format.text import TextFormat
 	from .format.xml import XMLFormat
 	from .format.css import CSSFormat
 	from .format.font import FontFormat
@@ -75,7 +77,7 @@ else:
 	from .render.webp import WEBPRender
 	from .render.pixbuf import PixbufRender
 	from .render.image import ImageRender
-	from .render.html import HTMLRender
+	from .render.html2 import HTMLRender
 	
 	from .script.javascript import JSFormat
 	
@@ -188,7 +190,7 @@ except NameError:
 			else:
 				cc.append('_X')
 			
-			DOMWidgetModel = Model.features('<local>.DOMWidgetModel' + ''.join(cc), DisplayView, SVGRender, PNGRender, WEBPRender, ImageRender if Gtk.get_major_version() >= 4 else PixbufRender, HTMLRender, FontFormat, *features, ResourceDownload, XMLFormat, CSSFormat, JSONFormat, PlainFormat, NullFormat, DataDownload)
+			DOMWidgetModel = Model.features('<local>.DOMWidgetModel' + ''.join(cc), DisplayView, SVGRender, PNGRender, WEBPRender, ImageRender if Gtk.get_major_version() >= 4 else PixbufRender, HTMLRender, FontFormat, *features, ResourceDownload, XMLFormat, CSSFormat, JSONFormat, TextFormat, PlainFormat, NullFormat, DataDownload)
 			self.model = DOMWidgetModel(chrome_dir=self.chrome)
 			
 			if Gtk.get_major_version() < 4:
@@ -339,25 +341,27 @@ except NameError:
 		def draw_image(self, model, context):
 			"Draw the currently opened image to a Cairo surface. Returns the rendered surface. `model` argument is to allow multi-model widgets."
 			
+			callback = (lambda _reason, _param: True)
+			
 			viewport_width = model.get_viewport_width(self)
 			viewport_height = model.get_viewport_height(self)
 			
 			image = model.get_image(self)
 			if (image is not None) and (viewport_width > 0) and (viewport_height > 0):
 				try:
-					w, h = model.image_dimensions(self, image)
+					w, h = model.image_dimensions(self, image, callback)
 					
 					if w <= viewport_width and h <= viewport_height:
 						bw = w
 						bh = h
 					elif w / h <= viewport_width / viewport_height:
-						bw = model.image_width_for_height(self, image, viewport_height)
+						bw = model.image_width_for_height(self, image, viewport_height, callback)
 						bh = viewport_height
 					else:
 						bw = viewport_width
-						bh = model.image_height_for_width(self, image, viewport_width)
+						bh = model.image_height_for_width(self, image, viewport_width, callback)
 					
-					model.draw_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh), (lambda _reason, _param: True))
+					model.draw_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh), callback)
 				
 				except NotImplementedError as error:
 					model.emit_warning(self, f"NotImplementedError: {error}", image)
@@ -365,6 +369,8 @@ except NameError:
 		
 		def poke_image(self, model, context, px, py):
 			"Simulate pointer event at widget coordinates (px, py). Returns a list of nodes under the provided point and coordinates (qx, qy) after Cairo context transformations."
+			
+			callback = (lambda _reason, _param: True)
 			
 			viewport_width = model.get_viewport_width(self)
 			viewport_height = model.get_viewport_height(self)
@@ -375,20 +381,20 @@ except NameError:
 			image = model.get_image(self)
 			if (image is not None) and (viewport_width > 0) and (viewport_height > 0):			
 				try:
-					w, h = model.image_dimensions(self, image)
+					w, h = model.image_dimensions(self, image, callback)
 					
 					if w <= viewport_width and h <= viewport_height:
 						bw = w
 						bh = h
 					elif w / h <= viewport_width / viewport_height:
-						bw = model.image_width_for_height(self, image, viewport_height)
+						bw = model.image_width_for_height(self, image, viewport_height, callback)
 						bh = viewport_height
 					else:
 						bw = viewport_width
-						bh = model.image_height_for_width(self, image, viewport_width)	
+						bh = model.image_height_for_width(self, image, viewport_width, callback)
 					
 					qx, qy = context.device_to_user(px, py)
-					nop = model.poke_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh), px, py, (lambda _reason, _param: True))
+					nop = model.poke_image(self, image, context, ((viewport_width - bw) / 2, (viewport_height - bh) / 2, bw, bh), px, py, callback)
 				
 				except NotImplementedError as error:
 					model.emit_warning(self, f"NotImplementedError: {error}", image)

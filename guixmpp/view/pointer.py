@@ -26,7 +26,7 @@ class PointerView:
 	def get_pointed(self, widget):
 		try:
 			return widget.__pointed[-1]
-		except IndexError:
+		except (TypeError, IndexError):
 			return None
 	
 	def get_buttons(self, widget):
