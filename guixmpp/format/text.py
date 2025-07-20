@@ -16,7 +16,6 @@ from itertools import chain
 from enum import Enum
 from pyphen import Pyphen
 from os import environ
-from weakref import WeakKeyDictionary
 
 
 _use_pango = environ.get('GUIXMPP_USE_PANGO', '1')
@@ -159,16 +158,13 @@ class TextFormat:
 		if not self.is_text_document(document):
 			return NotImplemented
 		
-		self.__cache[document] = None, None
+		pass
 	
 	async def on_close_document(self, view, document):
 		if not self.is_text_document(document):
 			return NotImplemented
 		
-		try:
-			del self.__cache[document]
-		except KeyError:
-			pass
+		self.__cache.clear()
 	
 	"Unicode line breaking classes for various character ranges."
 	__unicode_line_breaking_class = {
@@ -381,8 +377,8 @@ class TextFormat:
 	
 	@cached
 	def __line_breaks(self, text):
-		#hph = Pyphen(lang=lang)
-		hph = None
+		hph = Pyphen(lang='en_GB')
+		#hph = None
 		
 		m = 1
 		lbcs = list(self.__text_line_break_classes(text))
@@ -452,6 +448,7 @@ class TextFormat:
 	
 	def __word_width(self, word, ctx, pango_layout, callback):
 		if callback: callback(Escape.begin_measure, (word, ctx, pango_layout))
+		print("measure", repr(word))
 		
 		if self.use_pango:
 			pango_layout.set_text(word)
@@ -492,18 +489,21 @@ class TextFormat:
 						token_b = line[-1][esc - str_m:]
 						if token_a:
 							line[-1] = token_a
+							print("a")
 							widths[-1] = self.__word_width(self.__hyphen(token_a), ctx, pango_layout, callback)
 						else:
 							del line[-1], widths[-1]
 					
 					for cseq in escapes[esc]:
-						if callback: callback(Escape.begin_escape, (cseq, ctx, pango_layout))
+						#if callback: callback(Escape.begin_escape, (cseq, ctx, pango_layout))
+						print("escape", repr(cseq))
 						line.append(cseq)
 						widths.append(0)
-						if callback: callback(Escape.end_escape, (cseq, ctx, pango_layout))
+						#if callback: callback(Escape.end_escape, (cseq, ctx, pango_layout))
 					
 					if token_b:
 						line.append(token_b)
+						print("b")
 						widths.append(self.__word_width(self.__hyphen(token_b), ctx, pango_layout, callback))
 			else:
 				esc = None
@@ -513,6 +513,7 @@ class TextFormat:
 				if any(_w[-1] == self.Separator.hyphen.value for _w in line[:-1]):
 					hn = [_w[-1] == self.Separator.hyphen.value for _w in line].index(True)
 					line[hn] = line[hn][:-1] + line[hn + 1]
+					print("c")
 					widths[hn] = self.__word_width(self.__hyphen(line[hn]), ctx, pango_layout, callback)
 					del line[hn + 1]
 					del widths[hn + 1]
@@ -531,22 +532,28 @@ class TextFormat:
 				if any(_w[-1] == self.Separator.hyphen.value for _w in line[:-1]): # merge all parts separated with soft hyphens into whole words
 					hn = [_w[-1] == self.Separator.hyphen.value for _w in line].index(True)
 					line[hn] = line[hn][:-1] + line[hn + 1]
+					print("d")
 					widths[hn] = self.__word_width(self.__hyphen(line[hn]), ctx, pango_layout, callback)
+					print("repeat", [repr(_l) for _l in line[hn + 1:] if _l[0] == "\x1b"])
 					del line[hn + 1]
 					del widths[hn + 1]
 				break_pos = len(line)
 			elif token == self.Separator.hyphen:
 				if line:
 					line[-1] = line[-1] + token.value
+					print("e")
 					widths[-1] = self.__word_width(self.__hyphen(line[-1]), ctx, pango_layout, callback)
 				else:
 					line.append(token.value)
+					print("f")
 					widths.append(self.__word_width(self.__hyphen(token.value), ctx, pango_layout, callback))
 			elif hasattr(token, 'value'):
+				print("g")
 				line.append(token.value)
 				widths.append(self.__word_width(self.__hyphen(token.value), ctx, pango_layout, callback))
 			else:
 				line.append(token)
+				print("h")
 				widths.append(self.__word_width(self.__hyphen(token), ctx, pango_layout, callback))
 			
 			if sum(widths) > width:
@@ -666,6 +673,7 @@ class TextFormat:
 			
 			for string, advance in self.__measure_text(self.__line_breaks("".join(text)), escapes, ctx, pango_layout, width, callback):
 				if string[0] == "\x1b":
+					#print("escape seq", repr(string))
 					line.append(EscapeSeq(string, node=None, pseudoelement=None, inline=True, gravity=Gravity.CENTER, width=0, height=0))
 				elif string == "\n":
 					line_n += 1

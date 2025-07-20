@@ -84,7 +84,7 @@ class SVGRender:
 	use_pango = (_use_pango == '1') # required for non-Latin scripts; may be False if using only left-to-right horizontal Latin scripts
 	
 	def __init__(self, *args, **kwargs):
-		self.__css_matcher = WeakKeyDictionary()
+		self.__css_matcher = {}
 		self.__instantiated_symbols = []
 	
 	def create_document(self, data, mime_type):
@@ -166,6 +166,9 @@ class SVGRender:
 		except AttributeError:
 			pass # TODO: warning
 		await self.uninstall_all_fonts()
+		
+		self.__css_matcher.clear()
+		self.__instantiated_symbols.clear()
 	
 	def __stylesheets(self, document):
 		myurl = self.get_document_url(document)

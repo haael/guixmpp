@@ -474,6 +474,10 @@ class Model:
 	
 	async def on_close_document(self, view, document):
 		await self.__chain_impl_async('on_close_document', (view, document))
+		try:
+			del self.method_cache
+		except AttributeError:
+			pass
 	
 	#def set_view(self, widget):
 	#	self.__chain_impl('set_view', (widget,))

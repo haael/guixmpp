@@ -944,8 +944,31 @@ class CSSParser:
 		
 		def prefix(self, n):
 			return self.s[self.n : self.n+n]
+			'''
+			try:
+				lp = self.__last_prefix
+			except AttributeError:
+				pass
+			else:
+				if len(lp) == n:
+					return lp
+			
+			p = self.s[self.n : self.n+n]
+			self.__last_prefix = p
+			return p
+			'''
+		
+		def is_prefix(self, s):
+			return self.s[self.n : self.n + len(s)] == s
+			#if len(s) == 1:
+			#	return self.s[self.n] == s
+			#return all(self.s[self.n + _n] == s[_n] for _n in range(len(s)))
 		
 		def shift(self, n):
+			#try:
+			#	del self.__last_prefix
+			#except AttributeError:
+			#	pass
 			self.n += n
 		
 		def eof(self):
@@ -1015,54 +1038,57 @@ class CSSParser:
 		token = []
 		
 		while not stream.eof():
+			p = stream.prefix(1)
+			op = ord(p)
+			
 			if context == self.LexerContext.comment:
-				if stream.prefix(2) == '*/':
+				if stream.is_prefix('*/'):
 					stream.shift(2)
 					context = None
 				else:
 					stream.shift(1)
 			
 			elif context == self.LexerContext.xmlcomment:
-				if stream.prefix(3) == '-->':
+				if stream.is_prefix('-->'):
 					stream.shift(3)
 					context = None
 				else:
 					stream.shift(1)
 			
 			elif context == self.LexerContext.quote:
-				if stream.prefix(1) == '\\':
+				if p == '\\':
 					stream.shift(1)
 					token.append(stream.prefix(1))
 					stream.shift(1)
-				elif stream.prefix(1) == '\'':
+				elif p == '\'':
 					yield ''.join(['\''] + token + ['\''])
 					token.clear()
 					#yield '\''
 					stream.shift(1)
 					context = None
 				else:
-					token.append(stream.prefix(1))
+					token.append(p)
 					stream.shift(1)
 			
 			elif context == self.LexerContext.dblquote:
-				if stream.prefix(1) == '\\':
+				if p == '\\':
 					stream.shift(1)
 					token.append('\\')
 					token.append(stream.prefix(1))
 					stream.shift(1)
-				elif stream.prefix(1) == '"':
+				elif p == '"':
 					yield ''.join(['"'] + self.__hex_escape(token) + ['"'])
 					token.clear()
 					#yield '"'
 					stream.shift(1)
 					context = None
 				else:
-					token.append(stream.prefix(1))
+					token.append(p)
 					stream.shift(1)
 			
 			elif context == self.LexerContext.identifier:
-				if ord('a') <= ord(stream.prefix(1)) <= ord('z') or ord('A') <= ord(stream.prefix(1)) <= ord('Z') or ord('0') <= ord(stream.prefix(1)) <= ord('9') or stream.prefix(1) in '_-':
-					token.append(stream.prefix(1))
+				if ord('a') <= op <= ord('z') or ord('A') <= op <= ord('Z') or ord('0') <= op <= ord('9') or p in '_-':
+					token.append(p)
 					stream.shift(1)
 				else:
 					yield ''.join(token)
@@ -1070,8 +1096,8 @@ class CSSParser:
 					context = None
 			
 			elif context == self.LexerContext.variable:
-				if ord('a') <= ord(stream.prefix(1)) <= ord('z') or ord('A') <= ord(stream.prefix(1)) <= ord('Z') or ord('0') <= ord(stream.prefix(1)) <= ord('9') or stream.prefix(1) in '_-':
-					token.append(stream.prefix(1))
+				if ord('a') <= op <= ord('z') or ord('A') <= op <= ord('Z') or ord('0') <= op <= ord('9') or p in '_-':
+					token.append(p)
 					stream.shift(1)
 				else:
 					yield ''.join(['--'] + token)
@@ -1079,8 +1105,8 @@ class CSSParser:
 					context = None
 			
 			elif context == self.LexerContext.number:
-				if ord('0') <= ord(stream.prefix(1)) <= ord('9') or stream.prefix(1) == '.':
-					token.append(stream.prefix(1))
+				if ord('0') <= op <= ord('9') or p == '.':
+					token.append(p)
 					stream.shift(1)
 				else:
 					yield ''.join(token)
@@ -1088,61 +1114,61 @@ class CSSParser:
 					context = None
 			
 			elif context == self.LexerContext.hexnumber:
-				if ord('a') <= ord(stream.prefix(1)) <= ord('z') or ord('A') <= ord(stream.prefix(1)) <= ord('Z') or ord('0') <= ord(stream.prefix(1)) <= ord('9') or stream.prefix(1) in '_-':
-					token.append(stream.prefix(1))
+				if ord('a') <= op <= ord('z') or ord('A') <= op <= ord('Z') or ord('0') <= op <= ord('9') or p in '_-':
+					token.append(p)
 					stream.shift(1)
 				else:
 					yield ''.join(token)
 					token.clear()
 					context = None
 			
-			elif stream.prefix(2) == '/*':
+			elif stream.is_prefix('/*'):
 				context = self.LexerContext.comment
 				stream.shift(2)
 			
-			elif stream.prefix(4) == '<!--':
+			elif stream.is_prefix('<!--'):
 				context = self.LexerContext.xmlcomment
 				stream.shift(4)
 			
-			elif stream.prefix(1) == '\'':
+			elif p == '\'':
 				context = self.LexerContext.quote
 				#yield '\''
 				stream.shift(1)
 			
-			elif stream.prefix(1) == '\"':
+			elif p == '\"':
 				context = self.LexerContext.dblquote
 				#yield '"'
 				stream.shift(1)
 			
-			elif stream.prefix(2) == '--':
+			elif stream.is_prefix('--'):
 				context = self.LexerContext.variable
 				#yield '--'
 				stream.shift(2)
 			
-			elif ord('a') <= ord(stream.prefix(1)) <= ord('z') or ord('A') <= ord(stream.prefix(1)) <= ord('Z') or stream.prefix(1) in '_-':
+			elif ord('a') <= op <= ord('z') or ord('A') <= op <= ord('Z') or p in '_-':
 				context = self.LexerContext.identifier
-				token.append(stream.prefix(1))
-				stream.shift(1)		
-			
-			elif ord('0') <= ord(stream.prefix(1)) <= ord('9'):
-				context = self.LexerContext.number
-				token.append(stream.prefix(1))
+				token.append(p)
 				stream.shift(1)
 			
-			elif stream.prefix(1) in ' \t\r\n':
+			elif ord('0') <= op <= ord('9'):
+				context = self.LexerContext.number
+				token.append(p)
+				stream.shift(1)
+			
+			elif p in ' \t\r\n':
 				if context != self.LexerContext.whitespace:
 					yield ' '
 				context = self.LexerContext.whitespace
 				stream.shift(1)
 			
-			elif stream.prefix(1) == '#':
+			elif p == '#':
 				context = self.LexerContext.hexnumber
 				yield '#'
 				stream.shift(1)
 			
 			else:
 				context = None
-				yield stream.prefix(1)
+				yield p
 				stream.shift(1)
 	
 	ParserSymbol = Enum('ParserSymbol', 'curly square brace item')

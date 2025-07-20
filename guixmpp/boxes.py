@@ -214,6 +214,22 @@ class Word(Box):
 			pango_layout.context_changed()
 			PangoCairo.layout_path(ctx, pango_layout)
 		else:
+
+			ctx.save()
+			ctx.set_line_width(1)
+
+			e = ctx.text_extents(self.text)
+			ctx.rectangle(tx + self.dx, ty + self.dy + e.y_bearing, e.width, e.height)
+			ctx.set_source_rgb(0.25, 0, 0)
+			ctx.stroke()
+
+			ctx.rectangle(tx, ty, self.min_width, self.min_height)
+			ctx.set_source_rgb(0.05, 0, 0.5)
+			ctx.stroke()
+
+			ctx.restore()
+
+
 			#ctx.move_to(dx, dy + baseline)
 			#ctx.text_path(string)
 			ctx.move_to(tx + self.dx, ty + self.dy)

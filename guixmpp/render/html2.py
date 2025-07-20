@@ -15,7 +15,6 @@ import math
 from enum import Enum
 import cairo
 from collections import defaultdict, namedtuple
-from weakref import WeakKeyDictionary
 from itertools import chain, starmap
 from urllib.parse import quote as url_quote
 from colorsys import hls_to_rgb
@@ -102,6 +101,7 @@ class Block:
 			new_children.append(text)
 		
 		todel = []
+		
 		for n, child in enumerate(new_children):
 			child.reformat(model, view)
 			if not child:
@@ -111,16 +111,53 @@ class Block:
 		
 		self.children = new_children
 	
-	def measure(self, model, view, ctx, width, callback):
-		height = 0
+	def measure(self, model, view, ctx, width, height, callback):
+		width_attr = model._HTMLRender__get_attribute(view, self.document, self.node, self.pseudoelement, 'width')
+		height_attr = model._HTMLRender__get_attribute(view, self.document, self.node, self.pseudoelement, 'height')
+		
+		if width_attr == 'auto':
+			self.width = width
+		else:
+			self.width = model.units(view, width_attr, percentage=width)
+		
+		if height_attr == 'auto':
+			self.height = height
+		else:
+			self.height = model.units(view, height_attr, percentage=height)
+		#print(self.node.tag, self.height, width, height, height_attr)
+		
+		margin_bottom = 0
+		offset = 0
 		if self.children is not None:
-			for child in self.children:
-				child.top = height
-				child.left = 0
-				height += child.measure(model, view, ctx, width, callback)
-		self.width = width
-		self.height = height
-		return height
+			for child in self.children:				
+				if not isinstance(child, Text):
+					margin_top = model.units(view, model._HTMLRender__get_attribute(view, child.document, child.node, child.pseudoelement, 'margin-top'), percentage=height)
+					margin_left = model.units(view, model._HTMLRender__get_attribute(view, child.document, child.node, child.pseudoelement, 'margin-left'), percentage=width)
+					margin_right = model.units(view, model._HTMLRender__get_attribute(view, child.document, child.node, child.pseudoelement, 'margin-right'), percentage=width)
+				else:
+					margin_top = 0
+					margin_left = 0
+					margin_right = 0
+				
+				child.left = margin_left
+				
+				offset += max(margin_top, margin_bottom)
+				
+				child.top = offset
+				
+				offset += child.measure(model, view, ctx, self.width - margin_left - margin_right, self.height, callback)
+				
+				if not isinstance(child, Text):
+					margin_bottom = model.units(view, model._HTMLRender__get_attribute(view, child.document, child.node, child.pseudoelement, 'margin-bottom'), percentage=height)
+				else:
+					margin_bottom = 0
+		
+		offset += margin_bottom
+		
+		if height_attr == 'auto':
+			self.height = offset
+		
+		return self.height
 	
 	def render(self, model, view, ctx, box, callback):
 		model._HTMLRender__block_enter(view, self.document, self.node, self.pseudoelement, ctx, box)
@@ -165,9 +202,9 @@ class Text:
 	def reformat(self, model, view):
 		self.text = self.text.strip(" ")
 	
-	def measure(self, model, view, ctx, width, callback):
-		height = model.image_height_for_width(view, self.text, width, callback)
-		self.width = width
+	def measure(self, model, view, ctx, parent_width, parent_height, callback):
+		height = model.image_height_for_width(view, self.text, parent_width, callback)
+		self.width = parent_width
 		self.height = height
 		return height
 	
@@ -186,7 +223,7 @@ class HTMLRender:
 	xmlns_html2 = 'http://www.w3.org/2002/06/xhtml2'
 	
 	def __init__(self, *args, **kwargs):
-		self.__css_matcher = WeakKeyDictionary()
+		self.__css_matcher = {}
 		self.__cache = {}
 	
 	def create_document(self, data, mime):
@@ -219,6 +256,19 @@ class HTMLRender:
 				return document.tag.startswith('{' + self.xmlns_html + '}') or document.tag.startswith('{' + self.xmlns_html2 + '}')
 			except AttributeError:
 				return False
+	
+	async def on_open_document(self, view, document):
+		if not self.is_html_document(document):
+			return NotImplemented
+		
+		pass
+	
+	async def on_close_document(self, view, document):
+		if not self.is_html_document(document):
+			return NotImplemented
+		
+		self.__cache.clear()
+		self.__css_matcher.clear()
 	
 	"css_attribute: initial_value, is_inheritable, is_animatable, css_version"
 	__initial_attribute = {
@@ -283,7 +333,7 @@ class HTMLRender:
 		'white-space': ('normal', True, False, 'CSS1'),
 		'width': ('auto', False, True, 'CSS1'),
 		'word-spacing': ('normal', True, True, 'CSS1'),
-
+		
 		'border-collapse': ('separate', True, False, 'CSS2'),
 		'border-spacing': ('2px', True, True, 'CSS2'),
 		'bottom': ('auto', False, True, 'CSS2'),
@@ -317,7 +367,7 @@ class HTMLRender:
 		'unicode-bidi': ('normal', True, False, 'CSS2'),
 		'visibility': ('visible', True, True, 'CSS2'),
 		'z-index': ('auto', False, True, 'CSS2'),
-
+		
 		'align-content': ('stretch', False, False, 'CSS3'),
 		'align-items': ('normal', False, False, 'CSS3'),
 		'align-self': ('auto', False, False, 'CSS3'),
@@ -531,10 +581,10 @@ class HTMLRender:
 		'word-break': ('normal', True, False, 'CSS3'),
 		'word-wrap': ('normal', True, False, 'CSS3'),
 		'writing-mode': ('horizontal-tb', True, False, 'CSS3'),
-
+		
 		'column-gap': ('normal', False, True, 'CSS Box Alignment Module Level 3'),
 		'gap': ('normal normal', False, True, 'CSS Box Alignment Module Level 3'),
-
+		
 		'grid': ('none none none auto auto row', False, True, 'CSS Grid Layout Module Level 1'),
 		'grid-area': ('auto / auto / auto / auto', False, True, 'CSS Grid Layout Module Level 1'),
 		'grid-auto-columns': ('auto', False, True, 'CSS Grid Layout Module Level 1'),
@@ -562,19 +612,19 @@ class HTMLRender:
 		'mask-repeat': ('repeat', False, False, 'CSS Masking Module Level 1'),
 		'mask-size': ('auto', False, False, 'CSS Masking Module Level 1'),
 		'mask-type': ('luminance', False, False, 'CSS Masking Module Level 1'),
-
+		
 		'color-scheme': ('normal', True, None, 'CSS Color Adjustment Module Level 1'),
-
+		
 		'row-gap': ('normal', False, True, 'CSS Box Alignment Module Level 3'),
-
+		
 		'scrollbar-color': ('auto', True, False, 'CSS Scrollbars Styling Module Level 1'),
-
+		
 		'shape-outside': ('none', False, True, 'CSS Shapes Module Level 1'),
-
+		
 		'zoom': ('normal', False, True, 'CSS Viewport Module Level 1'),
-
+		
 		'scroll-behavior': ('auto', False, False, 'CSSOM View Module (Working Draft)'),
-
+		
 		'accent-color': ('auto', True, False, 'CSS4'),
 		'hyphenate-character': ('auto', True, False, 'CSS4'),
 		'text-decoration-thickness': ('auto', False, False, 'CSS4'),
@@ -639,7 +689,7 @@ class HTMLRender:
 		'h4': {'font-size':'medium'}, #	Defines HTML headings.
 		'h5': {'font-size':'small'}, #	Defines HTML headings.
 		'h6': {'font-size':'xx-small'}, #	Defines HTML headings.
-		'hr': {}, # 	Produce a horizontal line.
+		'hr': {'height':'2px', 'background-color':'green', 'margin-top':'5px', 'margin-bottom':'5px', 'margin-left':'15px', 'margin-right':'15px'}, # 	Produce a horizontal line.
 		'html': {}, # 	Defines the root of an HTML document.
 		'i': {'font-style':'italic'}, #		Displays text in an italic style.
 		'iframe': {}, # 	Displays a URL in an inline frame.
@@ -667,7 +717,7 @@ class HTMLRender:
 		'optgroup': {}, # 	Defines a group of related options in a selection list.
 		'option': {}, # 	Defines an option in a selection list.
 		'output': {}, # 	Represents the result of a calculation.
-		'p': {}, # 	Defines a paragraph.
+		'p': {'background-color':'pink', 'margin-left':'10px', 'margin-right':'10px', 'margin-bottom':'2px', 'margin-top':'2px'}, # 	Defines a paragraph.
 		'param': {}, # 	Defines a parameter for an object or applet element.
 		'picture': {}, # 	Defines a container for multiple image sources.
 		'pre': {}, # 	Defines a block of preformatted text.
@@ -873,19 +923,40 @@ class HTMLRender:
 		if not self.is_html_document(document):
 			return NotImplemented
 		
-		return self.get_viewport_width(view), self.get_viewport_height(view)
+		return self.get_viewport_width(view), self.image_height_for_width(view, document, width, callback)
 	
 	def image_width_for_height(self, view, document, height, callback):
 		if not self.is_html_document(document):
 			return NotImplemented
-		w, h = self.image_dimensions(view, document, callback)
-		return w # TODO
+		return self.get_viewport_width(view)
 	
 	def image_height_for_width(self, view, document, width, callback):
 		if not self.is_html_document(document):
 			return NotImplemented
-		w, h = self.image_dimensions(view, document, callback)
-		return h # TODO
+		
+		if hasattr(document, 'getroot'): # render whole HTML document
+			node = document.getroot()
+		else: # render one HTML tag
+			node = document
+			document = document.getroottree()
+		
+		recreate = False
+		try:
+			tree, w, h = self.__cache[document]
+		except KeyError:
+			recreate = True
+		else:
+			if box[2:] != (w, h):
+				recreate = True
+		
+		if recreate:
+			new_callback = self.__make_inline_callback(view, document, callback)
+			tree = self.__produce_tree(view, document, node, None)
+			#tree.reformat(self, view)
+			tree.measure(self, view, ctx, box[2], box[3], new_callback)
+			self.__cache[document] = tree, box[2], box[3]
+		
+		return tree.height
 	
 	def __remove_whitespace(self, text):
 		text = text.translate(str.maketrans({"\t":" ", "\r":" ", "\n":" "}))
@@ -936,6 +1007,7 @@ class HTMLRender:
 				result = sum(children, Text())
 				if result:
 					result.wrap(f"\x1bX+{path}\x1b\\", f"\x1bX-{path}\x1b\\")
+					pass
 				else:
 					result = None
 			else:
@@ -944,7 +1016,11 @@ class HTMLRender:
 			return result
 		
 		elif display == 'block':
-			return Block(document, node, pseudoelement, children)
+			path = document.getpath(node) # TODO: pseudoelement
+			result = Block(document, node, pseudoelement, children)
+			result.reformat(self, view)
+			result.wrap(f"\x1bX+{path}\x1b\\", f"\x1bX-{path}\x1b\\")
+			return result
 		
 		else:
 			raise NotImplementedError
@@ -961,19 +1037,24 @@ class HTMLRender:
 			node = document
 			document = document.getroottree()
 		
-		new_callback = self.__make_inline_callback(view, document, callback)
+		recreate = False
+		try:
+			tree, w, h = self.__cache[document]
+		except KeyError:
+			recreate = True
+		else:
+			if box[2:] != (w, h):
+				recreate = True
 		
-		tree = self.__produce_tree(view, document, node, None)
-		tree.reformat(self, view)
-		#for value, level in tree.print_tree():
-		#	print(" " * level, value)
-		tree.measure(self, view, ctx, box[2], new_callback)
+		if recreate:
+			new_callback = self.__make_inline_callback(view, document, callback)
+			tree = self.__produce_tree(view, document, node, None)
+			tree.measure(self, view, ctx, box[2], box[3], new_callback)
+			self.__cache[document] = tree, box[2], box[3]
+		
 		tree.render(self, view, ctx, box, new_callback)
 	
 	def poke_image(self, view, document, ctx, box, px, py, callback):
-		if not self.is_html_document(document):
-			return NotImplemented
-		
 		if not self.is_html_document(document):
 			return NotImplemented
 		
@@ -983,29 +1064,50 @@ class HTMLRender:
 			node = document
 			document = document.getroottree()
 		
-		new_callback = self.__make_inline_callback(view, document, callback)
+		recreate = False
+		try:
+			tree, w, h = self.__cache[document]
+		except KeyError:
+			recreate = True
+		else:
+			if box[2:] != (w, h):
+				recreate = True
 		
-		tree = self.__produce_tree(view, document, node, None)
-		tree.reformat(self, view)
-		tree.measure(self, view, ctx, box[2], new_callback)
+		if recreate:
+			new_callback = self.__make_inline_callback(view, document, callback)
+			tree = self.__produce_tree(view, document, node, None)
+			tree.measure(self, view, ctx, box[2], box[3], new_callback)
+			self.__cache[document] = tree, box[2], box[3]
+		
 		hover = tree.poke(self, view, ctx, box, new_callback, px, py)
 		assert hover is not None
 		return hover
 	
 	def __block_enter(self, view, document, node, pseudoelement, ctx, box):
 		ctx.save()
-		ctx.set_source_rgba(*self.__get_color(widget, document, node, pseudoelement, 'color', 'opacity', 'black'))
+		
+		try:
+			ctx.set_source_rgba(*self.__get_color(view, document, node, pseudoelement, 'background-color', 'opacity', 'transparent'))
+		except TypeError:
+			pass
+		else:
+			ctx.rectangle(*box)
+			ctx.fill()
+		
+		#ctx.set_source_rgba(*self.__get_color(view, document, node, pseudoelement, 'color', 'opacity', 'black'))
+		#font_family, font_size, line_height, font_style, font_variant, font_weight = self.__get_font(view, document, node, pseudoelement, 16) # TODO
+		#ctx.select_font_face(font_family, font_style, font_weight)
+		#ctx.set_font_size(font_size)
 	
 	def __block_exit(self, view, document, node, pseudoelement, ctx, box):
 		ctx.restore()
 	
 	def __inline_enter(self, view, document, node, pseudoelement, ctx, pango_layout, stack):
 		ctx.save()
-		ctx.set_source_rgba(*self.__get_color(widget, document, node, pseudoelement, 'color', 'opacity', 'black'))
-		font_family, font_size, line_height, font_style, font_variant, font_weight = self.__get_font(widget, document, node, pseudoelement, 16) # TODO
-		#print(node.tag, font_family, font_size, line_height, font_style, font_variant, font_weight)
-		print(font_family)
+		ctx.set_source_rgba(*self.__get_color(view, document, node, pseudoelement, 'color', 'opacity', 'black'))
+		font_family, font_size, line_height, font_style, font_variant, font_weight = self.__get_font(view, document, node, pseudoelement, 16) # TODO
 		ctx.select_font_face(font_family, font_style, font_weight)
+		ctx.set_font_size(font_size)
 	
 	def __inline_exit(self, view, document, node, pseudoelement, ctx, pango_layout, stack):
 		ctx.restore()
@@ -1047,14 +1149,33 @@ class HTMLRender:
 		font = self.__get_attribute(view, document, element, pseudoelement, 'font')
 		font_family = self.__get_attribute(view, document, element, pseudoelement, 'font-family')
 		font_size = self.__get_attribute(view, document, element, pseudoelement, 'font-size')
+		
+		if font_size == 'xx-small':
+			font_size = '10'
+		elif font_size == 'x-small':
+			font_size = '12'
+		elif font_size == 'small':
+			font_size = '14'
+		elif font_size == 'medium':
+			font_size = '16'
+		elif font_size == 'large':
+			font_size = '18'
+		elif font_size == 'x-large':
+			font_size = '20'
+		elif font_size == 'xx-large':
+			font_size = '24'
+		
 		line_height = self.__get_attribute(view, document, element, pseudoelement, 'line-height')
+		if line_height == 'normal':
+			line_height = '100%'
+		
 		font_style = self.__get_attribute(view, document, element, pseudoelement, 'font-style')
 		font_variant = self.__get_attribute(view, document, element, pseudoelement, 'font-variant')
 		font_weight = self.__get_attribute(view, document, element, pseudoelement, 'font-weight')
 		#print(element.tag, font, font_family, font_size, line_height, font_style, font_variant, font_weight)
 		
 		#print(element.tag, font_style)
-		return font_family, 16, 16, cairo.FontSlant.ITALIC if font_style == 'italic' else cairo.FontSlant.NORMAL, None, cairo.FontWeight.BOLD if font_weight == 'bold' else cairo.FontWeight.NORMAL	
+		return font_family, self.units(view, font_size, percentage=em_size), self.units(view, line_height, percentage=em_size), cairo.FontSlant.ITALIC if font_style == 'italic' else cairo.FontSlant.NORMAL, None, cairo.FontWeight.BOLD if font_weight == 'bold' else cairo.FontWeight.NORMAL	
 	
 	def __get_color(self, view, document, element, pseudoelement, color_attr, opacity_attr, default_color):
 		"Set painting source to the color identified by provided parameters."
@@ -1083,7 +1204,7 @@ class HTMLRender:
 		
 		try:
 			if not color or color.lower() in ('none', 'transparent'):
-				return False
+				return None
 		except AttributeError:
 			pass
 		
@@ -1578,6 +1699,9 @@ if __debug__ and __name__ == '__main__' and test_type != 0:
 				return HTMLRender.draw_image(self, view, document, ctx, box, callback)
 			else:
 				return NotImplemented
+		
+		def get_dpi(self, view):
+			return 96
 	
 	
 	loop_init()
@@ -1682,9 +1806,9 @@ And the hedge-encompass’d quiet never echoes to a sound.</span><br/>
 When it was I knew that garden in an age long left behind;<br/>
 I will oft conjure a vision of a day that is no more,<br/>
 As I gaze upon the grey, grey scenes I feel I knew before.</span><br/>
-<span style="color:#0000f0;">Then a sadness settles o’er me, and a tremor seems to start:<br/>
+<span style="color:#0000f0; font-size:20px">Then a sadness settles o’er me, and a tremor seems to start:<br/>
 <hr/>
-For I know the flow’rs are shrivell’d hopes—the garden is my heart!</span><br/>
+For I know the flow’rs are shrivell’d hopes—the garden is my heart!</span>
 </p>
 <hr/>
 </body>

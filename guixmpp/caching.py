@@ -11,9 +11,9 @@ def cached(old_method):
 	if isgeneratorfunction(old_method):
 		def new_method(self, *args, **kwargs):
 			try:
-				method_cache = self.__method_cache
+				method_cache = self.method_cache
 			except AttributeError:
-				method_cache = self.__method_cache = {}
+				method_cache = self.method_cache = {}
 			
 			try:
 				cache = method_cache[old_method.__name__]
@@ -40,9 +40,9 @@ def cached(old_method):
 	else:
 		def new_method(self, *args, **kwargs):
 			try:
-				method_cache = self.__method_cache
+				method_cache = self.method_cache
 			except AttributeError:
-				method_cache = self.__method_cache = {}
+				method_cache = self.method_cache = {}
 			
 			try:
 				cache = method_cache[old_method.__name__]
